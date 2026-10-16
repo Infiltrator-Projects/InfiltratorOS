@@ -2,7 +2,15 @@
 set -eu
 
 ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
-VERSION="${VERSION:-$(tr -d '[:space:]' < "$ROOT/VERSION")}"
+VERSION="$(tr -d '\r\n' < "$ROOT/VERSION")"
+# Validate the staging path before deleting any previous build.
+printf '%s\n' "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'
+test -f "$ROOT/debian/control.in"
+test "$(dpkg --print-architecture)" = amd64
+SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH:-$(git -C "$ROOT" log -1 --format=%ct 2>/dev/null || printf 0)}"
+case "$SOURCE_DATE_EPOCH" in ""|*[!0-9]*) echo "Invalid SOURCE_DATE_EPOCH" >&2; exit 1 ;; esac
+export SOURCE_DATE_EPOCH
+
 DIST="$ROOT/dist"
 WORK="$ROOT/.build/infiltratoros_${VERSION}"
 PKGROOT="$WORK/root"
@@ -11,9 +19,7 @@ ARTWORK="$ROOT/assets/infiltratoros.png"
 ARTWORK_SHA256="4820891225675ed9bb0bb1bb82e3680df4bbdccc736ce5d092b80e95e5d05978"
 
 rm -rf "$WORK"
-mkdir -p "$PKGROOT/DEBIAN" "$THEME_DIR" "$DIST"
-mkdir -p "$PKGROOT/usr/lib/infiltratoros"
-
+mkdir -p "$PKGROOT/DEBIAN" "$THEME_DIR" "$DIST" "$PKGROOT/usr/lib/infiltratoros"
 printf '%s  %s\n' "$ARTWORK_SHA256" "$ARTWORK" | sha256sum -c -
 
 sed "s/@VERSION@/$VERSION/g" "$ROOT/debian/control.in" > "$PKGROOT/DEBIAN/control"
@@ -22,54 +28,33 @@ install -m 0755 "$ROOT/debian/prerm" "$PKGROOT/DEBIAN/prerm"
 
 cc -std=c11 -O2 -Wall -Wextra -Werror \
     "$ROOT/packaging/stage-theme.c" -o "$WORK/stage-theme"
-"$WORK/stage-theme" \
-    "$ROOT/plymouth/infiltratoros.plymouth" \
-    "$ROOT/plymouth/infiltratoros.script" \
-    "$ARTWORK" "$THEME_DIR"
-
-cc -std=c11 -O2 -Wall -Wextra -Werror \
-    "$ROOT/packaging/select-theme.c" \
+"$WORK/stage-theme" "$ROOT/plymouth/infiltratoros.plymouth" \
+    "$ROOT/plymouth/infiltratoros.script" "$ARTWORK" "$THEME_DIR"
+cc -std=c11 -O2 -Wall -Wextra -Werror "$ROOT/packaging/select-theme.c" \
     -o "$PKGROOT/usr/lib/infiltratoros/select-theme"
 
-cc -std=c11 -O2 -Wall -Wextra -Werror -Wpedantic \
-    "$ROOT/packaging/install-system-monitor.c" \
-    -o "$PKGROOT/usr/lib/infiltratoros/install-system-monitor"
+for product in system-monitor calculator; do
+    case "$product" in
+        system-monitor) profile=INSTALL_SYSTEM_MONITOR ;;
+        calculator) profile=INSTALL_CALCULATOR ;;
+    esac
+    cc -std=c11 -O2 -Wall -Wextra -Werror -Wpedantic \
+        "$ROOT/packaging/install-$product.c" \
+        -o "$PKGROOT/usr/lib/infiltratoros/install-$product"
+    cc -std=c11 -O2 -Wall -Wextra -Werror -Wpedantic "-D$profile" \
+        "$ROOT/packaging/start-native-install.c" "$ROOT/packaging/installer-process.c" \
+        -o "$PKGROOT/usr/lib/infiltratoros/start-$product-install"
+    # pkg-config emits compiler arguments, intentionally split by the shell.
+    # shellcheck disable=SC2086
+    cc -std=c11 -O2 -Wall -Wextra -Werror -Wpedantic "-D$profile" \
+        $(pkg-config --cflags gtk+-3.0) \
+        "$ROOT/packaging/native-install-progress.c" "$ROOT/packaging/installer-status.c" \
+        -o "$PKGROOT/usr/lib/infiltratoros/$product-progress" $(pkg-config --libs gtk+-3.0)
+done
 
-cc -std=c11 -O2 -Wall -Wextra -Werror -Wpedantic \
-    "$ROOT/packaging/start-system-monitor-install.c" \
-    -o "$PKGROOT/usr/lib/infiltratoros/start-system-monitor-install"
-
-cc -std=c11 -O2 -Wall -Wextra -Werror -Wpedantic \
-    "$ROOT/packaging/install-calculator.c" \
-    -o "$PKGROOT/usr/lib/infiltratoros/install-calculator"
-
-cc -std=c11 -O2 -Wall -Wextra -Werror -Wpedantic \
-    "$ROOT/packaging/start-calculator-install.c" \
-    -o "$PKGROOT/usr/lib/infiltratoros/start-calculator-install"
-
-GTK_CFLAGS="$(pkg-config --cflags gtk+-3.0)"
-GTK_LIBS="$(pkg-config --libs gtk+-3.0)"
-# shellcheck disable=SC2086
-cc -std=c11 -O2 -Wall -Wextra -Werror -Wpedantic $GTK_CFLAGS \
-    "$ROOT/packaging/system-monitor-progress.c" \
-    -o "$PKGROOT/usr/lib/infiltratoros/system-monitor-progress" $GTK_LIBS
-
-# shellcheck disable=SC2086
-cc -std=c11 -O2 -Wall -Wextra -Werror -Wpedantic $GTK_CFLAGS \
-    "$ROOT/packaging/calculator-progress.c" \
-    -o "$PKGROOT/usr/lib/infiltratoros/calculator-progress" $GTK_LIBS
-
-PNG_TYPE="$(file -b --mime-type "$THEME_DIR/infiltratoros.png")"
-if [ "$PNG_TYPE" != "image/png" ]; then
-    echo "Artwork is not a PNG: $PNG_TYPE" >&2
-    exit 1
-fi
-
+test "$(file -b --mime-type "$THEME_DIR/infiltratoros.png")" = image/png
 OUT="$DIST/infiltratoros_${VERSION}_amd64.deb"
-rm -f "$OUT"
 dpkg-deb --root-owner-group --build "$PKGROOT" "$OUT"
-
 dpkg-deb --info "$OUT" >/dev/null
 dpkg-deb --contents "$OUT" >/dev/null
-
 echo "$OUT"

@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.0.6
+
+- Give package identity one VERSION file and preserve immutable qualified release bytes.
+- Share native launch and progress mechanics while retaining each product's installation policy.
+- Report setup and exec failures before claiming background startup.
+- Reject malformed or incomplete status records.
+- Qualify process handoff and status failures with production-code fixtures; verify reproducible package bytes and approved artwork in CI.
+
 ## 1.0.5
 
 - Use InfiltratorOS consistently in documentation, Plymouth metadata, package descriptions and provisioning windows.

@@ -1,4 +1,6 @@
 #include <gtk/gtk.h>
+#include "installer-profile.h"
+#include "installer-status.h"
 #include <errno.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -16,41 +18,6 @@ typedef struct {
     bool finished;
 } Ui;
 
-typedef struct {
-    char state[32];
-    int progress;
-    char stage[256];
-    char detail[1024];
-} Status;
-
-static void copy_value(char *destination, size_t size, const char *value)
-{
-    if (!destination || size == 0U) return;
-    g_strlcpy(destination, value ? value : "", size);
-}
-
-static bool read_status(const char *path, Status *status)
-{
-    FILE *file = fopen(path, "r");
-    if (!file) return false;
-    memset(status, 0, sizeof(*status));
-    status->progress = -1;
-    char line[1400];
-    while (fgets(line, sizeof(line), file)) {
-        char *newline = strchr(line, '\n');
-        if (newline) *newline = '\0';
-        char *equals = strchr(line, '=');
-        if (!equals) continue;
-        *equals++ = '\0';
-        if (strcmp(line, "state") == 0) copy_value(status->state, sizeof(status->state), equals);
-        else if (strcmp(line, "progress") == 0) status->progress = atoi(equals);
-        else if (strcmp(line, "stage") == 0) copy_value(status->stage, sizeof(status->stage), equals);
-        else if (strcmp(line, "detail") == 0) copy_value(status->detail, sizeof(status->detail), equals);
-    }
-    fclose(file);
-    return status->state[0] != '\0';
-}
-
 static gboolean close_after_success(gpointer data)
 {
     Ui *ui = data;
@@ -61,8 +28,8 @@ static gboolean close_after_success(gpointer data)
 static gboolean refresh_status(gpointer data)
 {
     Ui *ui = data;
-    Status status;
-    if (!read_status(ui->status_path, &status)) {
+    InstallerStatus status;
+    if (!installer_status_read(ui->status_path, &status)) {
         gtk_progress_bar_pulse(GTK_PROGRESS_BAR(ui->bar));
         return G_SOURCE_CONTINUE;
     }
@@ -77,13 +44,13 @@ static gboolean refresh_status(gpointer data)
 
     if (!ui->finished && strcmp(status.state, "complete") == 0) {
         ui->finished = true;
-        gtk_label_set_text(GTK_LABEL(ui->title), "System Monitor is ready");
+        gtk_label_set_text(GTK_LABEL(ui->title), INSTALL_NAME " is ready");
         gtk_progress_bar_set_fraction(GTK_PROGRESS_BAR(ui->bar), 1.0);
         gtk_widget_show(ui->close_button);
         g_timeout_add_seconds(8U, close_after_success, ui);
     } else if (!ui->finished && strcmp(status.state, "failed") == 0) {
         ui->finished = true;
-        gtk_label_set_text(GTK_LABEL(ui->title), "System Monitor installation failed");
+        gtk_label_set_text(GTK_LABEL(ui->title), INSTALL_NAME " installation failed");
         gtk_widget_show(ui->close_button);
     }
     return G_SOURCE_CONTINUE;
@@ -98,7 +65,7 @@ static void close_clicked(GtkButton *button, gpointer data)
 
 int main(int argc, char **argv)
 {
-    if (argc != 2) return EXIT_FAILURE;
+    if (argc != 2 || strlen(argv[1]) >= sizeof(((Ui *)0)->status_path)) return EXIT_FAILURE;
     gtk_init(&argc, &argv);
 
     Ui ui;
@@ -115,7 +82,7 @@ int main(int argc, char **argv)
     gtk_container_add(GTK_CONTAINER(ui.window), box);
 
     ui.title = gtk_label_new(NULL);
-    gtk_label_set_markup(GTK_LABEL(ui.title), "<b>Optimising System Monitor for this computer</b>");
+    gtk_label_set_markup(GTK_LABEL(ui.title), "<b>Optimising " INSTALL_NAME " for this computer</b>");
     gtk_widget_set_halign(ui.title, GTK_ALIGN_START);
     gtk_box_pack_start(GTK_BOX(box), ui.title, FALSE, FALSE, 0);
 

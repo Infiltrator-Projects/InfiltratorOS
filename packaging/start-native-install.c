@@ -14,12 +14,9 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
+#include "installer-profile.h"
+#include "installer-process.h"
 
-#define STATUS_DIR "/run/infiltratoros"
-#define STATUS_PATH STATUS_DIR "/system-monitor-install.status"
-#define LOG_PATH "/var/log/infiltratoros-system-monitor.log"
-#define WORKER "/usr/lib/infiltratoros/install-system-monitor"
-#define PROGRESS_UI "/usr/lib/infiltratoros/system-monitor-progress"
 #define ENV_LIMIT 65536U
 #define TEXT_LIMIT 4096U
 
@@ -52,7 +49,7 @@ static void write_initial_status(void)
 {
     FILE *file = fopen(STATUS_PATH, "w");
     if (!file) die("cannot create installation status");
-    fputs("state=queued\nprogress=1\nstage=Preparing System Monitor optimisation\n"
+    fputs("state=queued\nprogress=1\nstage=Preparing " INSTALL_NAME " optimisation\n"
           "detail=The installation will continue after the package manager releases its lock.\n",
           file);
     if (fclose(file) != 0) die("cannot write installation status");
@@ -167,81 +164,48 @@ static DesktopSession find_desktop_session(void)
     return result;
 }
 
-static void close_extra_fds(void)
+static int prepare_worker(void *context)
 {
-    long limit = sysconf(_SC_OPEN_MAX);
-    if (limit < 0L || limit > 65536L) limit = 4096L;
-    for (int fd = 3; fd < (int)limit; ++fd) close(fd);
+    (void)context;
+    return installer_redirect_io(LOG_PATH);
 }
 
-static void redirect_worker_io(void)
+static int prepare_progress(void *context)
 {
-    int input = open("/dev/null", O_RDONLY | O_CLOEXEC);
-    int log = open(LOG_PATH, O_WRONLY | O_CREAT | O_APPEND | O_CLOEXEC, 0644);
-    if (input >= 0) (void)dup2(input, STDIN_FILENO);
-    if (log >= 0) {
-        (void)dup2(log, STDOUT_FILENO);
-        (void)dup2(log, STDERR_FILENO);
-    }
-    if (input > STDERR_FILENO) close(input);
-    if (log > STDERR_FILENO) close(log);
-}
-
-static void spawn_worker(void)
-{
-    pid_t first = fork();
-    if (first < 0) die("cannot start System Monitor installer");
-    if (first == 0) {
-        if (setsid() < 0) _exit(120);
-        pid_t second = fork();
-        if (second < 0) _exit(121);
-        if (second > 0) _exit(0);
-        if (chdir("/") != 0) _exit(122);
-        redirect_worker_io();
-        close_extra_fds();
-        execl(WORKER, WORKER, (char *)NULL);
-        _exit(127);
-    }
-    int status = 0;
-    while (waitpid(first, &status, 0) < 0 && errno == EINTR) {}
-    if (!WIFEXITED(status) || WEXITSTATUS(status) != 0)
-        die("cannot detach System Monitor installer");
-}
-
-static void spawn_progress_ui(const DesktopSession *session)
-{
-    if (!session || !session->found || access(PROGRESS_UI, X_OK) != 0) return;
-    pid_t first = fork();
-    if (first != 0) return;
-    if (setsid() < 0) _exit(120);
-    pid_t second = fork();
-    if (second < 0) _exit(121);
-    if (second > 0) _exit(0);
-
+    const DesktopSession *session = context;
     if (setgid(session->gid) != 0 ||
         initgroups(session->user, session->gid) != 0 ||
         setuid(session->uid) != 0)
-        _exit(122);
+        return -1;
+    if (setenv("HOME", session->home, 1) != 0 ||
+        setenv("USER", session->user, 1) != 0 ||
+        setenv("LOGNAME", session->user, 1) != 0 ||
+        setenv("XDG_RUNTIME_DIR", session->runtime, 1) != 0 ||
+        setenv("DBUS_SESSION_BUS_ADDRESS", session->bus, 1) != 0)
+        return -1;
+    if (session->display[0] && setenv("DISPLAY", session->display, 1) != 0) return -1;
+    if (session->wayland[0] && setenv("WAYLAND_DISPLAY", session->wayland, 1) != 0) return -1;
+    if (session->xauthority[0] && setenv("XAUTHORITY", session->xauthority, 1) != 0) return -1;
+    return installer_redirect_io("/dev/null");
+}
 
-    (void)setenv("HOME", session->home, 1);
-    (void)setenv("USER", session->user, 1);
-    (void)setenv("LOGNAME", session->user, 1);
-    (void)setenv("XDG_RUNTIME_DIR", session->runtime, 1);
-    (void)setenv("DBUS_SESSION_BUS_ADDRESS", session->bus, 1);
-    if (session->display[0]) (void)setenv("DISPLAY", session->display, 1);
-    if (session->wayland[0]) (void)setenv("WAYLAND_DISPLAY", session->wayland, 1);
-    if (session->xauthority[0]) (void)setenv("XAUTHORITY", session->xauthority, 1);
+static void spawn_progress_ui(DesktopSession *session)
+{
+    if (!session->found) return;
+    char *const arguments[] = { PROGRESS_UI, STATUS_PATH, NULL };
+    if (installer_spawn_detached(PROGRESS_UI, arguments, prepare_progress, session) != 0)
+        fprintf(stderr, INSTALL_NAME " progress window: %s\n", strerror(errno));
+}
 
-    int null_fd = open("/dev/null", O_RDWR | O_CLOEXEC);
-    if (null_fd >= 0) {
-        (void)dup2(null_fd, STDIN_FILENO);
-        (void)dup2(null_fd, STDOUT_FILENO);
-        (void)dup2(null_fd, STDERR_FILENO);
-        if (null_fd > STDERR_FILENO) close(null_fd);
+static void report_start_failure(int error)
+{
+    FILE *file = fopen(STATUS_PATH, "w");
+    if (file) {
+        fprintf(file, "state=failed\nprogress=0\nstage=" INSTALL_NAME
+                      " installer could not start\ndetail=%s\n", strerror(error));
+        (void)fclose(file);
     }
-    close_extra_fds();
-    execl(PROGRESS_UI, PROGRESS_UI, STATUS_PATH, (char *)NULL);
-    _exit(127);
+    fprintf(stderr, INSTALL_NAME " installer could not start: %s\n", strerror(error));
 }
 
 int main(void)
@@ -250,8 +214,13 @@ int main(void)
     ensure_status_dir();
     write_initial_status();
     DesktopSession session = find_desktop_session();
-    spawn_worker();
+    char *const arguments[] = { WORKER, NULL };
+    if (installer_spawn_detached(WORKER, arguments, prepare_worker, NULL) != 0) {
+        report_start_failure(errno);
+        spawn_progress_ui(&session);
+        return EXIT_FAILURE;
+    }
     spawn_progress_ui(&session);
-    puts("System Monitor native optimisation started in the background.");
+    puts(INSTALL_NAME " native optimisation started in the background.");
     return EXIT_SUCCESS;
 }

@@ -1,96 +1,109 @@
 name: Build InfiltratorOS DEB
-
 on:
   push:
-    branches:
-      - main
-    tags:
-      - 'v*'
+    branches: [main]
   workflow_dispatch:
-
 permissions:
-  contents: write
-
+  contents: read
+concurrency:
+  group: os-package-${{ github.ref }}
+  cancel-in-progress: false
 jobs:
-  build:
-    runs-on: ubuntu-latest
-
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
     steps:
-      - name: Check out source
-        uses: actions/checkout@v4
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
           fetch-depth: 0
-
-      - name: Install package build dependencies
-        shell: bash
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y pkg-config libgtk-3-dev
-
-      - name: Determine package version
+      - name: Install build dependencies
+        run: sudo apt-get update && sudo apt-get install -y pkg-config libgtk-3-dev
+      - name: Exercise production process and status contracts
+        run: sh tests/check.sh
+      - name: Build and prove reproducible package bytes
         shell: bash
         run: |
           set -euo pipefail
-          version=$(tr -d '[:space:]' < VERSION)
-          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
-          if [[ "$GITHUB_REF" == refs/tags/v* && "$GITHUB_REF_NAME" != "v$version" ]]; then
-            echo "Release tag does not match VERSION." >&2
-            exit 1
-          fi
-          echo "VERSION=$version" >> "$GITHUB_ENV"
-          echo "RELEASE_TAG=v$version" >> "$GITHUB_ENV"
-
-      - name: Build package
-        shell: bash
-        run: |
-          VERSION="$VERSION" bash scripts/build-deb.sh
-
-      - name: Inspect package
-        shell: bash
-        run: |
-          dpkg-deb --info dist/*.deb
-          dpkg-deb --contents dist/*.deb
-
-      - name: Upload DEB artifact
-        uses: actions/upload-artifact@v4
+          sh scripts/build-deb.sh
+          cp dist/*.deb "$RUNNER_TEMP/first.deb"
+          sh scripts/build-deb.sh
+          cmp "$RUNNER_TEMP/first.deb" dist/*.deb
+          version=$(tr -d '\r\n' < VERSION)
+          test "$(dpkg-deb -f dist/*.deb Version)" = "$version"
+          dpkg-deb -e dist/*.deb "$RUNNER_TEMP/control"
+          sh -n "$RUNNER_TEMP/control/postinst" "$RUNNER_TEMP/control/prerm"
+          dpkg-deb -x dist/*.deb "$RUNNER_TEMP/payload"
+          cmp assets/infiltratoros.png "$RUNNER_TEMP/payload/usr/share/plymouth/themes/infiltratoros/infiltratoros.png"
+          for product in system-monitor calculator; do
+            for program in "install-$product" "start-$product-install" "$product-progress"; do
+              test -x "$RUNNER_TEMP/payload/usr/lib/infiltratoros/$program"
+            done
+          done
+          git archive --format=zip --prefix="infiltratoros-$version/" HEAD > "dist/infiltratoros-$version-source.zip"
+          printf '%s\n' "$GITHUB_SHA" > dist/SOURCE_COMMIT
+          (cd dist && sha256sum *.deb *.zip SOURCE_COMMIT > SHA256SUMS.txt)
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: infiltratoros-${{ env.VERSION }}
-          path: dist/*.deb
+          name: os-qualified-${{ github.sha }}
+          path: dist/*
           if-no-files-found: error
-
-      - name: Publish GitHub release
-        if: github.event_name == 'push'
+          retention-days: 14
+  publish:
+    needs: verify
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          fetch-depth: 0
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: os-qualified-${{ github.sha }}
+          path: release
+      - name: Publish exact qualified bytes
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          asset="infiltratoros_${VERSION}_amd64.deb"
-          test "$(dpkg-deb -f "dist/$asset" Package)" = infiltratoros
-          test "$(dpkg-deb -f "dist/$asset" Version)" = "$VERSION"
-          test "$(dpkg-deb -f "dist/$asset" Architecture)" = amd64
-
-          git fetch origin --tags
-          if git rev-parse -q --verify "refs/tags/$RELEASE_TAG" >/dev/null; then
-            test "$(git rev-list -n 1 "$RELEASE_TAG")" = "$GITHUB_SHA" || {
-              echo "Release tag already identifies a different source revision." >&2
-              exit 1
-            }
+          git fetch origin main --tags
+          test "$(git rev-parse origin/main)" = "$GITHUB_SHA" || exit 0
+          test "$(cat release/SOURCE_COMMIT)" = "$GITHUB_SHA"
+          (cd release && sha256sum -c SHA256SUMS.txt)
+          version=$(tr -d '\r\n' < VERSION)
+          tag="v$version"
+          if git rev-parse -q --verify "refs/tags/$tag^{commit}" >/dev/null; then
+            if [[ "$(git rev-parse "$tag^{commit}")" != "$GITHUB_SHA" ]]; then
+              gh release view "$tag" --json isDraft --jq '.isDraft' | grep -qx false
+              echo "$tag is already published; advance VERSION for the next product release."
+              exit 0
+            fi
           else
-            git tag "$RELEASE_TAG" "$GITHUB_SHA"
-            git push origin "$RELEASE_TAG"
+            git tag "$tag" "$GITHUB_SHA"
+            git push origin "refs/tags/$tag"
           fi
-
-          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
-            target=$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" --jq '.target_commitish')
-            test "$target" = "$GITHUB_SHA"
-            actual=$(gh release view "$RELEASE_TAG" --json assets --jq '.assets[].name')
-            test "$actual" = "$asset"
-            echo "Release $RELEASE_TAG already exists for this exact source; preserving its published asset."
-          else
-            gh release create "$RELEASE_TAG" "dist/$asset" \
-              --verify-tag \
-              --target "$GITHUB_SHA" \
-              --title "InfiltratorOS $RELEASE_TAG" \
-              --generate-notes
+          if ! gh release view "$tag" --json isDraft > "$RUNNER_TEMP/release-state"; then
+            gh release create "$tag" --verify-tag --draft --title "InfiltratorOS $version" --generate-notes
+            gh release view "$tag" --json isDraft > "$RUNNER_TEMP/release-state"
           fi
+          draft=$(jq -r .isDraft "$RUNNER_TEMP/release-state")
+          if [[ "$draft" == true ]]; then
+            gh release upload "$tag" release/* --clobber
+          fi
+          verify_remote() {
+            local destination
+            destination=$(mktemp -d)
+            gh release download "$tag" --dir "$destination"
+            diff -qr release "$destination"
+            rm -rf "$destination"
+          }
+          verify_remote
+          if [[ "$draft" == true ]]; then
+            gh release edit "$tag" --draft=false --latest
+          fi
+          verify_remote
+          git fetch origin "refs/tags/$tag:refs/tags/$tag"
+          test "$(git rev-parse "$tag^{commit}")" = "$GITHUB_SHA"
