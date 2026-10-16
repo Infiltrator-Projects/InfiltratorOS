@@ -7,3 +7,16 @@ The standard is Mercedes-Benz engineering excellence as an execution benchmark, 
 Substantive code commentary and maintained technical documentation are held to a postgraduate / university master's-level engineering standard: precise, complete, current and focused on invariants, ownership, reasoning, failure/recovery, compatibility and other non-obvious contracts rather than narration of obvious syntax.
 
 Repository-specific design, architecture, safety and validation documents may strengthen or specialise this standard, but must not silently weaken or contradict it.
+
+## One graphical operating system
+
+All components belong to InfiltratorOS and share a coherent visual and
+interaction language. Beauty, clarity and consistency are product requirements.
+Routine installation, settings, maintenance and recovery must be graphical;
+the terminal is hidden and reserved for absolute emergencies.
+
+Open-source starting points are progressively rewritten under product-owned
+architecture and behaviour. Required source attribution and licensing remain
+accurate. Current component names govern application IDs, executables, package
+identities, installed paths, publication and maintained documentation. During
+alpha development, obsolete names are retired rather than published as aliases.

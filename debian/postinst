@@ -1,8 +1,8 @@
 #!/bin/sh
 set -eu
 
-/usr/lib/infiltrator-os/select-theme configure
-/usr/lib/infiltrator-os/start-system-monitor-install
-/usr/lib/infiltrator-os/start-calculator-install
+/usr/lib/infiltratoros/select-theme configure
+/usr/lib/infiltratoros/start-system-monitor-install
+/usr/lib/infiltratoros/start-calculator-install
 
 exit 0

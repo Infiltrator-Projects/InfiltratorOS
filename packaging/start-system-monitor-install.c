@@ -15,11 +15,11 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
-#define STATUS_DIR "/run/infiltrator-os"
+#define STATUS_DIR "/run/infiltratoros"
 #define STATUS_PATH STATUS_DIR "/system-monitor-install.status"
-#define LOG_PATH "/var/log/infiltrator-os-system-monitor.log"
-#define WORKER "/usr/lib/infiltrator-os/install-system-monitor"
-#define PROGRESS_UI "/usr/lib/infiltrator-os/system-monitor-progress"
+#define LOG_PATH "/var/log/infiltratoros-system-monitor.log"
+#define WORKER "/usr/lib/infiltratoros/install-system-monitor"
+#define PROGRESS_UI "/usr/lib/infiltratoros/system-monitor-progress"
 #define ENV_LIMIT 65536U
 #define TEXT_LIMIT 4096U
 
@@ -38,7 +38,7 @@ typedef struct {
 
 static void die(const char *message)
 {
-    fprintf(stderr, "Infiltrator OS installer launcher: %s\n", message);
+    fprintf(stderr, "InfiltratorOS installer launcher: %s\n", message);
     exit(EXIT_FAILURE);
 }
 

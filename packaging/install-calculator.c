@@ -16,10 +16,10 @@
 #define RELEASE_PREFIX "https://github.com/Infiltrator-Projects/Calculator/releases/download/"
 #define PATH_LEN 4096
 #define JSON_LIMIT (4U * 1024U * 1024U)
-#define STATUS_DIR "/run/infiltrator-os"
+#define STATUS_DIR "/run/infiltratoros"
 #define STATUS_PATH STATUS_DIR "/calculator-install.status"
-#define APP_LOCK_PATH "/run/lock/infiltrator-os-calculator.lock"
-#define GLOBAL_LOCK_PATH "/run/lock/infiltrator-os-native-install.lock"
+#define APP_LOCK_PATH "/run/lock/infiltratoros-calculator.lock"
+#define GLOBAL_LOCK_PATH "/run/lock/infiltratoros-native-install.lock"
 
 static void write_status(const char *state, int progress,
                          const char *stage, const char *detail)
@@ -45,7 +45,7 @@ static void write_status(const char *state, int progress,
 static void fail(const char *message)
 {
     write_status("failed", 100, "Calculator installation failed", message);
-    fprintf(stderr, "Infiltrator OS Calculator setup: %s\n", message);
+    fprintf(stderr, "InfiltratorOS Calculator setup: %s\n", message);
     exit(EXIT_FAILURE);
 }
 
@@ -89,7 +89,7 @@ static void required_at(const char *working_directory, const char *const argv[])
         (void)snprintf(detail, sizeof(detail),
                        "A required command failed (%d): %s", rc, argv[0]);
         write_status("failed", 100, "Calculator installation failed", detail);
-        fprintf(stderr, "Infiltrator OS Calculator setup: command failed (%d): %s\n",
+        fprintf(stderr, "InfiltratorOS Calculator setup: command failed (%d): %s\n",
                 rc, argv[0]);
         exit(EXIT_FAILURE);
     }
@@ -247,7 +247,7 @@ static void write_build_info(void)
     fputs("Profile: aggressive\n"
           "PGO: trained two-pass profile\n"
           "CXX flags: -O3 -march=native -mtune=native -flto=auto\n"
-          "Installed by: Infiltrator OS native application provisioning\n",
+          "Installed by: InfiltratorOS native application provisioning\n",
           file);
     if (fclose(file) != 0)
         fail("cannot finish Calculator native build information");
@@ -301,7 +301,7 @@ int main(void)
     required(wait_argv);
 
     write_status("running", 10, "Checking the latest Calculator release",
-                 "Infiltrator OS is selecting the newest published Calculator source release.");
+                 "InfiltratorOS is selecting the newest published Calculator source release.");
 
     char work[] = "/tmp/infiltrator-calculator-XXXXXX";
     if (!mkdtemp(work)) fail("cannot create temporary Calculator working directory");
@@ -465,7 +465,7 @@ int main(void)
     cleanup_work(work);
     write_status("complete", 100, "Calculator native installation complete",
                  "The latest Calculator is installed and optimised for this computer.");
-    puts("Infiltrator OS Calculator replacement completed successfully.");
+    puts("InfiltratorOS Calculator replacement completed successfully.");
     close(global_lock_fd);
     close(app_lock_fd);
     return EXIT_SUCCESS;

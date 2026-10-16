@@ -106,7 +106,7 @@ int main(int argc, char **argv)
     g_strlcpy(ui.status_path, argv[1], sizeof(ui.status_path));
 
     ui.window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
-    gtk_window_set_title(GTK_WINDOW(ui.window), "Infiltrator OS");
+    gtk_window_set_title(GTK_WINDOW(ui.window), "InfiltratorOS");
     gtk_window_set_default_size(GTK_WINDOW(ui.window), 520, 190);
     gtk_window_set_resizable(GTK_WINDOW(ui.window), FALSE);
     gtk_container_set_border_width(GTK_CONTAINER(ui.window), 18);

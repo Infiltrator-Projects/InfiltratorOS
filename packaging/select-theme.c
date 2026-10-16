@@ -8,9 +8,9 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
-#define THEME "infiltrator-os"
-#define FILE_THEME "/usr/share/plymouth/themes/infiltrator-os/infiltrator-os.plymouth"
-#define FILE_PNG "/usr/share/plymouth/themes/infiltrator-os/infiltrator-os.png"
+#define THEME "infiltratoros"
+#define FILE_THEME "/usr/share/plymouth/themes/infiltratoros/infiltratoros.plymouth"
+#define FILE_PNG "/usr/share/plymouth/themes/infiltratoros/infiltratoros.png"
 #define FILE_CONF "/etc/plymouth/plymouthd.conf"
 #define FILE_GRUB "/etc/default/grub"
 
@@ -148,7 +148,7 @@ int main(int argc, char **argv)
     }
     if (argc != 2 || strcmp(argv[1], "configure")) return 2;
     if (access(FILE_THEME, R_OK) || access(FILE_PNG, R_OK)) {
-        fprintf(stderr, "Infiltrator OS theme or picture is missing\n");
+        fprintf(stderr, "InfiltratorOS theme or picture is missing\n");
         return 1;
     }
     if (mkdir("/etc/plymouth", 0755) && errno != EEXIST) return 1;

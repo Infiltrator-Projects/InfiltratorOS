@@ -2,17 +2,17 @@
 set -eu
 
 ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
-VERSION="${VERSION:-1.0.4}"
+VERSION="${VERSION:-$(tr -d '[:space:]' < "$ROOT/VERSION")}"
 DIST="$ROOT/dist"
-WORK="$ROOT/.build/infiltrator-os-plymouth-theme_${VERSION}"
+WORK="$ROOT/.build/infiltratoros_${VERSION}"
 PKGROOT="$WORK/root"
-THEME_DIR="$PKGROOT/usr/share/plymouth/themes/infiltrator-os"
-ARTWORK="$ROOT/assets/infiltrator-os.png"
+THEME_DIR="$PKGROOT/usr/share/plymouth/themes/infiltratoros"
+ARTWORK="$ROOT/assets/infiltratoros.png"
 ARTWORK_SHA256="4820891225675ed9bb0bb1bb82e3680df4bbdccc736ce5d092b80e95e5d05978"
 
 rm -rf "$WORK"
 mkdir -p "$PKGROOT/DEBIAN" "$THEME_DIR" "$DIST"
-mkdir -p "$PKGROOT/usr/lib/infiltrator-os"
+mkdir -p "$PKGROOT/usr/lib/infiltratoros"
 
 printf '%s  %s\n' "$ARTWORK_SHA256" "$ARTWORK" | sha256sum -c -
 
@@ -23,49 +23,49 @@ install -m 0755 "$ROOT/debian/prerm" "$PKGROOT/DEBIAN/prerm"
 cc -std=c11 -O2 -Wall -Wextra -Werror \
     "$ROOT/packaging/stage-theme.c" -o "$WORK/stage-theme"
 "$WORK/stage-theme" \
-    "$ROOT/plymouth/infiltrator-os.plymouth" \
-    "$ROOT/plymouth/infiltrator-os.script" \
+    "$ROOT/plymouth/infiltratoros.plymouth" \
+    "$ROOT/plymouth/infiltratoros.script" \
     "$ARTWORK" "$THEME_DIR"
 
 cc -std=c11 -O2 -Wall -Wextra -Werror \
     "$ROOT/packaging/select-theme.c" \
-    -o "$PKGROOT/usr/lib/infiltrator-os/select-theme"
+    -o "$PKGROOT/usr/lib/infiltratoros/select-theme"
 
 cc -std=c11 -O2 -Wall -Wextra -Werror -Wpedantic \
     "$ROOT/packaging/install-system-monitor.c" \
-    -o "$PKGROOT/usr/lib/infiltrator-os/install-system-monitor"
+    -o "$PKGROOT/usr/lib/infiltratoros/install-system-monitor"
 
 cc -std=c11 -O2 -Wall -Wextra -Werror -Wpedantic \
     "$ROOT/packaging/start-system-monitor-install.c" \
-    -o "$PKGROOT/usr/lib/infiltrator-os/start-system-monitor-install"
+    -o "$PKGROOT/usr/lib/infiltratoros/start-system-monitor-install"
 
 cc -std=c11 -O2 -Wall -Wextra -Werror -Wpedantic \
     "$ROOT/packaging/install-calculator.c" \
-    -o "$PKGROOT/usr/lib/infiltrator-os/install-calculator"
+    -o "$PKGROOT/usr/lib/infiltratoros/install-calculator"
 
 cc -std=c11 -O2 -Wall -Wextra -Werror -Wpedantic \
     "$ROOT/packaging/start-calculator-install.c" \
-    -o "$PKGROOT/usr/lib/infiltrator-os/start-calculator-install"
+    -o "$PKGROOT/usr/lib/infiltratoros/start-calculator-install"
 
 GTK_CFLAGS="$(pkg-config --cflags gtk+-3.0)"
 GTK_LIBS="$(pkg-config --libs gtk+-3.0)"
 # shellcheck disable=SC2086
 cc -std=c11 -O2 -Wall -Wextra -Werror -Wpedantic $GTK_CFLAGS \
     "$ROOT/packaging/system-monitor-progress.c" \
-    -o "$PKGROOT/usr/lib/infiltrator-os/system-monitor-progress" $GTK_LIBS
+    -o "$PKGROOT/usr/lib/infiltratoros/system-monitor-progress" $GTK_LIBS
 
 # shellcheck disable=SC2086
 cc -std=c11 -O2 -Wall -Wextra -Werror -Wpedantic $GTK_CFLAGS \
     "$ROOT/packaging/calculator-progress.c" \
-    -o "$PKGROOT/usr/lib/infiltrator-os/calculator-progress" $GTK_LIBS
+    -o "$PKGROOT/usr/lib/infiltratoros/calculator-progress" $GTK_LIBS
 
-PNG_TYPE="$(file -b --mime-type "$THEME_DIR/infiltrator-os.png")"
+PNG_TYPE="$(file -b --mime-type "$THEME_DIR/infiltratoros.png")"
 if [ "$PNG_TYPE" != "image/png" ]; then
     echo "Artwork is not a PNG: $PNG_TYPE" >&2
     exit 1
 fi
 
-OUT="$DIST/infiltrator-os-plymouth-theme_${VERSION}_amd64.deb"
+OUT="$DIST/infiltratoros_${VERSION}_amd64.deb"
 rm -f "$OUT"
 dpkg-deb --root-owner-group --build "$PKGROOT" "$OUT"
 

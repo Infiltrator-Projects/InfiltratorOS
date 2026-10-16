@@ -2,7 +2,7 @@
 set -eu
 
 if [ "$1" = "remove" ] || [ "$1" = "deconfigure" ]; then
-    /usr/lib/infiltrator-os/select-theme "$1"
+    /usr/lib/infiltratoros/select-theme "$1"
 fi
 
 exit 0

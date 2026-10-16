@@ -88,7 +88,7 @@ int main(int argc, char **argv)
     }
 
     static const char *names[] = {
-        "infiltrator-os.plymouth", "infiltrator-os.script", "infiltrator-os.png"
+        "infiltratoros.plymouth", "infiltratoros.script", "infiltratoros.png"
     };
     for (int i = 0; i < 3; ++i) {
         char destination[4096];

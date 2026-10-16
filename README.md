@@ -1,15 +1,48 @@
-# Infiltrator OS
+# InfiltratorOS
 
-Infiltrator OS is the operating-system project for Infiltrator Projects.
+InfiltratorOS is the operating-system project for Infiltrator Projects.
 
 This repository contains the canonical Plymouth boot, reboot and shutdown branding package for Debian and Linux Mint derived installations, plus native provisioning for core Infiltrator desktop applications.
+
+## InfiltratorOS components
+
+The product and this repository are named **InfiltratorOS**. The related components
+use short names within the operating system:
+
+- [Boot](https://github.com/Infiltrator-Projects/Boot) starts the selected operating system.
+- [Filesystems](https://github.com/Infiltrator-Projects/Filesystems) owns filesystem capabilities and support.
+- **Setup** is the name reserved for the future installer. It will use qualified
+  filesystem choices to prepare a target, install the system and configure early boot.
+- [InfiltratorFS](https://github.com/Infiltrator-Projects/InfiltratorFS) remains the
+  name of the filesystem format.
+
+This repository currently supplies branding and native application provisioning;
+it does not yet implement the planned Setup installer.
+
+The source package version is recorded in [`VERSION`](VERSION).
+
+## Product direction
+
+InfiltratorOS is one operating-system product. Boot, Filesystems, Setup and the
+desktop applications share its visual language, interaction conventions and
+quality standard. Open-source implementations provide a starting point;
+product-owned rewrites establish the intended behaviour and architecture.
+
+Normal installation, configuration, maintenance and recovery must have complete
+graphical workflows. A hidden terminal is reserved for absolute emergencies.
+Users must not need shell commands to complete ordinary tasks.
+
+The product is currently alpha software. A renamed component uses its current
+name consistently in its application identity, packages, installed paths,
+publishing and documentation. Historical names do not become additional public
+APT packages or compatibility aliases.
 
 ## Plymouth theme
 
 The theme installs to:
 
 ```text
-/usr/share/plymouth/themes/infiltrator-os/
+/usr/share/plymouth/themes/infiltratoros/
 ```
 
 It uses one static Infiltrator Operating System image derived only from the supplied approved artwork. There are no generated animation frames and no alternative artwork.
@@ -30,20 +63,20 @@ GitHub Actions builds the DEB automatically on every push to `main` and on manua
 
 ## Artwork
 
-`assets/infiltrator-os.png` is the sole Plymouth artwork used by this package. The build verifies its SHA-256 before packaging so an accidental artwork change cannot silently enter a release.
+`assets/infiltratoros.png` is the sole Plymouth artwork used by this package. The build verifies its SHA-256 before packaging so an accidental artwork change cannot silently enter a release.
 
 
 ## System Monitor replacement
 
-Version 1.0.2 adds Debian/Linux Mint System Monitor replacement. Installing the Infiltrator OS package schedules a one-shot post-install worker after the active package transaction finishes. The worker queries GitHub for the latest published Infiltrator System Monitor release, downloads that release's native `.run` installer, and executes it with `--profile aggressive --system-package-mode`.
+Version 1.0.2 adds Debian/Linux Mint System Monitor replacement. Installing the InfiltratorOS package schedules a one-shot post-install worker after the active package transaction finishes. The worker queries GitHub for the latest published Infiltrator System Monitor release, downloads that release's native `.run` installer, and executes it with `--profile aggressive --system-package-mode`.
 
-The System Monitor native installer therefore compiles on the target machine with the aggressive profile: `-O3`, target-machine ISA/tuning, LTO and measured two-pass PGO. In OS package mode it replaces an existing `infiltrator-system-monitor` package immediately before installing the newly built local package. After the local installation succeeds, the Infiltrator OS worker removes installed Debian/Mint desktop System Monitor packages such as GNOME, MATE, Xfce, Plasma, LXDE and QPS variants.
+The System Monitor native installer therefore compiles on the target machine with the aggressive profile: `-O3`, target-machine ISA/tuning, LTO and measured two-pass PGO. In OS package mode it replaces an existing `infiltrator-system-monitor` package immediately before installing the newly built local package. After the local installation succeeds, the InfiltratorOS worker removes installed Debian/Mint desktop System Monitor packages such as GNOME, MATE, Xfce, Plasma, LXDE and QPS variants.
 
-No System Monitor release number is embedded in Infiltrator OS; the latest published release is resolved at installation time.
+No System Monitor release number is embedded in InfiltratorOS; the latest published release is resolved at installation time.
 
 ## Version 1.0.3 installation experience
 
-Version 1.0.3 removes the transient randomly named `systemd-run` unit used by 1.0.2. The package now starts a detached native C worker directly after the package transaction, keeps a stable lock and status file under `/run/infiltrator-os`, and writes the full worker log to `/var/log/infiltrator-os-system-monitor.log`.
+Version 1.0.3 removes the transient randomly named `systemd-run` unit used by 1.0.2. The package now starts a detached native C worker directly after the package transaction, keeps a stable lock and status file under `/run/infiltratoros`, and writes the full worker log to `/var/log/infiltratoros-system-monitor.log`.
 
 When a graphical desktop session is active, a small native GTK progress window follows that status file and shows the installation stages directly to the user: waiting for the package manager, checking the latest release, downloading, compiling and optimising, cleaning up replaced monitor packages, verifying the aggressive native build, and completion or failure. The System Monitor build still uses the latest published native installer dynamically with `--profile aggressive --system-package-mode`; the user no longer needs to know about or inspect a background service to understand whether the operation is running or has failed.
 
@@ -54,8 +87,8 @@ Version 1.0.4 adds Calculator under the same operating-system provisioning model
 
 The Calculator build is two-pass and aggressive. The first pass uses `-O3`, `-march=native`, `-mtune=native`, LTO and profile generation. Calculator's own test suite provides the primary PGO workload, and the instrumented GTK application is then exercised briefly under Xvfb to add startup/rendering paths. The second pass rebuilds the Debian package with the collected profile, LTO and CPU-native flags, verifies that those flags survived into CMake's final configuration, and installs that locally built package.
 
-Only after `infiltrator-calculator` and `/usr/bin/infiltrator-calc` are verified does Infiltrator OS purge known distribution calculator packages. The current replacement set is GNOME Calculator, MATE Calculator, KCalc, Galculator, Deepin Calculator and UKUI Calculator.
+Only after `infiltrator-calculator` and `/usr/bin/infiltrator-calc` are verified does InfiltratorOS purge known distribution calculator packages. The current replacement set is GNOME Calculator, MATE Calculator, KCalc, Galculator, Deepin Calculator and UKUI Calculator.
 
-Calculator status is written to `/run/infiltrator-os/calculator-install.status`, with the worker log at `/var/log/infiltrator-os-calculator.log`. When a graphical session is available, a GTK progress window presents the native-build stages directly to the user.
+Calculator status is written to `/run/infiltratoros/calculator-install.status`, with the worker log at `/var/log/infiltratoros-calculator.log`. When a graphical session is available, a GTK progress window presents the native-build stages directly to the user.
 
 System Monitor and Calculator retain their own duplicate-install locks, while version 1.0.4 also adds a shared native-build lock. This serialises the two heavyweight local builds so they cannot compete for APT/dpkg locks or saturate the machine simultaneously.
