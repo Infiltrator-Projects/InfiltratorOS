@@ -241,7 +241,7 @@ static void purge_stock_calculators(void)
 
 static void write_build_info(void)
 {
-    const char path[] = "/usr/share/doc/infiltrator-calculator/BUILD-INFO";
+    const char path[] = "/usr/share/doc/calculator/BUILD-INFO";
     FILE *file = fopen(path, "w");
     if (!file) fail("cannot write Calculator native build information");
     fputs("Profile: aggressive\n"
@@ -303,7 +303,7 @@ int main(void)
     write_status("running", 10, "Checking the latest Calculator release",
                  "InfiltratorOS is selecting the newest published Calculator source release.");
 
-    char work[] = "/tmp/infiltrator-calculator-XXXXXX";
+    char work[] = "/tmp/calculator-XXXXXX";
     if (!mkdtemp(work)) fail("cannot create temporary Calculator working directory");
 
     char json_path[PATH_LEN];
@@ -393,7 +393,7 @@ int main(void)
     required_at(source_root, build_argv);
 
     char built_gui[PATH_LEN];
-    if (snprintf(built_gui, sizeof(built_gui), "%s/build/infiltrator-calc", source_root) < (int)sizeof(built_gui) &&
+    if (snprintf(built_gui, sizeof(built_gui), "%s/build/calculator", source_root) < (int)sizeof(built_gui) &&
         access(built_gui, X_OK) == 0) {
         write_status("running", 55, "Exercising the Calculator interface",
                      "Running the instrumented GTK interface briefly to add real startup and rendering paths to the PGO profile.");
@@ -436,7 +436,7 @@ int main(void)
     }
 
     char deb_path[PATH_LEN];
-    if (snprintf(deb_path, sizeof(deb_path), "%s/infiltrator-calculator_%s_amd64.deb", work, version) >= (int)sizeof(deb_path) ||
+    if (snprintf(deb_path, sizeof(deb_path), "%s/calculator_%s_amd64.deb", work, version) >= (int)sizeof(deb_path) ||
         access(deb_path, R_OK) != 0) {
         cleanup_work(work);
         fail("Calculator final Debian package was not produced");
@@ -451,8 +451,8 @@ int main(void)
     required(install_argv);
 
     write_status("running", 88, "Verifying the native Calculator",
-                 "Confirming the Infiltrator Calculator package and executable are installed before replacing the distribution calculator.");
-    if (!installed("infiltrator-calculator") || access("/usr/bin/infiltrator-calc", X_OK) != 0) {
+                 "Confirming the Calculator package and executable are installed before replacing the distribution calculator.");
+    if (!installed("calculator") || access("/usr/bin/calculator", X_OK) != 0) {
         cleanup_work(work);
         fail("native Calculator package is not installed correctly after the build");
     }

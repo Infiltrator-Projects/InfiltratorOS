@@ -165,7 +165,7 @@ static bool latest_installer_url(const char *json, char *url, size_t url_size)
             strcmp(candidate + length - suffix_length, suffix) != 0)
             continue;
         const char *name = strrchr(candidate, '/');
-        if (!name || strncmp(name + 1, "infiltrator-system-monitor-", 27U) != 0)
+        if (!name || strncmp(name + 1, "system-monitor-", 27U) != 0)
             continue;
         if (strlen(candidate) >= url_size) return false;
         memcpy(url, candidate, length + 1U);
@@ -246,7 +246,7 @@ int main(void)
     write_status("running", 12, "Checking the latest System Monitor release",
                  "InfiltratorOS is selecting the newest published native installer.");
 
-    char work[] = "/tmp/infiltrator-system-monitor-XXXXXX";
+    char work[] = "/tmp/system-monitor-XXXXXX";
     if (!mkdtemp(work)) fail("cannot create temporary working directory");
 
     char json_path[PATH_LEN];
@@ -293,9 +293,9 @@ int main(void)
     write_status("running", 95, "Verifying the native installation",
                  "Checking that the installed build is aggressive, PGO-trained and CPU-native.");
 
-    if (!installed("infiltrator-system-monitor"))
+    if (!installed("system-monitor"))
         fail("native System Monitor package is not installed after the build");
-    const char info[] = "/usr/share/doc/infiltrator-system-monitor/BUILD-INFO";
+    const char info[] = "/usr/share/doc/system-monitor/BUILD-INFO";
     if (!file_contains(info, "Profile: aggressive") ||
         !file_contains(info, "PGO: trained two-pass profile") ||
         !file_contains(info, "C flags: -O3") ||
