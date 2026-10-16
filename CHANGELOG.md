@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.7
+
+- Resolve Calculator and System Monitor installers using their canonical package and command names.
+- Derive installer filename prefix lengths from the canonical prefix.
+
 ## 1.0.6
 
 - Give package identity one VERSION file and preserve immutable qualified release bytes.

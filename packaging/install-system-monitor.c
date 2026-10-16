@@ -165,7 +165,7 @@ static bool latest_installer_url(const char *json, char *url, size_t url_size)
             strcmp(candidate + length - suffix_length, suffix) != 0)
             continue;
         const char *name = strrchr(candidate, '/');
-        if (!name || strncmp(name + 1, "system-monitor-", 27U) != 0)
+        if (!name || strncmp(name + 1, "system-monitor-", sizeof("system-monitor-") - 1U) != 0)
             continue;
         if (strlen(candidate) >= url_size) return false;
         memcpy(url, candidate, length + 1U);
