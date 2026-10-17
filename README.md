@@ -2,7 +2,7 @@
 
 The operating-system integration project for Infiltrator Projects. The current deliverable is an amd64 Debian/Linux Mint package containing the approved Plymouth theme and native provisioning for System Monitor and Calculator.
 
-[Philosophy](docs/PHILOSOPHY.md) · [Architecture](docs/ARCHITECTURE.md) · [Validation](docs/VALIDATION.md) · [Changes](CHANGELOG.md). [VERSION](VERSION) owns package identity.
+[Philosophy](docs/PHILOSOPHY.md) · [Architecture](docs/ARCHITECTURE.md) · [Filesystem](docs/FILESYSTEM.md) · [Validation](docs/VALIDATION.md) · [Changes](CHANGELOG.md). [VERSION](VERSION) owns package identity.
 
 ## InfiltratorOS components
 
@@ -52,7 +52,9 @@ The package appears in `dist/`. Main pushes qualify the package and publish an u
 
 The package selects the canonical Plymouth image, configures Debian/Mint compatibility paths, and rebuilds GRUB and initramfs. The approved PNG is checked against its fixed SHA-256 before packaging.
 
-The package also establishes the provisional system-wide temporal resource roots at `/usr/lib/infiltrator/temporal/calendars` and `/usr/lib/infiltrator/temporal/clocks`. These paths support the filesystem-discovery experiment and are intentionally not yet treated as a frozen external ABI; the discovery concept is the durable design decision while the final installed layout remains subject to refinement.
+The package also establishes the first native InfiltratorOS filesystem skeleton under `/System`, `/Programs`, `/Users`, `/Volumes` and `/Temporary`. `/System` contains Programs, Commands, Libraries, Devices, Filesystems, Preferences and shared Resources; Resources currently includes Calendars, Clocks, Fonts, Locales, Icons and Themes. This hierarchy is additive over the Linux base while the native model is being proven; the conventional Linux hierarchy remains available for compatibility. The complete current contract is documented in [Filesystem](docs/FILESYSTEM.md).
+
+The earlier provisional temporal discovery roots at `/usr/lib/infiltrator/temporal/calendars` and `/usr/lib/infiltrator/temporal/clocks` remain installed in parallel for now. They are not treated as a frozen external ABI and will not be removed implicitly while the new native hierarchy is being evaluated.
 
 After the package transaction, separate native workers resolve the latest published System Monitor and Calculator releases. System Monitor uses its aggressive native installer. Calculator builds its published source with CPU tuning, LTO and measured two-pass PGO. Each replacement is verified before competing distribution applications are removed. A shared native-build lock serialises heavyweight compilation and package operations.
 
