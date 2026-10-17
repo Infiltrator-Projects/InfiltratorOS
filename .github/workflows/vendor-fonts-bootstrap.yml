@@ -1,0 +1,38 @@
+name: Vendor MB fonts bootstrap
+on:
+  push:
+    branches: [font-vendor-bootstrap]
+permissions:
+  contents: write
+jobs:
+  vendor-fonts:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          fetch-depth: 0
+      - name: Import canonical MB fonts into this repository
+        shell: bash
+        run: |
+          set -euo pipefail
+          source_commit=aa161e7342112beab8feb7669f072c870f742765
+          archive="$RUNNER_TEMP/mb-corpo-fonts.tar.xz"
+          wget -qO "$archive" "https://raw.githubusercontent.com/Infiltrator-Projects/MBLink/${source_commit}/assets/fonts/mb-corpo-fonts.tar.xz"
+          printf '%s  %s\n' bdb6063f838a7fab22b4d6b412170640c69511df53aa3dfa9a4ea8431c9d8274 "$archive" | sha256sum -c -
+          extract="$RUNNER_TEMP/mb-fonts"
+          mkdir -p "$extract" assets/fonts
+          tar -xJf "$archive" -C "$extract"
+          printf '%s  %s\n' c8bcd7e1a7d71169b38491d9b7c1ffe7ba7b46e888f0c1219931343a47bc0e05 "$extract/mb_corpo_a_cond_regular.ttf" | sha256sum -c -
+          printf '%s  %s\n' d37ea986e2344d83390f94f170e6272b56efd00bfec808afe8314c4ca45d43b4 "$extract/mb_corpo_s_bold.ttf" | sha256sum -c -
+          printf '%s  %s\n' 94ede6629443c03d4362dcef425fb3ff520be5d654370021a34e81286804465c "$extract/mb_corpo_s_regular.ttf" | sha256sum -c -
+          install -m 0644 "$extract/mb_corpo_a_cond_regular.ttf" assets/fonts/mb_corpo_a_cond_regular.ttf
+          install -m 0644 "$extract/mb_corpo_s_bold.ttf" assets/fonts/mb_corpo_s_bold.ttf
+          install -m 0644 "$extract/mb_corpo_s_regular.ttf" assets/fonts/mb_corpo_s_regular.ttf
+          if git diff --quiet -- assets/fonts && git diff --cached --quiet; then
+            exit 0
+          fi
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add assets/fonts/mb_corpo_a_cond_regular.ttf assets/fonts/mb_corpo_s_bold.ttf assets/fonts/mb_corpo_s_regular.ttf
+          git commit -m 'Vendor canonical MB fonts'
+          git push origin HEAD:font-vendor-bootstrap
