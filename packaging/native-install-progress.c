@@ -15,12 +15,21 @@ typedef struct {
     GtkWidget *bar;
     GtkWidget *close_button;
     char status_path[4096];
-    bool finished;
+    guint close_timer_id;
 } Ui;
+
+static void cancel_success_close(Ui *ui)
+{
+    if (ui->close_timer_id != 0U) {
+        g_source_remove(ui->close_timer_id);
+        ui->close_timer_id = 0U;
+    }
+}
 
 static gboolean close_after_success(gpointer data)
 {
     Ui *ui = data;
+    ui->close_timer_id = 0U;
     if (GTK_IS_WIDGET(ui->window)) gtk_widget_destroy(ui->window);
     return G_SOURCE_REMOVE;
 }
@@ -42,16 +51,21 @@ static gboolean refresh_status(gpointer data)
     if (status.stage[0]) gtk_label_set_text(GTK_LABEL(ui->stage), status.stage);
     if (status.detail[0]) gtk_label_set_text(GTK_LABEL(ui->detail), status.detail);
 
-    if (!ui->finished && strcmp(status.state, "complete") == 0) {
-        ui->finished = true;
+    if (strcmp(status.state, "complete") == 0) {
         gtk_label_set_text(GTK_LABEL(ui->title), INSTALL_NAME " is ready");
         gtk_progress_bar_set_fraction(GTK_PROGRESS_BAR(ui->bar), 1.0);
         gtk_widget_show(ui->close_button);
-        g_timeout_add_seconds(8U, close_after_success, ui);
-    } else if (!ui->finished && strcmp(status.state, "failed") == 0) {
-        ui->finished = true;
+        if (ui->close_timer_id == 0U)
+            ui->close_timer_id = g_timeout_add_seconds(8U, close_after_success, ui);
+    } else if (strcmp(status.state, "failed") == 0) {
+        cancel_success_close(ui);
         gtk_label_set_text(GTK_LABEL(ui->title), INSTALL_NAME " installation failed");
         gtk_widget_show(ui->close_button);
+    } else {
+        cancel_success_close(ui);
+        gtk_label_set_markup(GTK_LABEL(ui->title),
+                             "<b>Optimising " INSTALL_NAME " for this computer</b>");
+        gtk_widget_hide(ui->close_button);
     }
     return G_SOURCE_CONTINUE;
 }
@@ -60,6 +74,7 @@ static void close_clicked(GtkButton *button, gpointer data)
 {
     (void)button;
     Ui *ui = data;
+    cancel_success_close(ui);
     gtk_widget_destroy(ui->window);
 }
 
