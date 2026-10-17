@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.0.9
+
+- Establish the first native InfiltratorOS filesystem skeleton at `/System`, `/Programs`, `/Users`, `/Volumes` and `/Temporary`.
+- Add system role directories for Programs, Commands, Libraries, Devices, Filesystems, Preferences and shared Resources.
+- Add resource directories for Calendars, Clocks, Fonts, Locales, Icons and Themes.
+- Keep the native hierarchy additive over the Debian/Linux base and retain the earlier temporal discovery roots in parallel.
+- Qualify every native directory in the built Debian package.
+
 ## 1.0.8
 
 - Establish provisional system-wide temporal resource directories for discovered calendars and clocks.
