@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.19
+
+- Let native-install progress windows recover cleanly when a failed installation is retried and later succeeds.
+- Treat the shared status file as authoritative on every refresh instead of permanently latching the first terminal state seen by the window.
+- Cancel any pending success auto-close when a new queued, running or failed state appears, and restore the active optimisation heading during retries.
+
 ## 1.0.18
 
 - Make the standard `infiltrator-calendar-resources` capability pack a direct operating-system dependency so calendar implementations remain system resources rather than application-owned payloads.
@@ -94,4 +100,4 @@
 - Use InfiltratorOS consistently in documentation, Plymouth metadata, package descriptions and provisioning windows.
 - Document Boot, Filesystems, the planned Setup installer and the unchanged InfiltratorFS format name.
 - Publish the infiltratoros Debian package and use infiltratoros consistently for installed paths and Plymouth files.
-- Read the package version from VERSION and preserve immutable release tags and assets.
+- Read the package version from VERSION and preserve immutable qualified release tags and assets.
