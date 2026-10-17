@@ -28,7 +28,7 @@ jobs:
           install -m 0644 "$extract/mb_corpo_a_cond_regular.ttf" assets/fonts/mb_corpo_a_cond_regular.ttf
           install -m 0644 "$extract/mb_corpo_s_bold.ttf" assets/fonts/mb_corpo_s_bold.ttf
           install -m 0644 "$extract/mb_corpo_s_regular.ttf" assets/fonts/mb_corpo_s_regular.ttf
-          if git diff --quiet -- assets/fonts && git diff --cached --quiet; then
+          if [[ -z "$(git status --porcelain -- assets/fonts)" ]]; then
             exit 0
           fi
           git config user.name github-actions[bot]
