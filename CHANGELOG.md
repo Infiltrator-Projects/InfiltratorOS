@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.0.12
+
+- Make Calculator provisioning consume Calculator's own published native installer instead of maintaining a second source-download, PGO and Debian-build implementation inside InfiltratorOS.
+- Verify the canonical `/Programs/calculator` executable rather than the retired `/usr/bin/calculator` path that caused a successful package installation to be reported as failed.
+- Treat menu integration as part of successful installation: require the visible desktop launcher, Calculator icon, AppStream metadata, native PATH bridge, native BUILD-INFO and packaged MB Corpo fonts before declaring completion.
+- Remove obsolete `infiltrator-calculator` and `infiltrator-calc` package identities, and distribution calculators, only after the canonical Calculator installation has passed verification.
+- Read authoritative dpkg status instead of treating any `dpkg-query` database entry as an installed package.
+- Add regression checks preventing the OS worker from reintroducing its own `dpkg-buildpackage`/source-bundle pipeline or the obsolete `/usr/bin/calculator` assumption.
+
+## 1.0.11
+
+- Let the published System Monitor native installer own its canonical optimisation profile in system-package mode instead of selecting that profile again in InfiltratorOS.
+
 ## 1.0.10
 
 - Add the native `/System/Kernel` namespace with `Images`, `Modules` and `Firmware` directories.

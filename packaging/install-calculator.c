@@ -49,12 +49,11 @@ static void fail(const char *message)
     exit(EXIT_FAILURE);
 }
 
-static int run_at(const char *working_directory, const char *const argv[], bool quiet)
+static int run(const char *const argv[], bool quiet)
 {
     pid_t child = fork();
     if (child < 0) return -1;
     if (child == 0) {
-        if (working_directory && chdir(working_directory) != 0) _exit(126);
         if (quiet) {
             int fd = open("/dev/null", O_WRONLY | O_CLOEXEC);
             if (fd >= 0) {
@@ -76,14 +75,9 @@ static int run_at(const char *working_directory, const char *const argv[], bool 
     return 125;
 }
 
-static int run(const char *const argv[], bool quiet)
+static void required(const char *const argv[])
 {
-    return run_at(NULL, argv, quiet);
-}
-
-static void required_at(const char *working_directory, const char *const argv[])
-{
-    int rc = run_at(working_directory, argv, false);
+    int rc = run(argv, false);
     if (rc != 0) {
         char detail[PATH_LEN];
         (void)snprintf(detail, sizeof(detail),
@@ -95,43 +89,73 @@ static void required_at(const char *working_directory, const char *const argv[])
     }
 }
 
-static void required(const char *const argv[])
-{
-    required_at(NULL, argv);
-}
-
 static bool installed(const char *package)
 {
-    const char *const argv[] = {
-        "/usr/bin/dpkg-query", "-W", "-f=${db:Status-Abbrev}", package, NULL
-    };
-    return run(argv, true) == 0;
+    FILE *file = fopen("/var/lib/dpkg/status", "r");
+    if (!file) return false;
+
+    char *line = NULL;
+    size_t capacity = 0U;
+    bool matching_package = false;
+    bool installed_status = false;
+    bool result = false;
+
+    while (getline(&line, &capacity, file) >= 0) {
+        size_t length = strlen(line);
+        while (length > 0U &&
+               (line[length - 1U] == '\n' || line[length - 1U] == '\r'))
+            line[--length] = '\0';
+
+        if (length == 0U) {
+            if (matching_package && installed_status) {
+                result = true;
+                break;
+            }
+            matching_package = false;
+            installed_status = false;
+            continue;
+        }
+
+        if (strncmp(line, "Package: ", 9U) == 0)
+            matching_package = strcmp(line + 9U, package) == 0;
+        else if (strcmp(line, "Status: install ok installed") == 0)
+            installed_status = true;
+    }
+
+    if (!result && matching_package && installed_status) result = true;
+    free(line);
+    (void)fclose(file);
+    return result;
 }
 
 static char *read_file(const char *path)
 {
-    FILE *f = fopen(path, "rb");
-    if (!f) return NULL;
-    if (fseek(f, 0, SEEK_END) != 0) { fclose(f); return NULL; }
-    long length = ftell(f);
-    if (length < 0 || (unsigned long)length > JSON_LIMIT) { fclose(f); return NULL; }
-    rewind(f);
+    FILE *file = fopen(path, "rb");
+    if (!file) return NULL;
+    if (fseek(file, 0, SEEK_END) != 0) {
+        (void)fclose(file);
+        return NULL;
+    }
+    long length = ftell(file);
+    if (length < 0 || (unsigned long)length > JSON_LIMIT) {
+        (void)fclose(file);
+        return NULL;
+    }
+    rewind(file);
     char *data = malloc((size_t)length + 1U);
-    if (!data) { fclose(f); return NULL; }
-    size_t got = fread(data, 1, (size_t)length, f);
-    if (got != (size_t)length || ferror(f)) { free(data); fclose(f); return NULL; }
+    if (!data) {
+        (void)fclose(file);
+        return NULL;
+    }
+    size_t got = fread(data, 1U, (size_t)length, file);
+    if (got != (size_t)length || ferror(file)) {
+        free(data);
+        (void)fclose(file);
+        return NULL;
+    }
     data[got] = '\0';
-    fclose(f);
+    (void)fclose(file);
     return data;
-}
-
-static bool file_contains(const char *path, const char *needle)
-{
-    char *text = read_file(path);
-    if (!text) return false;
-    bool found = strstr(text, needle) != NULL;
-    free(text);
-    return found;
 }
 
 static bool json_string(const char *start, char *out, size_t out_size,
@@ -175,52 +199,148 @@ static bool valid_version(const char *version)
     return true;
 }
 
-static bool latest_source_url(const char *json, char *url, size_t url_size,
-                              char *version, size_t version_size)
+static bool latest_installer_url(const char *json, char *url, size_t url_size,
+                                 char *version, size_t version_size)
 {
     const char key[] = "\"browser_download_url\"";
-    const char file_prefix[] = "calculator_";
-    const char suffix[] = "_source.tar.gz";
+    const char file_prefix[] = "calculator-";
+    const char suffix[] = "-native-installer.run";
     const char *p = json;
+
     while ((p = strstr(p, key)) != NULL) {
         p += sizeof(key) - 1U;
         while (*p == ' ' || *p == '\t' || *p == '\r' || *p == '\n') ++p;
         if (*p++ != ':') continue;
         while (*p == ' ' || *p == '\t' || *p == '\r' || *p == '\n') ++p;
+
         char candidate[PATH_LEN];
         const char *after = NULL;
         if (!json_string(p, candidate, sizeof(candidate), &after)) continue;
         p = after;
-        size_t length = strlen(candidate);
-        size_t release_prefix_length = strlen(RELEASE_PREFIX);
-        size_t suffix_length = strlen(suffix);
+
+        const size_t length = strlen(candidate);
+        const size_t release_prefix_length = strlen(RELEASE_PREFIX);
+        const size_t suffix_length = strlen(suffix);
         if (length <= release_prefix_length + suffix_length ||
             strncmp(candidate, RELEASE_PREFIX, release_prefix_length) != 0 ||
             strcmp(candidate + length - suffix_length, suffix) != 0)
             continue;
+
         const char *name = strrchr(candidate, '/');
         if (!name) continue;
         ++name;
-        size_t name_length = strlen(name);
-        size_t file_prefix_length = strlen(file_prefix);
+        const size_t name_length = strlen(name);
+        const size_t file_prefix_length = strlen(file_prefix);
         if (name_length <= file_prefix_length + suffix_length ||
             strncmp(name, file_prefix, file_prefix_length) != 0)
             continue;
-        size_t version_length = name_length - file_prefix_length - suffix_length;
+
+        const size_t version_length =
+            name_length - file_prefix_length - suffix_length;
         if (version_length + 1U > version_size || length + 1U > url_size)
             return false;
         memcpy(version, name + file_prefix_length, version_length);
         version[version_length] = '\0';
         if (!valid_version(version)) return false;
+
+        char release_segment[256];
+        if (snprintf(release_segment, sizeof(release_segment),
+                     "/download/v%s/", version) >= (int)sizeof(release_segment))
+            return false;
+        if (strstr(candidate, release_segment) == NULL) continue;
+
         memcpy(url, candidate, length + 1U);
         return true;
     }
     return false;
 }
 
-static void purge_stock_calculators(void)
+static bool regular_file(const char *path)
 {
-    static const char *packages[] = {
+    struct stat status;
+    return stat(path, &status) == 0 && S_ISREG(status.st_mode);
+}
+
+static bool executable_file(const char *path)
+{
+    return regular_file(path) && access(path, X_OK) == 0;
+}
+
+static bool file_has_exact_line(const char *path, const char *expected)
+{
+    FILE *file = fopen(path, "r");
+    if (!file) return false;
+
+    char *line = NULL;
+    size_t capacity = 0U;
+    bool found = false;
+    while (getline(&line, &capacity, file) >= 0) {
+        size_t length = strlen(line);
+        while (length > 0U &&
+               (line[length - 1U] == '\n' || line[length - 1U] == '\r'))
+            line[--length] = '\0';
+        if (strcmp(line, expected) == 0) {
+            found = true;
+            break;
+        }
+    }
+    free(line);
+    (void)fclose(file);
+    return found;
+}
+
+static const char *installed_contract_error(void)
+{
+    const char desktop[] = "/usr/share/applications/net.ssmith.calculator.desktop";
+
+    if (!installed("calculator"))
+        return "the canonical Calculator package is not installed";
+    if (!executable_file("/Programs/calculator"))
+        return "the Calculator package is installed but /Programs/calculator is missing or not executable";
+    if (!regular_file("/usr/share/doc/calculator/BUILD-INFO"))
+        return "Calculator native build metadata is missing after installation";
+    if (!regular_file(desktop))
+        return "Calculator desktop launcher is missing after installation";
+    if (!file_has_exact_line(desktop, "Type=Application") ||
+        !file_has_exact_line(desktop, "Name=Calculator") ||
+        !file_has_exact_line(desktop, "Exec=/Programs/calculator") ||
+        !file_has_exact_line(desktop, "Icon=calculator") ||
+        file_has_exact_line(desktop, "Hidden=true") ||
+        file_has_exact_line(desktop, "NoDisplay=true"))
+        return "Calculator desktop launcher does not match the installed native application contract";
+    if (!regular_file("/usr/share/icons/hicolor/scalable/apps/calculator.svg"))
+        return "Calculator desktop icon is missing after installation";
+    if (!regular_file("/usr/share/app-install/icons/calculator.svg"))
+        return "Calculator Software Manager icon is missing after installation";
+    if (!regular_file("/usr/share/metainfo/calculator.metainfo.xml"))
+        return "Calculator AppStream metadata is missing after installation";
+    if (!regular_file("/etc/profile.d/91-infiltrator-calculator-path.sh"))
+        return "Calculator native PATH bridge is missing after installation";
+    if (!regular_file("/usr/share/fonts/truetype/calculator/mb_corpo_a_cond_regular.ttf") ||
+        !regular_file("/usr/share/fonts/truetype/calculator/mb_corpo_s_bold.ttf") ||
+        !regular_file("/usr/share/fonts/truetype/calculator/mb_corpo_s_regular.ttf"))
+        return "Calculator MB Corpo font payload is incomplete after installation";
+    return NULL;
+}
+
+static void purge_package(const char *package, const char *description)
+{
+    if (!installed(package)) return;
+    printf("Removing %s package: %s\n", description, package);
+    const char *const argv[] = {
+        "/usr/bin/apt-get", "-o", "DPkg::Lock::Timeout=300",
+        "purge", "-y", package, NULL
+    };
+    required(argv);
+}
+
+static void purge_replaced_calculators(void)
+{
+    static const char *obsolete_packages[] = {
+        "infiltrator-calculator",
+        "infiltrator-calc"
+    };
+    static const char *distribution_packages[] = {
         "gnome-calculator",
         "mate-calc",
         "kcalc",
@@ -228,30 +348,14 @@ static void purge_stock_calculators(void)
         "deepin-calculator",
         "ukui-calculator"
     };
-    for (size_t i = 0U; i < sizeof(packages) / sizeof(packages[0]); ++i) {
-        if (!installed(packages[i])) continue;
-        printf("Removing distribution Calculator package: %s\n", packages[i]);
-        const char *const argv[] = {
-            "/usr/bin/apt-get", "-o", "DPkg::Lock::Timeout=300",
-            "purge", "-y", packages[i], NULL
-        };
-        required(argv);
-    }
-}
 
-static void write_build_info(void)
-{
-    const char path[] = "/usr/share/doc/calculator/BUILD-INFO";
-    FILE *file = fopen(path, "w");
-    if (!file) fail("cannot write Calculator native build information");
-    fputs("Profile: aggressive\n"
-          "PGO: trained two-pass profile\n"
-          "CXX flags: -O3 -march=native -mtune=native -flto=auto\n"
-          "Installed by: InfiltratorOS native application provisioning\n",
-          file);
-    if (fclose(file) != 0)
-        fail("cannot finish Calculator native build information");
-    (void)chmod(path, 0644);
+    for (size_t i = 0U;
+         i < sizeof(obsolete_packages) / sizeof(obsolete_packages[0]); ++i)
+        purge_package(obsolete_packages[i], "obsolete Calculator identity");
+
+    for (size_t i = 0U;
+         i < sizeof(distribution_packages) / sizeof(distribution_packages[0]); ++i)
+        purge_package(distribution_packages[i], "distribution Calculator");
 }
 
 static void cleanup_work(const char *work)
@@ -288,9 +392,9 @@ int main(void)
     write_status("running", 5, "Waiting for the package manager",
                  "The Calculator native build will begin as soon as the package transaction has finished.");
     if (access("/usr/bin/apt-get", X_OK) != 0 ||
-        access("/usr/bin/dpkg-query", X_OK) != 0 ||
-        access("/usr/bin/wget", X_OK) != 0)
-        fail("required Debian/Mint package tools are missing");
+        access("/usr/bin/wget", X_OK) != 0 ||
+        access("/usr/bin/rm", X_OK) != 0)
+        fail("required Debian/Mint installation tools are missing");
 
     if (setenv("DEBIAN_FRONTEND", "noninteractive", 1) != 0)
         fail("cannot set noninteractive package environment");
@@ -300,16 +404,18 @@ int main(void)
     };
     required(wait_argv);
 
-    write_status("running", 10, "Checking the latest Calculator release",
-                 "InfiltratorOS is selecting the newest published Calculator source release.");
+    write_status("running", 12, "Checking the latest Calculator release",
+                 "InfiltratorOS is selecting Calculator's newest published native installer.");
 
     char work[] = "/tmp/calculator-XXXXXX";
     if (!mkdtemp(work)) fail("cannot create temporary Calculator working directory");
 
     char json_path[PATH_LEN];
-    char archive_path[PATH_LEN];
-    if (snprintf(json_path, sizeof(json_path), "%s/release.json", work) >= (int)sizeof(json_path) ||
-        snprintf(archive_path, sizeof(archive_path), "%s/calculator-source.tar.gz", work) >= (int)sizeof(archive_path)) {
+    char installer_path[PATH_LEN];
+    if (snprintf(json_path, sizeof(json_path), "%s/release.json", work) >=
+            (int)sizeof(json_path) ||
+        snprintf(installer_path, sizeof(installer_path), "%s/calculator.run", work) >=
+            (int)sizeof(installer_path)) {
         cleanup_work(work);
         fail("temporary Calculator path is too long");
     }
@@ -321,150 +427,64 @@ int main(void)
     required(api_argv);
 
     char *json = read_file(json_path);
-    if (!json) { cleanup_work(work); fail("cannot read latest Calculator release metadata"); }
+    if (!json) {
+        cleanup_work(work);
+        fail("cannot read latest Calculator release metadata");
+    }
+
     char url[PATH_LEN];
     char version[128];
-    bool found = latest_source_url(json, url, sizeof(url), version, sizeof(version));
+    const bool found = latest_installer_url(
+        json, url, sizeof(url), version, sizeof(version));
     free(json);
-    if (!found) { cleanup_work(work); fail("latest Calculator release has no trusted source bundle"); }
+    if (!found) {
+        cleanup_work(work);
+        fail("latest Calculator release has no trusted native installer asset");
+    }
 
-    write_status("running", 16, "Downloading Calculator",
-                 "Downloading the latest verified Calculator source release from Infiltrator Projects.");
-    printf("Downloading latest Calculator source bundle:\n  %s\n", url);
+    write_status("running", 22, "Downloading Calculator",
+                 "Downloading Calculator's published native installer from Infiltrator Projects.");
+    printf("Downloading Calculator %s native installer:\n  %s\n", version, url);
     const char *const download_argv[] = {
         "/usr/bin/wget", "--quiet", "--https-only", "--secure-protocol=TLSv1_2",
-        "--output-document", archive_path, url, NULL
+        "--output-document", installer_path, url, NULL
     };
     required(download_argv);
-
-    write_status("running", 22, "Preparing Calculator build requirements",
-                 "Installing the Debian/Mint C++ and GTK4 build requirements needed for a local native build.");
-    const char *const deps_argv[] = {
-        "/usr/bin/apt-get", "-o", "DPkg::Lock::Timeout=300", "install", "-y",
-        "build-essential", "cmake", "debhelper-compat", "dpkg-dev",
-        "libgtk-4-dev", "pkg-config", "xvfb", "tar", "gzip", NULL
-    };
-    required(deps_argv);
-
-    write_status("running", 30, "Extracting Calculator source",
-                 "Preparing the exact published source bundle for this computer.");
-    const char *const tar_argv[] = {
-        "/usr/bin/tar", "-xzf", archive_path, "-C", work, NULL
-    };
-    required(tar_argv);
-
-    char source_root[PATH_LEN];
-    char pgo_dir[PATH_LEN];
-    if (snprintf(source_root, sizeof(source_root), "%s/Calculator-%s", work, version) >= (int)sizeof(source_root) ||
-        snprintf(pgo_dir, sizeof(pgo_dir), "%s/pgo", work) >= (int)sizeof(pgo_dir)) {
+    if (chmod(installer_path, 0700) != 0) {
         cleanup_work(work);
-        fail("Calculator source path is too long");
-    }
-    struct stat source_stat;
-    if (stat(source_root, &source_stat) != 0 || !S_ISDIR(source_stat.st_mode)) {
-        cleanup_work(work);
-        fail("Calculator source bundle did not contain its expected source root");
-    }
-    if (mkdir(pgo_dir, 0755) != 0) {
-        cleanup_work(work);
-        fail("cannot create Calculator PGO profile directory");
+        fail("cannot mark Calculator native installer executable");
     }
 
-    char generate_flags[PATH_LEN + 160];
-    char generate_ldflags[PATH_LEN + 96];
-    if (snprintf(generate_flags, sizeof(generate_flags),
-                 "-O3 -march=native -mtune=native -flto=auto -fprofile-generate=%s", pgo_dir) >= (int)sizeof(generate_flags) ||
-        snprintf(generate_ldflags, sizeof(generate_ldflags),
-                 "-flto=auto -fprofile-generate=%s", pgo_dir) >= (int)sizeof(generate_ldflags)) {
-        cleanup_work(work);
-        fail("Calculator PGO generation flags are too long");
-    }
-    if (setenv("DEB_CXXFLAGS_MAINT_APPEND", generate_flags, 1) != 0 ||
-        setenv("DEB_LDFLAGS_MAINT_APPEND", generate_ldflags, 1) != 0) {
-        cleanup_work(work);
-        fail("cannot set Calculator PGO generation flags");
-    }
-
-    write_status("running", 40, "Training Calculator optimisation",
-                 "Building the instrumented native Calculator and running its test suite to collect profile data.");
-    const char *const build_argv[] = {
-        "/usr/bin/dpkg-buildpackage", "-us", "-uc", "-b", NULL
-    };
-    required_at(source_root, build_argv);
-
-    char built_gui[PATH_LEN];
-    if (snprintf(built_gui, sizeof(built_gui), "%s/build/calculator", source_root) < (int)sizeof(built_gui) &&
-        access(built_gui, X_OK) == 0) {
-        write_status("running", 55, "Exercising the Calculator interface",
-                     "Running the instrumented GTK interface briefly to add real startup and rendering paths to the PGO profile.");
-        (void)setenv("GTK_A11Y", "none", 1);
-        const char *const train_argv[] = {
-            "/usr/bin/xvfb-run", "-a", "/usr/bin/timeout", "5s", built_gui, NULL
-        };
-        (void)run(train_argv, true);
-    }
-
-    char use_flags[PATH_LEN + 224];
-    char use_ldflags[PATH_LEN + 160];
-    if (snprintf(use_flags, sizeof(use_flags),
-                 "-O3 -march=native -mtune=native -flto=auto -fprofile-use=%s -fprofile-correction -Wno-missing-profile", pgo_dir) >= (int)sizeof(use_flags) ||
-        snprintf(use_ldflags, sizeof(use_ldflags),
-                 "-flto=auto -fprofile-use=%s -fprofile-correction", pgo_dir) >= (int)sizeof(use_ldflags)) {
-        cleanup_work(work);
-        fail("Calculator PGO use flags are too long");
-    }
-    if (setenv("DEB_CXXFLAGS_MAINT_APPEND", use_flags, 1) != 0 ||
-        setenv("DEB_LDFLAGS_MAINT_APPEND", use_ldflags, 1) != 0) {
-        cleanup_work(work);
-        fail("cannot set Calculator PGO use flags");
-    }
-
-    write_status("running", 64, "Building the optimised Calculator",
-                 "Rebuilding with -O3, CPU-native tuning, LTO and the trained two-pass PGO profile.");
-    required_at(source_root, build_argv);
-
-    char cache_path[PATH_LEN];
-    if (snprintf(cache_path, sizeof(cache_path), "%s/build/CMakeCache.txt", source_root) >= (int)sizeof(cache_path)) {
-        cleanup_work(work);
-        fail("Calculator CMake cache path is too long");
-    }
-    if (!file_contains(cache_path, "-march=native") ||
-        !file_contains(cache_path, "-flto=auto") ||
-        !file_contains(cache_path, "-fprofile-use=")) {
-        cleanup_work(work);
-        fail("Calculator final build did not retain the requested native optimisation flags");
-    }
-
-    char deb_path[PATH_LEN];
-    if (snprintf(deb_path, sizeof(deb_path), "%s/calculator_%s_amd64.deb", work, version) >= (int)sizeof(deb_path) ||
-        access(deb_path, R_OK) != 0) {
-        cleanup_work(work);
-        fail("Calculator final Debian package was not produced");
-    }
-
-    write_status("running", 78, "Installing Calculator",
-                 "Installing the locally compiled native Calculator package.");
+    write_status("running", 35, "Compiling and optimising Calculator",
+                 "Calculator's own installer is building this release for the CPU with its canonical aggressive native policy.");
     const char *const install_argv[] = {
-        "/usr/bin/apt-get", "-o", "DPkg::Lock::Timeout=300",
-        "install", "-y", deb_path, NULL
+        installer_path, "--system-package-mode", NULL
     };
-    required(install_argv);
+    const int install_result = run(install_argv, false);
+    if (install_result != 0) {
+        char detail[256];
+        (void)snprintf(detail, sizeof(detail),
+                       "Calculator's native installer failed with status %d",
+                       install_result);
+        cleanup_work(work);
+        fail(detail);
+    }
 
     write_status("running", 88, "Verifying the native Calculator",
-                 "Confirming the Calculator package and executable are installed before replacing the distribution calculator.");
-    if (!installed("calculator") || access("/usr/bin/calculator", X_OK) != 0) {
+                 "Confirming the package, /Programs executable, launcher, icon, metadata and bundled fonts are all installed correctly.");
+    const char *contract_error = installed_contract_error();
+    if (contract_error) {
         cleanup_work(work);
-        fail("native Calculator package is not installed correctly after the build");
+        fail(contract_error);
     }
-    write_build_info();
 
     write_status("running", 94, "Removing replaced Calculator packages",
-                 "Cleaning up distribution Calculator packages after the native Infiltrator build succeeded.");
-    purge_stock_calculators();
+                 "Cleaning up obsolete Calculator identities and distribution Calculator packages only after the native installation passed verification.");
+    purge_replaced_calculators();
 
     cleanup_work(work);
     write_status("complete", 100, "Calculator native installation complete",
-                 "The latest Calculator is installed and optimised for this computer.");
+                 "The latest Calculator is installed, menu-integrated and optimised for this computer.");
     puts("InfiltratorOS Calculator replacement completed successfully.");
     close(global_lock_fd);
     close(app_lock_fd);

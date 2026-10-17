@@ -8,7 +8,7 @@ The InfiltratorOS package owns establishment of the native filesystem skeleton d
 
 `stage-theme.c` stages the approved theme; `select-theme.c` owns system theme selection. Debian maintainer scripts own invocation during package installation and removal.
 
-System Monitor and Calculator retain separate installation workers because their acquisition, compilation, qualification and replacement policies differ. Each worker owns its application lock, shared native-build lock, progress updates and terminal result.
+System Monitor and Calculator retain separate provisioning workers because their acquisition, installed-state qualification and replacement policies are product-specific. Each worker downloads the product's published native installer and invokes its explicit system-package mode instead of reproducing compiler flags, package layout or application-owned build metadata. The application repository therefore remains the single authority for native compilation, optimisation, packaging and installation; InfiltratorOS owns orchestration, application/global locking, graphical progress, post-install contract verification and removal of replaced distribution applications.
 
 ## Shared native installation mechanics
 
@@ -17,6 +17,8 @@ System Monitor and Calculator retain separate installation workers because their
 `installer-process.c` owns detached process lifetime. The parent reaps the first child and receives a close-on-exec pipe acknowledgement from the grandchild. Setup and exec failures return their errno; a successful exec acknowledges startup, independently of later worker success. Standard streams are redirected explicitly and inherited descriptors are closed. Progress windows drop to the discovered desktop user.
 
 `installer-status.c` owns the read protocol: newline-terminated state, progress, stage and detail fields; bounded strings; progress from -1 through 100; no duplicated known fields. Invalid or incomplete records leave the caller's previous result unchanged. Worker writes use a temporary file and rename. Unknown fields allow additive protocol evolution.
+
+Calculator's worker additionally treats desktop integration as part of the installed application contract. Success requires the canonical `calculator` package, executable `/Programs/calculator`, BUILD-INFO, the visible `net.ssmith.calculator.desktop` launcher with its native Exec path, the Calculator icon and AppStream metadata, the native PATH bridge and the packaged MB Corpo faces. Only after that contract passes may obsolete Calculator package identities or competing distribution calculators be purged.
 
 ## Failure and recovery
 

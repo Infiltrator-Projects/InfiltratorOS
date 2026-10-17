@@ -56,7 +56,9 @@ The package also establishes the first native InfiltratorOS filesystem skeleton 
 
 The earlier provisional temporal discovery roots at `/usr/lib/infiltrator/temporal/calendars` and `/usr/lib/infiltrator/temporal/clocks` remain installed in parallel for now. They are not treated as a frozen external ABI and will not be removed implicitly while the new native hierarchy is being evaluated.
 
-After the package transaction, separate native workers resolve the latest published System Monitor and Calculator releases. System Monitor uses its aggressive native installer. Calculator builds its published source with CPU tuning, LTO and measured two-pass PGO. Each replacement is verified before competing distribution applications are removed. A shared native-build lock serialises heavyweight compilation and package operations.
+After the package transaction, separate native workers resolve the latest published System Monitor and Calculator releases. Each worker downloads the application's own published native installer and invokes its system-package mode, so the application repository remains the authority for compiler policy, PGO/LTO behaviour, package layout and native build metadata. InfiltratorOS verifies the installed replacement and only then removes competing distribution applications. A shared native-build lock serialises heavyweight compilation and package operations.
+
+Calculator verification includes its canonical package, `/Programs/calculator`, BUILD-INFO, visible desktop launcher and icon, AppStream metadata, native PATH bridge and bundled MB Corpo fonts. This prevents a runnable binary from being mistaken for a complete desktop installation.
 
 A GTK window follows each worker when a graphical session is available. Headless installation uses the same workers and status files. Execution failure is reported before the launcher returns success; completion belongs to the worker.
 
