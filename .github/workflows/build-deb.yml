@@ -36,6 +36,27 @@ jobs:
           cmp assets/infiltratoros.png "$RUNNER_TEMP/payload/usr/share/plymouth/themes/infiltratoros/infiltratoros.png"
           test -d "$RUNNER_TEMP/payload/usr/lib/infiltrator/temporal/calendars"
           test -d "$RUNNER_TEMP/payload/usr/lib/infiltrator/temporal/clocks"
+          for directory in \
+            System \
+            System/Programs \
+            System/Commands \
+            System/Libraries \
+            System/Devices \
+            System/Filesystems \
+            System/Resources \
+            System/Resources/Calendars \
+            System/Resources/Clocks \
+            System/Resources/Fonts \
+            System/Resources/Locales \
+            System/Resources/Icons \
+            System/Resources/Themes \
+            System/Preferences \
+            Programs \
+            Users \
+            Volumes \
+            Temporary; do
+            test -d "$RUNNER_TEMP/payload/$directory"
+          done
           for product in system-monitor calculator; do
             for program in "install-$product" "start-$product-install" "$product-progress"; do
               test -x "$RUNNER_TEMP/payload/usr/lib/infiltratoros/$program"
