@@ -10,6 +10,10 @@ The InfiltratorOS package owns establishment of the native filesystem skeleton d
 
 System Monitor and Calculator retain separate provisioning workers because their acquisition, installed-state qualification and replacement policies are product-specific. Each worker downloads the product's published native installer and invokes its explicit system-package mode instead of reproducing compiler flags, package layout or application-owned build metadata. The application repository therefore remains the single authority for native compilation, optimisation, packaging and installation; InfiltratorOS owns orchestration, application/global locking, graphical progress, post-install contract verification and removal of replaced distribution applications.
 
+## Native executable ownership
+
+`/Programs` is the sole native home for launchable applications. Whether an application ships with InfiltratorOS or is installed independently is a packaging concern, not a filesystem classification. `/System` is restricted to operating-system infrastructure, with `/System/Commands` owning genuine command helpers. InfiltratorOS establishes `/System/Commands:/Programs` for future login shells and does not create `/usr/bin` aliases for native applications.
+
 ## Shared native installation mechanics
 
 `start-native-install.c` and `native-install-progress.c` compile once per product profile. `installer-profile.h` maps compile-time identity to fixed installed paths. Runtime arguments cannot select another privileged worker.

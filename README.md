@@ -52,7 +52,9 @@ The package appears in `dist/`. Main pushes qualify the package and publish an u
 
 The package selects the canonical Plymouth image, configures Debian/Mint compatibility paths, and rebuilds GRUB and initramfs. The approved PNG is checked against its fixed SHA-256 before packaging.
 
-The package also establishes the first native InfiltratorOS filesystem skeleton under `/System`, `/Programs`, `/Users`, `/Volumes` and `/Temporary`. `/System` contains Programs, Commands, Libraries, Devices, Filesystems, Preferences and shared Resources; Resources currently includes Calendars, Clocks, Fonts, Locales, Icons and Themes. This hierarchy is additive over the Linux base while the native model is being proven; the conventional Linux hierarchy remains available for compatibility. The complete current contract is documented in [Filesystem](docs/FILESYSTEM.md).
+The package establishes the native InfiltratorOS filesystem skeleton under `/System`, `/Programs`, `/Users`, `/Volumes` and `/Temporary`. `/Programs` is the sole native home for user-launchable applications. `/System` contains operating-system infrastructure such as Commands, Libraries, Devices, Filesystems, Kernel, Preferences and shared Resources; there is deliberately no `/System/Programs`. The hierarchy is additive over the Linux base while the native model is being proven, and the complete current contract is documented in [Filesystem](docs/FILESYSTEM.md).
+
+InfiltratorOS adds `/System/Commands:/Programs` ahead of the inherited PATH for future login shells. Native applications are not mirrored into `/usr/bin` merely for compatibility.
 
 The earlier provisional temporal discovery roots at `/usr/lib/infiltrator/temporal/calendars` and `/usr/lib/infiltrator/temporal/clocks` remain installed in parallel for now. They are not treated as a frozen external ABI and will not be removed implicitly while the new native hierarchy is being evaluated.
 

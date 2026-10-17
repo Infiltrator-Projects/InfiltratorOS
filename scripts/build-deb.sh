@@ -25,10 +25,10 @@ mkdir -p \
     "$PKGROOT/DEBIAN" \
     "$THEME_DIR" \
     "$DIST" \
+    "$PKGROOT/etc/profile.d" \
     "$PKGROOT/usr/lib/infiltratoros" \
     "$TEMPORAL_ROOT/calendars" \
     "$TEMPORAL_ROOT/clocks" \
-    "$SYSTEM_ROOT/Programs" \
     "$SYSTEM_ROOT/Commands" \
     "$SYSTEM_ROOT/Libraries" \
     "$SYSTEM_ROOT/Devices" \
@@ -52,6 +52,8 @@ printf '%s  %s\n' "$ARTWORK_SHA256" "$ARTWORK" | sha256sum -c -
 sed "s/@VERSION@/$VERSION/g" "$ROOT/debian/control.in" > "$PKGROOT/DEBIAN/control"
 install -m 0755 "$ROOT/debian/postinst" "$PKGROOT/DEBIAN/postinst"
 install -m 0755 "$ROOT/debian/prerm" "$PKGROOT/DEBIAN/prerm"
+install -m 0644 "$ROOT/packaging/infiltrator-native-path.sh" \
+    "$PKGROOT/etc/profile.d/90-infiltratoros-native-path.sh"
 
 cc -std=c11 -O2 -Wall -Wextra -Werror \
     "$ROOT/packaging/stage-theme.c" -o "$WORK/stage-theme"

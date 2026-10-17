@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.0.13
+
+- Retire the one-shot native filesystem migration workflow and script so normal CI never edits, commits or pushes source back to `main`.
+- Make `/Programs` the sole native namespace for user-launchable applications and reserve `/System` for operating-system infrastructure, with `/System/Commands` for genuine command helpers.
+- Stop packaging `/System/Programs` and make package qualification fail if that directory is ever reintroduced; do not add upgrade-time cleanup logic for a path that should not exist.
+- Add `/System/Commands:/Programs` to future login-shell PATHs without creating `/usr/bin` compatibility aliases.
+- Require System Monitor provisioning to verify the canonical `/Programs/system-monitor` executable as well as the installed package.
+
 ## 1.0.12
 
 - Make Calculator provisioning consume Calculator's own published native installer instead of maintaining a second source-download, PGO and Debian-build implementation inside InfiltratorOS.

@@ -293,8 +293,8 @@ int main(void)
     write_status("running", 95, "Verifying the native installation",
                  "Checking that the installed build is aggressive, PGO-trained and CPU-native.");
 
-    if (!installed("system-monitor"))
-        fail("native System Monitor package is not installed after the build");
+    if (!installed("system-monitor") || access("/Programs/system-monitor", X_OK) != 0)
+        fail("native System Monitor package or /Programs executable is not installed after the build");
     const char info[] = "/usr/share/doc/system-monitor/BUILD-INFO";
     if (!file_contains(info, "Profile: aggressive") ||
         !file_contains(info, "PGO: trained two-pass profile") ||

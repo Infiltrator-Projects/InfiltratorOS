@@ -36,9 +36,11 @@ jobs:
           cmp assets/infiltratoros.png "$RUNNER_TEMP/payload/usr/share/plymouth/themes/infiltratoros/infiltratoros.png"
           test -d "$RUNNER_TEMP/payload/usr/lib/infiltrator/temporal/calendars"
           test -d "$RUNNER_TEMP/payload/usr/lib/infiltrator/temporal/clocks"
+          test -f "$RUNNER_TEMP/payload/etc/profile.d/90-infiltratoros-native-path.sh"
+          sh -n "$RUNNER_TEMP/payload/etc/profile.d/90-infiltratoros-native-path.sh"
+          test ! -e "$RUNNER_TEMP/payload/System/Programs"
           for directory in \
             System \
-            System/Programs \
             System/Commands \
             System/Libraries \
             System/Devices \
