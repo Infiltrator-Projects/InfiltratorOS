@@ -15,11 +15,18 @@ DIST="$ROOT/dist"
 WORK="$ROOT/.build/infiltratoros_${VERSION}"
 PKGROOT="$WORK/root"
 THEME_DIR="$PKGROOT/usr/share/plymouth/themes/infiltratoros"
+TEMPORAL_ROOT="$PKGROOT/usr/lib/infiltrator/temporal"
 ARTWORK="$ROOT/assets/infiltratoros.png"
 ARTWORK_SHA256="4820891225675ed9bb0bb1bb82e3680df4bbdccc736ce5d092b80e95e5d05978"
 
 rm -rf "$WORK"
-mkdir -p "$PKGROOT/DEBIAN" "$THEME_DIR" "$DIST" "$PKGROOT/usr/lib/infiltratoros"
+mkdir -p \
+    "$PKGROOT/DEBIAN" \
+    "$THEME_DIR" \
+    "$DIST" \
+    "$PKGROOT/usr/lib/infiltratoros" \
+    "$TEMPORAL_ROOT/calendars" \
+    "$TEMPORAL_ROOT/clocks"
 printf '%s  %s\n' "$ARTWORK_SHA256" "$ARTWORK" | sha256sum -c -
 
 sed "s/@VERSION@/$VERSION/g" "$ROOT/debian/control.in" > "$PKGROOT/DEBIAN/control"
