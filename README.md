@@ -52,6 +52,8 @@ The package appears in `dist/`. Main pushes qualify the package and publish an u
 
 The package selects the canonical Plymouth image, configures Debian/Mint compatibility paths, and rebuilds GRUB and initramfs. The approved PNG is checked against its fixed SHA-256 before packaging.
 
+The package also establishes the provisional system-wide temporal resource roots at `/usr/lib/infiltrator/temporal/calendars` and `/usr/lib/infiltrator/temporal/clocks`. These paths support the filesystem-discovery experiment and are intentionally not yet treated as a frozen external ABI; the discovery concept is the durable design decision while the final installed layout remains subject to refinement.
+
 After the package transaction, separate native workers resolve the latest published System Monitor and Calculator releases. System Monitor uses its aggressive native installer. Calculator builds its published source with CPU tuning, LTO and measured two-pass PGO. Each replacement is verified before competing distribution applications are removed. A shared native-build lock serialises heavyweight compilation and package operations.
 
 A GTK window follows each worker when a graphical session is available. Headless installation uses the same workers and status files. Execution failure is reported before the launcher returns success; completion belongs to the worker.
