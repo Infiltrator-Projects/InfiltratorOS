@@ -39,6 +39,8 @@ The native skeleton is:
 
 `/System/Resources` contains discoverable capabilities and shared presentation resources. Calendars and clocks belong under `Resources`, not under `Preferences`: a calendar or clock implementation is a capability, while selecting one is a preference. `/System/Preferences` is reserved for system-wide policy and configuration.
 
+`/System/Resources/Fonts` contains the operating system's shared native font resources. InfiltratorOS populates it with `mb_corpo_a_cond_regular.ttf`, `mb_corpo_s_bold.ttf` and `mb_corpo_s_regular.ttf`. Package construction obtains the canonical archive from immutable MBLink commit `aa161e7342112beab8feb7669f072c870f742765` and verifies the archive and each font by SHA-256 before inclusion, so package installation does not need to fetch font files from GitHub.
+
 `/Users` is the root of user-owned spaces, but the InfiltratorOS package creates no named user directory; account/setup machinery owns user lifecycle. `/Volumes` is the native mount/volume presentation root. `/Temporary` is the native temporary-storage concept.
 
 ## Executable discovery

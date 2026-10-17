@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.14
+
+- Populate `/System/Resources/Fonts` with the three canonical MB Corpo faces used by Infiltrator applications.
+- Source the font archive from immutable MBLink commit `aa161e7342112beab8feb7669f072c870f742765` during package construction and verify both the archive and each extracted TTF by SHA-256 before staging.
+- Keep font acquisition out of `postinst`: the released DEB already contains the verified fonts, and CI qualifies their exact bytes in the installed native filesystem payload.
+
 ## 1.0.13
 
 - Retire the one-shot native filesystem migration workflow and script so normal CI never edits, commits or pushes source back to `main`.
