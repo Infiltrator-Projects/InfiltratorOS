@@ -33,6 +33,9 @@ mkdir -p \
     "$SYSTEM_ROOT/Libraries" \
     "$SYSTEM_ROOT/Devices" \
     "$SYSTEM_ROOT/Filesystems" \
+    "$SYSTEM_ROOT/Kernel/Images" \
+    "$SYSTEM_ROOT/Kernel/Modules" \
+    "$SYSTEM_ROOT/Kernel/Firmware" \
     "$SYSTEM_ROOT/Resources/Calendars" \
     "$SYSTEM_ROOT/Resources/Clocks" \
     "$SYSTEM_ROOT/Resources/Fonts" \

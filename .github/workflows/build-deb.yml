@@ -43,6 +43,10 @@ jobs:
             System/Libraries \
             System/Devices \
             System/Filesystems \
+            System/Kernel \
+            System/Kernel/Images \
+            System/Kernel/Modules \
+            System/Kernel/Firmware \
             System/Resources \
             System/Resources/Calendars \
             System/Resources/Clocks \

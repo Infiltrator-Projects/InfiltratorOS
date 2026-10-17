@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.10
+
+- Add the native `/System/Kernel` namespace with `Images`, `Modules` and `Firmware` directories.
+- Keep the new kernel hierarchy structural only; do not alter `/boot`, Linux module trees, firmware locations or the running kernel.
+- Qualify the kernel namespace in the built Debian package.
+
 ## 1.0.9
 
 - Establish the first native InfiltratorOS filesystem skeleton at `/System`, `/Programs`, `/Users`, `/Volumes` and `/Temporary`.
