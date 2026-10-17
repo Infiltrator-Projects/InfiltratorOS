@@ -316,10 +316,10 @@ static const char *installed_contract_error(void)
         return "Calculator AppStream metadata is missing after installation";
     if (!regular_file("/etc/profile.d/91-infiltrator-calculator-path.sh"))
         return "Calculator native PATH bridge is missing after installation";
-    if (!regular_file("/usr/share/fonts/truetype/calculator/mb_corpo_a_cond_regular.ttf") ||
-        !regular_file("/usr/share/fonts/truetype/calculator/mb_corpo_s_bold.ttf") ||
-        !regular_file("/usr/share/fonts/truetype/calculator/mb_corpo_s_regular.ttf"))
-        return "Calculator MB Corpo font payload is incomplete after installation";
+    if (!regular_file("/System/Resources/Fonts/mb_corpo_a_cond_regular.ttf") ||
+        !regular_file("/System/Resources/Fonts/mb_corpo_s_bold.ttf") ||
+        !regular_file("/System/Resources/Fonts/mb_corpo_s_regular.ttf"))
+        return "Calculator MB Corpo native font resources are incomplete after installation";
     return NULL;
 }
 
@@ -471,7 +471,7 @@ int main(void)
     }
 
     write_status("running", 88, "Verifying the native Calculator",
-                 "Confirming the package, /Programs executable, launcher, icon, metadata and bundled fonts are all installed correctly.");
+                 "Confirming the package, /Programs executable, launcher, icon, metadata and native font resources are all installed correctly.");
     const char *contract_error = installed_contract_error();
     if (contract_error) {
         cleanup_work(work);
