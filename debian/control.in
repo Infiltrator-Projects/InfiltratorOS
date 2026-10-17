@@ -4,11 +4,17 @@ Section: misc
 Priority: optional
 Architecture: amd64
 Maintainer: Infiltrator Projects <noreply@infiltrator-projects.invalid>
-Depends: plymouth, apt, wget, ca-certificates, bash, fontconfig, libgtk-3-0 | libgtk-3-0t64
+Depends: plymouth, apt, wget, ca-certificates, bash, fontconfig, infiltrator-calendar-resources, libgtk-3-0 | libgtk-3-0t64
 Description: InfiltratorOS branding and native application integration
  Installs the canonical InfiltratorOS Plymouth splash for Debian and
  Linux Mint derived systems, selects it as the active theme, rebuilds
  initramfs, and replaces distribution System Monitor and Calculator packages
  with Infiltrator builds compiled aggressively for the local CPU.
+ .
+ The operating system also depends directly on the standard Calendar Resources
+ capability pack. Calendar applications and System Settings are consumers of
+ those resources rather than their owners, so removing either application does
+ not remove the installed calendar systems.
+ .
  Heavy native application builds are serialised so they do not compete
  for package locks or CPU.
