@@ -11,6 +11,10 @@ Description: InfiltratorOS branding and native application integration
  initramfs, and replaces distribution System Monitor and Calculator packages
  with Infiltrator builds compiled aggressively for the local CPU.
  .
+ Files is installed as an additional native file manager in /Programs and is
+ compiled with the same hardware-native policy. InfiltratorOS does not purge
+ the existing distribution file manager or change the current default handler.
+ .
  The operating system also depends directly on the standard Calendar Resources
  capability pack. Calendar applications and System Settings are consumers of
  those resources rather than their owners, so removing either application does

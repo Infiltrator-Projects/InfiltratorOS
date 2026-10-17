@@ -79,10 +79,11 @@ cc -std=c11 -O2 -Wall -Wextra -Werror \
 cc -std=c11 -O2 -Wall -Wextra -Werror "$ROOT/packaging/select-theme.c" \
     -o "$PKGROOT/usr/lib/infiltratoros/select-theme"
 
-for product in system-monitor calculator; do
+for product in system-monitor calculator files; do
     case "$product" in
         system-monitor) profile=INSTALL_SYSTEM_MONITOR ;;
         calculator) profile=INSTALL_CALCULATOR ;;
+        files) profile=INSTALL_FILES ;;
     esac
     cc -std=c11 -O2 -Wall -Wextra -Werror -Wpedantic \
         "$ROOT/packaging/install-$product.c" \

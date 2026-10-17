@@ -86,7 +86,7 @@ jobs:
           printf '%s  %s\n' 94ede6629443c03d4362dcef425fb3ff520be5d654370021a34e81286804465c "$staged_fonts/mb_corpo_s_regular.ttf" | sha256sum -c -
           grep -Fq '<dir>/System/Resources/Fonts</dir>' "$native_root/etc/fonts/conf.d/90-infiltrator-native-fonts.conf"
           INFILTRATR_NATIVE_ROOT="$native_root" INFILTRATR_FONT_SOURCE_DIR="$RUNNER_TEMP/does-not-exist" "$helper"
-          for product in system-monitor calculator; do
+          for product in system-monitor calculator files; do
             for program in "install-$product" "start-$product-install" "$product-progress"; do
               test -x "$RUNNER_TEMP/payload/usr/lib/infiltratoros/$program"
             done

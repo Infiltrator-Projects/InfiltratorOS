@@ -33,3 +33,22 @@ if grep -Fq 'dpkg-buildpackage' "$calculator_worker" || \
     echo "Calculator worker must delegate compilation and packaging to Calculator's native installer." >&2
     exit 1
 fi
+
+files_worker="$ROOT/packaging/install-files.c"
+cc -std=c11 -O2 -DNDEBUG -Wall -Wextra -Werror -Wpedantic \
+    "$files_worker" -o "$WORK/install-files"
+grep -Fq 'repos/Infiltrator-Projects/Files/releases/latest' "$files_worker"
+grep -Fq '"--system-package-mode"' "$files_worker"
+grep -Fq '"/Programs/files"' "$files_worker"
+grep -Fq '"/usr/share/applications/files.desktop"' "$files_worker"
+grep -Fq '"Exec=/Programs/files"' "$files_worker"
+grep -Fq '"CXX flags: -O3"' "$files_worker"
+grep -Fq '"PGO: trained two-pass profile"' "$files_worker"
+if grep -Eq 'xdg-mime|mimeapps\.list|gio[[:space:]]+mime' "$files_worker"; then
+    echo "Files provisioning must not claim the host default file-manager association." >&2
+    exit 1
+fi
+if grep -Fq '"purge"' "$files_worker"; then
+    echo "Files provisioning must not purge the existing distribution file manager." >&2
+    exit 1
+fi

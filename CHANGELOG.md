@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.0.18
+
+- Make the standard `infiltrator-calendar-resources` capability pack a direct operating-system dependency so calendar implementations remain system resources rather than application-owned payloads.
+- Add Files as the third native-provisioned InfiltratorOS application, consuming Files 0.1.34's published self-contained native installer and shared heavyweight-build lock.
+- Require Files to install canonically at `/Programs/files` with aggressive native optimisation, LTO, two-pass PGO BUILD-INFO and a desktop launcher targeting the native executable.
+- Keep Files additive for now: do not purge Nemo or another distribution file manager, and do not change the desktop's current default file-manager association.
+- Extend package construction, progress/status profiles and CI qualification to the Files worker while continuing to reject `/System/Programs`.
+
 ## 1.0.17
 
 - Fix Calculator post-install verification to validate the canonical persistent MB Corpo resources under `/System/Resources/Fonts` instead of the retired Calculator-owned `/usr/share/fonts/truetype/calculator` payload.

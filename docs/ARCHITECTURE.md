@@ -8,7 +8,11 @@ The InfiltratorOS package owns establishment of the native filesystem skeleton d
 
 `stage-theme.c` stages the approved theme; `select-theme.c` owns system theme selection. Debian maintainer scripts own invocation during package installation and removal.
 
-System Monitor and Calculator retain separate provisioning workers because their acquisition, installed-state qualification and replacement policies are product-specific. Each worker downloads the product's published native installer and invokes its explicit system-package mode instead of reproducing compiler flags, package layout or application-owned build metadata. The application repository therefore remains the single authority for native compilation, optimisation, packaging and installation; InfiltratorOS owns orchestration, application/global locking, graphical progress, post-install contract verification and removal of replaced distribution applications.
+System Monitor, Calculator and Files retain separate provisioning workers because their acquisition and installed-state qualification are product-specific. Each worker downloads the product's published native installer and invokes its explicit system-package mode instead of reproducing compiler flags, package layout or application-owned build metadata. The application repository therefore remains the single authority for native compilation, optimisation, packaging and installation; InfiltratorOS owns orchestration, application/global locking, graphical progress and post-install contract verification.
+
+Replacement policy remains product-specific. System Monitor and Calculator may remove competing distribution applications only after the corresponding Infiltrator replacement has passed verification. Files is additive at this stage: its worker must not purge the existing distribution file manager or change the desktop's default file-manager association.
+
+The operating system depends directly on the standard Calendar Resources capability pack. Calendar applications and System Settings consume those system resources rather than owning them, so application removal does not remove calendar implementations.
 
 ## Native executable ownership
 
@@ -22,10 +26,12 @@ System Monitor and Calculator retain separate provisioning workers because their
 
 `installer-status.c` owns the read protocol: newline-terminated state, progress, stage and detail fields; bounded strings; progress from -1 through 100; no duplicated known fields. Invalid or incomplete records leave the caller's previous result unchanged. Worker writes use a temporary file and rename. Unknown fields allow additive protocol evolution.
 
-Calculator's worker additionally treats desktop integration as part of the installed application contract. Success requires the canonical `calculator` package, executable `/Programs/calculator`, BUILD-INFO, the visible `net.ssmith.calculator.desktop` launcher with its native Exec path, the Calculator icon and AppStream metadata, the native PATH bridge and the packaged MB Corpo faces. Only after that contract passes may obsolete Calculator package identities or competing distribution calculators be purged.
+Calculator's worker additionally treats desktop integration as part of the installed application contract. Success requires the canonical `calculator` package, executable `/Programs/calculator`, BUILD-INFO, the visible `net.ssmith.calculator.desktop` launcher with its native Exec path, the Calculator icon and AppStream metadata, the native PATH bridge and the shared MB Corpo resource contract. Only after that contract passes may obsolete Calculator package identities or competing distribution calculators be purged.
+
+Files' worker treats its native layout and launcher as installed-state contracts without claiming replacement ownership. Success requires the canonical `files` package, executable `/Programs/files`, aggressive two-pass PGO BUILD-INFO, absence of the obsolete `/usr/bin/files` executable and a desktop launcher targeting `/Programs/files`. Existing file-manager packages and default-handler policy remain untouched.
 
 ## Failure and recovery
 
-A launcher writes a complete failure record if worker startup fails. Progress UI failure is logged separately and does not stop an already running worker. A worker's terminal status and log remain available after its progress window closes. Installation recipes verify the replacement before removing distribution applications.
+A launcher writes a complete failure record if worker startup fails. Progress UI failure is logged separately and does not stop an already running worker. A worker's terminal status and log remain available after its progress window closes. Installation recipes verify a replacement before removing distribution applications.
 
 Desktop discovery currently selects the first eligible graphical user found in /proc. Multi-seat selection and physical boot qualification remain explicit integration concerns; neither is inferred from a package build.

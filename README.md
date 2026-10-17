@@ -1,6 +1,6 @@
 # InfiltratorOS
 
-The operating-system integration project for Infiltrator Projects. The current deliverable is an amd64 Debian/Linux Mint package containing the approved Plymouth theme and native provisioning for System Monitor and Calculator.
+The operating-system integration project for Infiltrator Projects. The current deliverable is an amd64 Debian/Linux Mint package containing the approved Plymouth theme and native provisioning for System Monitor, Calculator and Files.
 
 [Philosophy](docs/PHILOSOPHY.md) · [Architecture](docs/ARCHITECTURE.md) · [Filesystem](docs/FILESYSTEM.md) · [Validation](docs/VALIDATION.md) · [Changes](CHANGELOG.md). [VERSION](VERSION) owns package identity.
 
@@ -60,9 +60,15 @@ InfiltratorOS adds `/System/Commands:/Programs` ahead of the inherited PATH for 
 
 The earlier provisional temporal discovery roots at `/usr/lib/infiltrator/temporal/calendars` and `/usr/lib/infiltrator/temporal/clocks` remain installed in parallel for now. They are not treated as a frozen external ABI and will not be removed implicitly while the new native hierarchy is being evaluated.
 
-After the package transaction, separate native workers resolve the latest published System Monitor and Calculator releases. Each worker downloads the application's own published native installer and invokes its system-package mode, so the application repository remains the authority for compiler policy, PGO/LTO behaviour, package layout and native build metadata. InfiltratorOS verifies the installed replacement and only then removes competing distribution applications. A shared native-build lock serialises heavyweight compilation and package operations.
+The operating-system package depends directly on the standard `infiltrator-calendar-resources` capability pack. Calendar applications and System Settings consume those system resources rather than owning them, so removing either application does not remove the installed calendar implementations.
+
+After the package transaction, separate native workers resolve the latest published System Monitor, Calculator and Files releases. Each worker downloads the application's own published native installer and invokes its system-package mode, so the application repository remains the authority for compiler policy, PGO/LTO behaviour, package layout and native build metadata. InfiltratorOS verifies each installed native application and a shared native-build lock serialises heavyweight compilation and package operations.
+
+System Monitor and Calculator retain replacement policy: competing distribution applications are removed only after the corresponding Infiltrator replacement passes verification. Files is intentionally different at this stage: it is installed alongside the existing file manager, its launcher targets `/Programs/files`, and InfiltratorOS does not change the desktop's current default file-manager association.
 
 Calculator verification includes its canonical package, `/Programs/calculator`, BUILD-INFO, visible desktop launcher and icon, AppStream metadata and native PATH bridge. Shared MB Corpo resources are verified through the native font cache rather than by requiring Calculator-owned duplicate font files.
+
+Files verification requires the canonical `files` package, `/Programs/files`, an aggressive two-pass PGO BUILD-INFO record, no obsolete `/usr/bin/files` executable, and a desktop launcher whose Exec target is `/Programs/files`.
 
 A GTK window follows each worker when a graphical session is available. Headless installation uses the same workers and status files. Execution failure is reported before the launcher returns success; completion belongs to the worker.
 
@@ -70,5 +76,6 @@ A GTK window follows each worker when a graphical session is available. Headless
 | --- | --- | --- |
 | System Monitor | `/run/infiltratoros/system-monitor-install.status` | `/var/log/infiltratoros-system-monitor.log` |
 | Calculator | `/run/infiltratoros/calculator-install.status` | `/var/log/infiltratoros-calculator.log` |
+| Files | `/run/infiltratoros/files-install.status` | `/var/log/infiltratoros-files.log` |
 
 Application versions are resolved at installation time. The OS package does not maintain a second application release catalogue.
