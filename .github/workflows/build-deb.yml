@@ -34,6 +34,8 @@ jobs:
           sh -n "$RUNNER_TEMP/control/postinst" "$RUNNER_TEMP/control/prerm"
           dpkg-deb -x dist/*.deb "$RUNNER_TEMP/payload"
           cmp assets/infiltratoros.png "$RUNNER_TEMP/payload/usr/share/plymouth/themes/infiltratoros/infiltratoros.png"
+          test -d "$RUNNER_TEMP/payload/usr/lib/infiltrator/temporal/calendars"
+          test -d "$RUNNER_TEMP/payload/usr/lib/infiltrator/temporal/clocks"
           for product in system-monitor calculator; do
             for program in "install-$product" "start-$product-install" "$product-progress"; do
               test -x "$RUNNER_TEMP/payload/usr/lib/infiltratoros/$program"
