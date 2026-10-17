@@ -282,7 +282,7 @@ int main(void)
     write_status("running", 35, "Compiling and optimising System Monitor",
                  "Building for this CPU with aggressive native optimisation, LTO and two-pass PGO.");
     const char *const install_argv[] = {
-        installer_path, "--profile", "aggressive", "--system-package-mode", NULL
+        installer_path, "--system-package-mode", NULL
     };
     required(install_argv);
 
