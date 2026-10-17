@@ -1,0 +1,47 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+name: Native filesystem migration
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/native-filesystem-migration.yml
+
+permissions:
+  contents: write
+
+jobs:
+  migrate:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          fetch-depth: 0
+      - name: Apply native filesystem migration
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('packaging/migrate_native_filesystem.py')
+          text = p.read_text()
+          marker = '\nfor path in [build, workflow, filesystem]:'
+          if marker in text:
+              text = text.split(marker, 1)[0] + '\n'
+              p.write_text(text)
+          PY
+          python3 packaging/migrate_native_filesystem.py
+      - name: Commit native filesystem release
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'The-First-Infiltrator'
+          git config user.email 'The-First-Infiltrator@users.noreply.github.com'
+          git add VERSION CHANGELOG.md README.md docs/ARCHITECTURE.md docs/FILESYSTEM.md \
+            scripts/build-deb.sh debian/postinst packaging/install-calculator.c \
+            packaging/install-system-monitor.c packaging/infiltrator-native-path.sh \
+            .github/workflows/build-deb.yml
+          git diff --cached --check
+          git diff --cached --quiet && { echo 'Migration already applied.'; exit 0; }
+          git commit -m 'Release InfiltratorOS 1.0.12 native application namespace'
+          git push origin HEAD:main
