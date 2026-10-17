@@ -17,7 +17,7 @@ jobs:
         with:
           fetch-depth: 0
       - name: Install build dependencies
-        run: sudo apt-get update && sudo apt-get install -y pkg-config libgtk-3-dev wget xz-utils fontconfig
+        run: sudo apt-get update && sudo apt-get install -y pkg-config libgtk-3-dev wget fontconfig
       - name: Exercise production process and status contracts
         run: sh tests/check.sh
       - name: Build and prove reproducible package bytes
@@ -65,21 +65,27 @@ jobs:
           done
           font_root="$RUNNER_TEMP/payload/System/Resources/Fonts"
           test "$(find "$font_root" -maxdepth 1 -type f -name '*.ttf' | wc -l)" -eq 0
+          font_seed="$RUNNER_TEMP/payload/usr/lib/infiltratoros/font-seed"
+          test "$(find "$font_seed" -maxdepth 1 -type f -name '*.ttf' | wc -l)" -eq 3
+          cmp assets/fonts/mb_corpo_a_cond_regular.ttf "$font_seed/mb_corpo_a_cond_regular.ttf"
+          cmp assets/fonts/mb_corpo_s_bold.ttf "$font_seed/mb_corpo_s_bold.ttf"
+          cmp assets/fonts/mb_corpo_s_regular.ttf "$font_seed/mb_corpo_s_regular.ttf"
+          printf '%s  %s\n' c8bcd7e1a7d71169b38491d9b7c1ffe7ba7b46e888f0c1219931343a47bc0e05 "$font_seed/mb_corpo_a_cond_regular.ttf" | sha256sum -c -
+          printf '%s  %s\n' d37ea986e2344d83390f94f170e6272b56efd00bfec808afe8314c4ca45d43b4 "$font_seed/mb_corpo_s_bold.ttf" | sha256sum -c -
+          printf '%s  %s\n' 94ede6629443c03d4362dcef425fb3ff520be5d654370021a34e81286804465c "$font_seed/mb_corpo_s_regular.ttf" | sha256sum -c -
           helper="$RUNNER_TEMP/payload/usr/lib/infiltratoros/ensure-native-fonts"
           test -x "$helper"
           sh -n "$helper"
+          ! grep -Eq 'raw\.githubusercontent\.com|MBLink|curl|wget' "$helper"
           ! grep -Eq '(rm|rmdir).*System/Resources/Fonts' "$RUNNER_TEMP/control/postinst" "$RUNNER_TEMP/control/prerm"
-          archive="$RUNNER_TEMP/mb-corpo-fonts.tar.xz"
-          wget -qO "$archive" https://raw.githubusercontent.com/Infiltrator-Projects/MBLink/aa161e7342112beab8feb7669f072c870f742765/assets/fonts/mb-corpo-fonts.tar.xz
-          printf '%s  %s\n' bdb6063f838a7fab22b4d6b412170640c69511df53aa3dfa9a4ea8431c9d8274 "$archive" | sha256sum -c -
           native_root="$RUNNER_TEMP/native-root"
-          INFILTRATR_NATIVE_ROOT="$native_root" INFILTRATR_MB_CORPO_ARCHIVE_FILE="$archive" "$helper"
+          INFILTRATR_NATIVE_ROOT="$native_root" INFILTRATR_FONT_SOURCE_DIR="$font_seed" "$helper"
           staged_fonts="$native_root/System/Resources/Fonts"
           printf '%s  %s\n' c8bcd7e1a7d71169b38491d9b7c1ffe7ba7b46e888f0c1219931343a47bc0e05 "$staged_fonts/mb_corpo_a_cond_regular.ttf" | sha256sum -c -
           printf '%s  %s\n' d37ea986e2344d83390f94f170e6272b56efd00bfec808afe8314c4ca45d43b4 "$staged_fonts/mb_corpo_s_bold.ttf" | sha256sum -c -
           printf '%s  %s\n' 94ede6629443c03d4362dcef425fb3ff520be5d654370021a34e81286804465c "$staged_fonts/mb_corpo_s_regular.ttf" | sha256sum -c -
           grep -Fq '<dir>/System/Resources/Fonts</dir>' "$native_root/etc/fonts/conf.d/90-infiltrator-native-fonts.conf"
-          INFILTRATR_NATIVE_ROOT="$native_root" INFILTRATR_MB_CORPO_ARCHIVE_FILE="$RUNNER_TEMP/does-not-exist.tar.xz" "$helper"
+          INFILTRATR_NATIVE_ROOT="$native_root" INFILTRATR_FONT_SOURCE_DIR="$RUNNER_TEMP/does-not-exist" "$helper"
           for product in system-monitor calculator; do
             for program in "install-$product" "start-$product-install" "$product-progress"; do
               test -x "$RUNNER_TEMP/payload/usr/lib/infiltratoros/$program"

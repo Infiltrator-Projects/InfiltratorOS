@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.0.16
+
+- Commit the three canonical MB Corpo TTF files directly under `assets/fonts/` in the InfiltratorOS repository and verify their fixed SHA-256 identities during package construction.
+- Remove font acquisition from InfiltratorOS installation: the package seeds the persistent native cache from its repository-owned files and requires no MBLink or other network access for fonts.
+- Keep `/System/Resources/Fonts` outside Debian payload ownership so uninstalling InfiltratorOS cannot remove fonts still used by standalone Infiltrator applications.
+- Prefer hard links between the package seed and persistent native cache when they share a filesystem, avoiding duplicate font data; retain a verified copy fallback for split-filesystem installations.
+- Remove the now-unneeded `xz-utils` runtime dependency and qualify that the built package contains the three exact repository font seeds but no package-owned TTFs in the native cache.
+
 ## 1.0.15
 
 - Change the MB Corpo faces from InfiltratorOS-owned Debian payload files into persistent native machine resources under `/System/Resources/Fonts`.

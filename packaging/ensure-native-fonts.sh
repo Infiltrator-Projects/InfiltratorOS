@@ -1,17 +1,11 @@
 #!/bin/sh
 # SPDX-License-Identifier: GPL-3.0-or-later
-# Canonical copy of Libraries 1.19.51 InfiltratrEnsureNativeFonts.sh.
-# Establish the canonical Linux Infiltrator font resource cache.
-#
-# The font files it creates are machine resources, not package-owned payload:
-# uninstalling InfiltratorOS must never remove them.
+# Establish the canonical Linux Infiltrator font resource cache from the
+# repository-owned InfiltratorOS font seed. The native cache is persistent
+# machine state and is never removed by an application or InfiltratorOS uninstall.
 set -eu
 
 umask 022
-
-SOURCE_COMMIT="aa161e7342112beab8feb7669f072c870f742765"
-ARCHIVE_URL="https://raw.githubusercontent.com/Infiltrator-Projects/MBLink/${SOURCE_COMMIT}/assets/fonts/mb-corpo-fonts.tar.xz"
-ARCHIVE_SHA256="bdb6063f838a7fab22b4d6b412170640c69511df53aa3dfa9a4ea8431c9d8274"
 
 BRAND_FILE="mb_corpo_a_cond_regular.ttf"
 UI_BOLD_FILE="mb_corpo_s_bold.ttf"
@@ -24,6 +18,11 @@ ROOT="${INFILTRATR_NATIVE_ROOT:-}"
 case "$ROOT" in
     ""|/*) ;;
     *) echo "INFILTRATR_NATIVE_ROOT must be empty or absolute" >&2; exit 2 ;;
+esac
+SOURCE_DIR="${INFILTRATR_FONT_SOURCE_DIR:-/usr/lib/infiltratoros/font-seed}"
+case "$SOURCE_DIR" in
+    /*) ;;
+    *) echo "INFILTRATR_FONT_SOURCE_DIR must be absolute" >&2; exit 2 ;;
 esac
 
 native_path() {
@@ -51,45 +50,37 @@ font_matches() {
         printf '%s  %s\n' "$expected" "$path" | sha256sum -c - >/dev/null 2>&1
 }
 
-need_fonts=false
-font_matches "$BRAND_SHA256" "$FONT_DIR/$BRAND_FILE" || need_fonts=true
-font_matches "$UI_BOLD_SHA256" "$FONT_DIR/$UI_BOLD_FILE" || need_fonts=true
-font_matches "$UI_REGULAR_SHA256" "$FONT_DIR/$UI_REGULAR_FILE" || need_fonts=true
+ensure_font() {
+    expected=$1
+    file=$2
+    target="$FONT_DIR/$file"
+    source="$SOURCE_DIR/$file"
 
-if [ "$need_fonts" = true ]; then
-    work=$(mktemp -d "${TMPDIR:-/tmp}/infiltratr-fonts.XXXXXX")
-    trap 'rm -rf "$work"' EXIT HUP INT TERM
-    archive="$work/mb-corpo-fonts.tar.xz"
-
-    if [ -n "${INFILTRATR_MB_CORPO_ARCHIVE_FILE:-}" ]; then
-        cp -- "$INFILTRATR_MB_CORPO_ARCHIVE_FILE" "$archive"
-    elif command -v curl >/dev/null 2>&1; then
-        curl --fail --location --silent --show-error "$ARCHIVE_URL" --output "$archive"
-    elif command -v wget >/dev/null 2>&1; then
-        wget -qO "$archive" "$ARCHIVE_URL"
-    else
-        echo "MB Corpo resources are missing and neither curl nor wget is available" >&2
+    if font_matches "$expected" "$target"; then
+        return 0
+    fi
+    if ! font_matches "$expected" "$source"; then
+        echo "Canonical InfiltratorOS font seed is missing or invalid: $source" >&2
         exit 4
     fi
 
-    printf '%s  %s\n' "$ARCHIVE_SHA256" "$archive" | sha256sum -c - >/dev/null
-    extract="$work/extract"
-    mkdir -p "$extract"
-    tar -xJf "$archive" -C "$extract"
+    staged="$FONT_DIR/.${file}.new.$$"
+    rm -f -- "$staged"
+    # On the normal single-filesystem layout this creates another name for the
+    # same inode, so the package seed and persistent native resource consume no
+    # duplicate font data. A copy is the safe fallback for split filesystems.
+    if ln -- "$source" "$staged" 2>/dev/null; then
+        :
+    else
+        install -m 0644 "$source" "$staged"
+    fi
+    mv -f -- "$staged" "$target"
+    font_matches "$expected" "$target"
+}
 
-    printf '%s  %s\n' "$BRAND_SHA256" "$extract/$BRAND_FILE" | sha256sum -c - >/dev/null
-    printf '%s  %s\n' "$UI_BOLD_SHA256" "$extract/$UI_BOLD_FILE" | sha256sum -c - >/dev/null
-    printf '%s  %s\n' "$UI_REGULAR_SHA256" "$extract/$UI_REGULAR_FILE" | sha256sum -c - >/dev/null
-
-    for file in "$BRAND_FILE" "$UI_BOLD_FILE" "$UI_REGULAR_FILE"; do
-        staged="$FONT_DIR/.${file}.new.$$"
-        install -m 0644 "$extract/$file" "$staged"
-        mv -f -- "$staged" "$FONT_DIR/$file"
-    done
-
-    rm -rf "$work"
-    trap - EXIT HUP INT TERM
-fi
+ensure_font "$BRAND_SHA256" "$BRAND_FILE"
+ensure_font "$UI_BOLD_SHA256" "$UI_BOLD_FILE"
+ensure_font "$UI_REGULAR_SHA256" "$UI_REGULAR_FILE"
 
 conf_tmp="$FONTCONFIG_FILE.new.$$"
 cat > "$conf_tmp" <<'EOF'
@@ -105,10 +96,6 @@ if [ -f "$FONTCONFIG_FILE" ] && cmp -s "$conf_tmp" "$FONTCONFIG_FILE"; then
 else
     mv -f -- "$conf_tmp" "$FONTCONFIG_FILE"
 fi
-
-font_matches "$BRAND_SHA256" "$FONT_DIR/$BRAND_FILE"
-font_matches "$UI_BOLD_SHA256" "$FONT_DIR/$UI_BOLD_FILE"
-font_matches "$UI_REGULAR_SHA256" "$FONT_DIR/$UI_REGULAR_FILE"
 
 if [ -z "$ROOT" ] && command -v fc-cache >/dev/null 2>&1; then
     fc-cache -f "$FONT_DIR" >/dev/null 2>&1 || true
