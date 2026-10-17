@@ -1,6 +1,7 @@
 #!/bin/sh
 set -eu
 
+/usr/lib/infiltratoros/ensure-native-fonts
 /usr/lib/infiltratoros/select-theme configure
 /usr/lib/infiltratoros/start-system-monitor-install
 /usr/lib/infiltratoros/start-calculator-install

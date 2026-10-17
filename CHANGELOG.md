@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.15
+
+- Change the MB Corpo faces from InfiltratorOS-owned Debian payload files into persistent native machine resources under `/System/Resources/Fonts`.
+- Use the canonical Libraries 1.19.51 bootstrap contract to verify, download only when needed, atomically repair and Fontconfig-register the three shared faces.
+- Keep the font cache and its Fontconfig registration intact when InfiltratorOS or any individual application is removed, so standalone Infiltrator software cannot be broken by another package uninstall.
+- Qualify that the DEB owns no TTF files in the native cache and prove the bootstrap can seed a clean staged system and then reuse it without another archive read.
+
 ## 1.0.14
 
 - Populate `/System/Resources/Fonts` with the three canonical MB Corpo faces used by Infiltrator applications.

@@ -39,7 +39,7 @@ APT packages or compatibility aliases.
 
 ## Build and verify
 
-Install a C compiler, pkg-config, GTK 3 development headers, Debian packaging tools, `wget` and `xz-utils`, then run:
+Install a C compiler, pkg-config, GTK 3 development headers and Debian packaging tools, then run:
 
 ```sh
 sh tests/check.sh
@@ -54,7 +54,7 @@ The package selects the canonical Plymouth image, configures Debian/Mint compati
 
 The package establishes the native InfiltratorOS filesystem skeleton under `/System`, `/Programs`, `/Users`, `/Volumes` and `/Temporary`. `/Programs` is the sole native home for user-launchable applications. `/System` contains operating-system infrastructure such as Commands, Libraries, Devices, Filesystems, Kernel, Preferences and shared Resources; there is deliberately no `/System/Programs`. The hierarchy is additive over the Linux base while the native model is being proven, and the complete current contract is documented in [Filesystem](docs/FILESYSTEM.md).
 
-The package also populates `/System/Resources/Fonts` with the three canonical MB Corpo faces. Package construction retrieves the immutable MBLink font archive and verifies both the archive and individual font hashes before the DEB is built; font installation therefore consists only of installing already-qualified package payload.
+`/System/Resources/Fonts` is a persistent native machine-resource cache. InfiltratorOS carries only the small verified bootstrap logic: during configuration it verifies the three canonical MB Corpo faces already there, downloads the immutable MBLink archive only if a face is missing or invalid, repairs the cache atomically, and registers the directory with Fontconfig. The TTFs and Fontconfig registration are deliberately not owned by the InfiltratorOS package, so removing the OS integration package cannot break independently installed Infiltrator applications.
 
 InfiltratorOS adds `/System/Commands:/Programs` ahead of the inherited PATH for future login shells. Native applications are not mirrored into `/usr/bin` merely for compatibility.
 
@@ -62,7 +62,7 @@ The earlier provisional temporal discovery roots at `/usr/lib/infiltrator/tempor
 
 After the package transaction, separate native workers resolve the latest published System Monitor and Calculator releases. Each worker downloads the application's own published native installer and invokes its system-package mode, so the application repository remains the authority for compiler policy, PGO/LTO behaviour, package layout and native build metadata. InfiltratorOS verifies the installed replacement and only then removes competing distribution applications. A shared native-build lock serialises heavyweight compilation and package operations.
 
-Calculator verification includes its canonical package, `/Programs/calculator`, BUILD-INFO, visible desktop launcher and icon, AppStream metadata, native PATH bridge and bundled MB Corpo fonts. This prevents a runnable binary from being mistaken for a complete desktop installation.
+Calculator verification includes its canonical package, `/Programs/calculator`, BUILD-INFO, visible desktop launcher and icon, AppStream metadata and native PATH bridge. Shared MB Corpo resources are verified through the native font cache rather than by requiring Calculator-owned duplicate font files.
 
 A GTK window follows each worker when a graphical session is available. Headless installation uses the same workers and status files. Execution failure is reported before the launcher returns success; completion belongs to the worker.
 
