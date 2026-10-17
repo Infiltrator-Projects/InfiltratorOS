@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.8
+
+- Establish provisional system-wide temporal resource directories for discovered calendars and clocks.
+- Qualify the built Debian package by verifying both temporal resource roots are present.
+- Keep the installed path provisional while the resource representation and final hierarchy are still being proven.
+
 ## 1.0.7
 
 - Resolve Calculator and System Monitor installers using their canonical package and command names.
