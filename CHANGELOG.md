@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.17
+
+- Fix Calculator post-install verification to validate the canonical persistent MB Corpo resources under `/System/Resources/Fonts` instead of the retired Calculator-owned `/usr/share/fonts/truetype/calculator` payload.
+- Keep Calculator verification aligned with the native font-cache architecture introduced in Calculator 0.2.50 and InfiltratorOS 1.0.16.
+- Add a regression gate requiring all three native font resource paths and rejecting any reintroduction of the retired Calculator-specific font directory.
+
 ## 1.0.16
 
 - Commit the three canonical MB Corpo TTF files directly under `assets/fonts/` in the InfiltratorOS repository and verify their fixed SHA-256 identities during package construction.
