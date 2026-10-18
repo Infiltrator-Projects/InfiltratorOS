@@ -49,6 +49,14 @@ The native command search path is `/System/Commands:/Programs` ahead of the inhe
 
 No native Infiltrator application is mirrored into `/usr/bin` merely for compatibility. The Linux base can keep its historical paths while the Infiltrator namespace grows independently.
 
+## Planned boot and modular filesystem integration
+
+The current native namespace reserves `/System/Kernel/Images` and `/System/Kernel/Modules` as a future OS-owned layout. During the intermediate Linux stage, kernel and initramfs images may remain in `/boot` and Linux `.ko` filesystem modules remain in their qualified Linux module paths; no premature migration is implied.
+
+The intended future Setup installer will select an on-disk format based on qualified capabilities, install Boot's corresponding read-only `.efi` reader, put the kernel and initramfs on a filesystem Boot can read, and install the corresponding operating-system-side filesystem modules. The boot-image filesystem and the runtime root filesystem may differ. A future native InfiltratorOS kernel may use a non-Linux module ABI, but the same separation remains.
+
+Filesystem limitations must be represented honestly: Setup may adapt the layout to avoid missing symbolic links when safe, but it cannot treat duplicated files as hard links or claim unsupported namespace, permission, mapping or durability semantics. A format that can hold a boot image does not automatically qualify as a system root. For the detailed, phased cross-project contract, see [Bootable Filesystem Integration Contract](https://github.com/Infiltrator-Projects/Filesystems/blob/main/docs/BOOTABLE_FILESYSTEM_CONTRACT.md).
+
 ## Transitional status
 
 The active Linux kernel remains in the distribution's existing boot/module/firmware locations until a future migration is explicitly designed and qualified. The current `/usr/lib/infiltrator/temporal` experiment is retained in parallel until temporal resources are migrated deliberately; it is not silently removed by establishing this hierarchy.

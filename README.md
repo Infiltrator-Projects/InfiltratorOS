@@ -19,6 +19,8 @@ use short names within the operating system:
 This repository currently supplies branding and native application provisioning;
 it does not yet implement the planned Setup installer.
 
+The shared [Bootable Filesystem Integration Contract](https://github.com/Infiltrator-Projects/Filesystems/blob/main/docs/BOOTABLE_FILESYSTEM_CONTRACT.md) defines the long-term goal: Setup installs Boot plus the selected filesystem's UEFI reader, boot payload, runtime modules and early-boot support, while preserving independent filesystem choices. The first AmigaDOS milestone uses an OFS disk **only to store a test Linux kernel**, not as an already-qualified operating-system root.
+
 The source package version is recorded in [`VERSION`](VERSION).
 
 ## Product direction
