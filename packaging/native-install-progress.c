@@ -63,8 +63,8 @@ static gboolean refresh_status(gpointer data)
         gtk_widget_show(ui->close_button);
     } else {
         cancel_success_close(ui);
-        gtk_label_set_markup(GTK_LABEL(ui->title),
-                             "<b>Optimising " INSTALL_NAME " for this computer</b>");
+        gtk_label_set_text(GTK_LABEL(ui->title),
+                           "Optimising " INSTALL_NAME " for this computer");
         gtk_widget_hide(ui->close_button);
     }
     return G_SOURCE_CONTINUE;
@@ -83,6 +83,33 @@ int main(int argc, char **argv)
     if (argc != 2 || strlen(argv[1]) >= sizeof(((Ui *)0)->status_path)) return EXIT_FAILURE;
     gtk_init(&argc, &argv);
 
+    /* Product typography, resolved by Fontconfig from the verified shared
+     * /System/Resources/Fonts cache. Retained Title faces keep a standalone
+     * host readable if the newer Text/Screen faces are not yet present. */
+    GtkCssProvider *typography = gtk_css_provider_new();
+    gtk_css_provider_load_from_data(typography,
+        "window, label, button, progressbar {"
+        " font-family: 'MB Corpo S Text WEB', 'MB Corpo S Title WEB';"
+        " font-weight: 400;"
+        "}"
+        "#installer-title {"
+        " font-family: 'MB Corpo S Title WEB', 'MB Corpo S Text WEB';"
+        " font-size: 19px; font-weight: 700;"
+        "}"
+        "#installer-stage {"
+        " font-family: 'MB Corpo S Text WEB Cond', 'MB Corpo S Text WEB';"
+        " font-size: 14px;"
+        "}"
+        "#installer-detail { font-size: 13px; }"
+        "#installer-progress text {"
+        " font-family: 'MB Corpo A Screen2 Cond WEB', 'MB Corpo A Title Cond WEB';"
+        " font-size: 14px; font-weight: 400;"
+        "}", -1, NULL);
+    gtk_style_context_add_provider_for_screen(
+        gdk_screen_get_default(), GTK_STYLE_PROVIDER(typography),
+        GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
+    g_object_unref(typography);
+
     Ui ui;
     memset(&ui, 0, sizeof(ui));
     g_strlcpy(ui.status_path, argv[1], sizeof(ui.status_path));
@@ -97,19 +124,23 @@ int main(int argc, char **argv)
     gtk_container_add(GTK_CONTAINER(ui.window), box);
 
     ui.title = gtk_label_new(NULL);
-    gtk_label_set_markup(GTK_LABEL(ui.title), "<b>Optimising " INSTALL_NAME " for this computer</b>");
+    gtk_widget_set_name(ui.title, "installer-title");
+    gtk_label_set_text(GTK_LABEL(ui.title), "Optimising " INSTALL_NAME " for this computer");
     gtk_widget_set_halign(ui.title, GTK_ALIGN_START);
     gtk_box_pack_start(GTK_BOX(box), ui.title, FALSE, FALSE, 0);
 
     ui.stage = gtk_label_new("Preparing native installation…");
+    gtk_widget_set_name(ui.stage, "installer-stage");
     gtk_widget_set_halign(ui.stage, GTK_ALIGN_START);
     gtk_box_pack_start(GTK_BOX(box), ui.stage, FALSE, FALSE, 0);
 
     ui.bar = gtk_progress_bar_new();
+    gtk_widget_set_name(ui.bar, "installer-progress");
     gtk_progress_bar_set_show_text(GTK_PROGRESS_BAR(ui.bar), TRUE);
     gtk_box_pack_start(GTK_BOX(box), ui.bar, FALSE, FALSE, 0);
 
     ui.detail = gtk_label_new("You can keep using the computer while this finishes.");
+    gtk_widget_set_name(ui.detail, "installer-detail");
     gtk_label_set_line_wrap(GTK_LABEL(ui.detail), TRUE);
     gtk_label_set_xalign(GTK_LABEL(ui.detail), 0.0F);
     gtk_box_pack_start(GTK_BOX(box), ui.detail, FALSE, FALSE, 0);

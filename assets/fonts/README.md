@@ -26,3 +26,5 @@ bundled in this font collection.
 This repository does not delete persistent native font files on uninstall.
 Other independent Infiltrator applications may still reference the older
 three filenames; updating their font contracts is a separate change.
+
+The audited internal family names and application-specific selections are documented in [docs/FONT-ROLES.md](../../docs/FONT-ROLES.md).

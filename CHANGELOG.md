@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.21
+
+- Document all 23 installed MB/Daimler faces by their internal font family names and allocate restrained, task-specific typography across InfiltratorOS, System Monitor, Calculator and Files.
+- Update the native GTK installation-progress window to use verified S Text, S Title, S Text Cond and A Screen typography when available, with existing Common Title families as an independent-install fallback.
+- Preserve all existing progress/status/installer operations and the immutable 23-font package manifest.
+
 ## 1.0.20
 
 - Replace three superseded 1.000 MB Corpo faces with the corresponding 1.010 Title builds, which preserve their glyph outlines and metrics but update corporate font metadata.
