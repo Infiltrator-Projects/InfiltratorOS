@@ -42,3 +42,11 @@ Files' worker treats its native layout and launcher as installed-state contracts
 A launcher writes a complete failure record if worker startup fails. Progress UI failure is logged separately and does not stop an already running worker. A worker's terminal status and log remain available after its progress window closes. Installation recipes verify a replacement before removing distribution applications.
 
 Desktop discovery currently selects the first eligible graphical user found in /proc. Multi-seat selection and physical boot qualification remain explicit integration concerns; neither is inferred from a package build.
+
+## Shared icon resources
+
+InfiltratorOS owns a verified icon payload seed in `/usr/lib/infiltratoros/icon-seed`.
+The post-install helper reconstructs only the product-owned Mercedes icon
+namespace at `/System/Resources/Icons/mercedes`, grouped by source application
+and normal/night variants. It preserves the host icon theme and does not
+require any individual app to own or uninstall the shared artwork.

@@ -18,6 +18,9 @@ PKGROOT="$WORK/root"
 THEME_DIR="$PKGROOT/usr/share/plymouth/themes/infiltratoros"
 TEMPORAL_ROOT="$PKGROOT/usr/lib/infiltrator/temporal"
 FONT_SEED_DIR="$PKGROOT/usr/lib/infiltratoros/font-seed"
+ICON_SEED_DIR="$PKGROOT/usr/lib/infiltratoros/icon-seed"
+ICON_PART_DIR="$ROOT/assets/icons"
+ICON_ARCHIVE_SHA256="8d55ccbe5f1eefe3800ab12578a641524742b9482410d95757317434523b342c"
 SYSTEM_ROOT="$PKGROOT/System"
 ARTWORK="$ROOT/assets/infiltratoros.png"
 ARTWORK_SHA256="4820891225675ed9bb0bb1bb82e3680df4bbdccc736ce5d092b80e95e5d05978"
@@ -30,6 +33,7 @@ mkdir -p \
     "$PKGROOT/etc/profile.d" \
     "$PKGROOT/usr/lib/infiltratoros" \
     "$FONT_SEED_DIR" \
+    "$ICON_SEED_DIR" \
     "$TEMPORAL_ROOT/calendars" \
     "$TEMPORAL_ROOT/clocks" \
     "$SYSTEM_ROOT/Commands" \
@@ -56,12 +60,20 @@ test "$(wc -l < "$FONT_MANIFEST")" -eq 23
 test "$(find "$ROOT/assets/fonts" -maxdepth 1 -type f -name '*.ttf' | wc -l)" -eq 23
 test "$(awk '{print $1}' "$FONT_MANIFEST" | sort -u | wc -l)" -eq 23
 (cd "$ROOT/assets/fonts" && sha256sum -c SHA256SUMS)
+test "$(find "$ICON_PART_DIR" -maxdepth 1 -type f -name 'mercedes-icons-v1.part??' | wc -l)" -eq 10
+test "$(wc -l < "$ICON_PART_DIR/PART_SHA256SUMS")" -eq 10
+(cd "$ICON_PART_DIR" && sha256sum -c PART_SHA256SUMS)
+cat "$ICON_PART_DIR"/mercedes-icons-v1.part?? > "$ICON_SEED_DIR/mercedes-icons-v1.tar.xz"
+printf '%s  %s\n' "$ICON_ARCHIVE_SHA256" "$ICON_SEED_DIR/mercedes-icons-v1.tar.xz" | sha256sum -c -
+test "$(tar -tJf "$ICON_SEED_DIR/mercedes-icons-v1.tar.xz" | grep -c '^mercedes/')" -eq 1233
 
 sed "s/@VERSION@/$VERSION/g" "$ROOT/debian/control.in" > "$PKGROOT/DEBIAN/control"
 install -m 0755 "$ROOT/debian/postinst" "$PKGROOT/DEBIAN/postinst"
 install -m 0755 "$ROOT/debian/prerm" "$PKGROOT/DEBIAN/prerm"
 install -m 0755 "$ROOT/packaging/ensure-native-fonts.sh" \
     "$PKGROOT/usr/lib/infiltratoros/ensure-native-fonts"
+install -m 0755 "$ROOT/packaging/ensure-native-icons.sh" \
+    "$PKGROOT/usr/lib/infiltratoros/ensure-native-icons"
 install -m 0644 "$FONT_MANIFEST" "$FONT_SEED_DIR/SHA256SUMS"
 while IFS= read -r entry; do
     font_file=${entry#*  }

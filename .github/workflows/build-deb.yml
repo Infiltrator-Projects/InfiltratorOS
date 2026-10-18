@@ -82,6 +82,18 @@ jobs:
           grep -Fq '<dir>/System/Resources/Fonts</dir>' "$native_root/etc/fonts/conf.d/90-infiltrator-native-fonts.conf"
           INFILTRATR_NATIVE_ROOT="$native_root" INFILTRATR_FONT_SOURCE_DIR="$font_seed" "$helper"
           (cd "$staged_fonts" && sha256sum -c "$font_seed/SHA256SUMS")
+          icon_seed="$RUNNER_TEMP/payload/usr/lib/infiltratoros/icon-seed"
+          test -f "$icon_seed/mercedes-icons-v1.tar.xz"
+          printf '%s  %s\n' '8d55ccbe5f1eefe3800ab12578a641524742b9482410d95757317434523b342c' "$icon_seed/mercedes-icons-v1.tar.xz" | sha256sum -c -
+          icon_helper="$RUNNER_TEMP/payload/usr/lib/infiltratoros/ensure-native-icons"
+          test -x "$icon_helper"
+          sh -n "$icon_helper"
+          test "$(tar -tJf "$icon_seed/mercedes-icons-v1.tar.xz" | grep -c '^mercedes/')" -eq 1233
+          INFILTRATR_NATIVE_ROOT="$native_root" INFILTRATR_ICON_SOURCE_DIR="$icon_seed" "$icon_helper"
+          native_icons="$native_root/System/Resources/Icons/mercedes"
+          test "$(find "$native_icons" -type f | wc -l)" -eq 1233
+          INFILTRATR_NATIVE_ROOT="$native_root" INFILTRATR_ICON_SOURCE_DIR="$icon_seed" "$icon_helper"
+          test "$(find "$native_icons" -type f | wc -l)" -eq 1233
           for product in system-monitor calculator files; do
             for program in "install-$product" "start-$product-install" "$product-progress"; do
               test -x "$RUNNER_TEMP/payload/usr/lib/infiltratoros/$program"

@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.0.22 — Mercedes native icon resources
+
+- Add a curated, checksum-verified portable Mercedes icon collection extracted from the six supplied Android application archives: 1,233 named icons and 816 distinct binaries.
+- Install persistent application/variant-namespaced icons under /System/Resources/Icons/mercedes via a package seed, without modifying the desktop's default icon theme.
+- Make icon installation idempotent, validate all image digests and fail closed for unsafe resource paths; qualify archive and staging behavior in CI.
+- Exclude compiled Android XML vectors, nine-patches, animations, photographs and parking-sequence diagrams, which are not directly portable desktop icons.
+
+
 ## 1.0.21
 
 - Document all 23 installed MB/Daimler faces by their internal font family names and allocate restrained, task-specific typography across InfiltratorOS, System Monitor, Calculator and Files.
