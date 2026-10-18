@@ -10,6 +10,7 @@ The root [README](../README.md) is the product overview. This index separates ma
 - [Native filesystem](FILESYSTEM.md) — /System, /Programs and shared resources.
 - [Validation](VALIDATION.md) — actual build and qualification evidence.
 - [Changelog](../CHANGELOG.md) — release and implementation history.
+- [Four-repository alignment review (18 October 2026)](ALIGNMENT-REVIEW-2026-10-18.md) — dated repository and UI audit with outstanding concrete gaps.
 
 ## Documentation ownership
 
