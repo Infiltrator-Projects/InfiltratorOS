@@ -35,7 +35,7 @@ jobs:
           dpkg-deb -x dist/*.deb "$RUNNER_TEMP/payload"
           cmp assets/infiltratoros.png "$RUNNER_TEMP/payload/usr/share/plymouth/themes/infiltratoros/infiltratoros.png"
           test ! -e "$RUNNER_TEMP/payload/usr/lib/infiltrator/temporal"
-          dpkg-deb -f dist/*.deb Depends | grep -Fq "infiltrator-calendar-resources (>= 1.19.66)"
+          dpkg-deb -f dist/*.deb Depends | grep -Fq "infiltrator-calendar-resources (>= 1.19.67)"
           test -f "$RUNNER_TEMP/payload/etc/profile.d/90-infiltratoros-native-path.sh"
           sh -n "$RUNNER_TEMP/payload/etc/profile.d/90-infiltratoros-native-path.sh"
           test ! -e "$RUNNER_TEMP/payload/System/Programs"

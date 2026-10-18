@@ -4,7 +4,7 @@ Section: misc
 Priority: optional
 Architecture: amd64
 Maintainer: Infiltrator Projects <noreply@infiltrator-projects.invalid>
-Depends: plymouth, apt, wget, ca-certificates, bash, fontconfig, infiltrator-calendar-resources (>= 1.19.66), libgtk-3-0 | libgtk-3-0t64
+Depends: plymouth, apt, wget, ca-certificates, bash, fontconfig, infiltrator-calendar-resources (>= 1.19.67), libgtk-3-0 | libgtk-3-0t64
 Description: InfiltratorOS branding and native application integration
  Installs the canonical InfiltratorOS Plymouth splash for Debian and
  Linux Mint derived systems, selects it as the active theme, rebuilds
