@@ -66,13 +66,9 @@ jobs:
           font_root="$RUNNER_TEMP/payload/System/Resources/Fonts"
           test "$(find "$font_root" -maxdepth 1 -type f -name '*.ttf' | wc -l)" -eq 0
           font_seed="$RUNNER_TEMP/payload/usr/lib/infiltratoros/font-seed"
-          test "$(find "$font_seed" -maxdepth 1 -type f -name '*.ttf' | wc -l)" -eq 3
-          cmp assets/fonts/mb_corpo_a_cond_regular.ttf "$font_seed/mb_corpo_a_cond_regular.ttf"
-          cmp assets/fonts/mb_corpo_s_bold.ttf "$font_seed/mb_corpo_s_bold.ttf"
-          cmp assets/fonts/mb_corpo_s_regular.ttf "$font_seed/mb_corpo_s_regular.ttf"
-          printf '%s  %s\n' c8bcd7e1a7d71169b38491d9b7c1ffe7ba7b46e888f0c1219931343a47bc0e05 "$font_seed/mb_corpo_a_cond_regular.ttf" | sha256sum -c -
-          printf '%s  %s\n' d37ea986e2344d83390f94f170e6272b56efd00bfec808afe8314c4ca45d43b4 "$font_seed/mb_corpo_s_bold.ttf" | sha256sum -c -
-          printf '%s  %s\n' 94ede6629443c03d4362dcef425fb3ff520be5d654370021a34e81286804465c "$font_seed/mb_corpo_s_regular.ttf" | sha256sum -c -
+          test "$(find "$font_seed" -maxdepth 1 -type f -name '*.ttf' | wc -l)" -eq 23
+          cmp assets/fonts/SHA256SUMS "$font_seed/SHA256SUMS"
+          (cd "$font_seed" && sha256sum -c SHA256SUMS)
           helper="$RUNNER_TEMP/payload/usr/lib/infiltratoros/ensure-native-fonts"
           test -x "$helper"
           sh -n "$helper"
@@ -81,11 +77,11 @@ jobs:
           native_root="$RUNNER_TEMP/native-root"
           INFILTRATR_NATIVE_ROOT="$native_root" INFILTRATR_FONT_SOURCE_DIR="$font_seed" "$helper"
           staged_fonts="$native_root/System/Resources/Fonts"
-          printf '%s  %s\n' c8bcd7e1a7d71169b38491d9b7c1ffe7ba7b46e888f0c1219931343a47bc0e05 "$staged_fonts/mb_corpo_a_cond_regular.ttf" | sha256sum -c -
-          printf '%s  %s\n' d37ea986e2344d83390f94f170e6272b56efd00bfec808afe8314c4ca45d43b4 "$staged_fonts/mb_corpo_s_bold.ttf" | sha256sum -c -
-          printf '%s  %s\n' 94ede6629443c03d4362dcef425fb3ff520be5d654370021a34e81286804465c "$staged_fonts/mb_corpo_s_regular.ttf" | sha256sum -c -
+          test "$(find "$staged_fonts" -maxdepth 1 -type f -name '*.ttf' | wc -l)" -eq 23
+          (cd "$staged_fonts" && sha256sum -c "$font_seed/SHA256SUMS")
           grep -Fq '<dir>/System/Resources/Fonts</dir>' "$native_root/etc/fonts/conf.d/90-infiltrator-native-fonts.conf"
-          INFILTRATR_NATIVE_ROOT="$native_root" INFILTRATR_FONT_SOURCE_DIR="$RUNNER_TEMP/does-not-exist" "$helper"
+          INFILTRATR_NATIVE_ROOT="$native_root" INFILTRATR_FONT_SOURCE_DIR="$font_seed" "$helper"
+          (cd "$staged_fonts" && sha256sum -c "$font_seed/SHA256SUMS")
           for product in system-monitor calculator files; do
             for program in "install-$product" "start-$product-install" "$product-progress"; do
               test -x "$RUNNER_TEMP/payload/usr/lib/infiltratoros/$program"

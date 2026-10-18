@@ -316,9 +316,9 @@ static const char *installed_contract_error(void)
         return "Calculator AppStream metadata is missing after installation";
     if (!regular_file("/etc/profile.d/91-infiltrator-calculator-path.sh"))
         return "Calculator native PATH bridge is missing after installation";
-    if (!regular_file("/System/Resources/Fonts/mb_corpo_a_cond_regular.ttf") ||
-        !regular_file("/System/Resources/Fonts/mb_corpo_s_bold.ttf") ||
-        !regular_file("/System/Resources/Fonts/mb_corpo_s_regular.ttf"))
+    if (!regular_file("/System/Resources/Fonts/mb_corpo_a_title_cond_regular.ttf") ||
+        !regular_file("/System/Resources/Fonts/mb_corpo_s_title_bold.ttf") ||
+        !regular_file("/System/Resources/Fonts/mb_corpo_s_title_regular.ttf"))
         return "Calculator MB Corpo native font resources are incomplete after installation";
     return NULL;
 }

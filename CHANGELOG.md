@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.20
+
+- Replace three superseded 1.000 MB Corpo faces with the corresponding 1.010 Title builds, which preserve their glyph outlines and metrics but update corporate font metadata.
+- Retain 23 distinct MB Corpo and Daimler font resources, excluding non-Mercedes third-party fonts, with readable filenames and a single verified SHA-256 manifest.
+- Package and install all 23 fonts as persistent shared native resources without downloading font payloads at installation time.
+- Extend Calculator font-cache qualification and release tests to verify the new named resources and the full 23-font set.
+
 ## 1.0.19
 
 - Let native-install progress windows recover cleanly when a failed installation is retried and later succeeds.

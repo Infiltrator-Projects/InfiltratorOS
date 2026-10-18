@@ -7,13 +7,6 @@ set -eu
 
 umask 022
 
-BRAND_FILE="mb_corpo_a_cond_regular.ttf"
-UI_BOLD_FILE="mb_corpo_s_bold.ttf"
-UI_REGULAR_FILE="mb_corpo_s_regular.ttf"
-BRAND_SHA256="c8bcd7e1a7d71169b38491d9b7c1ffe7ba7b46e888f0c1219931343a47bc0e05"
-UI_BOLD_SHA256="d37ea986e2344d83390f94f170e6272b56efd00bfec808afe8314c4ca45d43b4"
-UI_REGULAR_SHA256="94ede6629443c03d4362dcef425fb3ff520be5d654370021a34e81286804465c"
-
 ROOT="${INFILTRATR_NATIVE_ROOT:-}"
 case "$ROOT" in
     ""|/*) ;;
@@ -78,9 +71,32 @@ ensure_font() {
     font_matches "$expected" "$target"
 }
 
-ensure_font "$BRAND_SHA256" "$BRAND_FILE"
-ensure_font "$UI_BOLD_SHA256" "$UI_BOLD_FILE"
-ensure_font "$UI_REGULAR_SHA256" "$UI_REGULAR_FILE"
+MANIFEST="$SOURCE_DIR/SHA256SUMS"
+if [ ! -f "$MANIFEST" ] || [ -L "$MANIFEST" ]; then
+    echo "Missing or unsafe InfiltratorOS font manifest: $MANIFEST" >&2
+    exit 4
+fi
+
+font_count=0
+while IFS= read -r entry || [ -n "$entry" ]; do
+    [ -n "$entry" ] || continue
+    checksum=${entry%%  *}
+    font_file=${entry#*  }
+    case "$checksum" in
+        ""|*[!0-9a-f]*) echo "Invalid font hash in manifest" >&2; exit 4 ;;
+    esac
+    [ "${#checksum}" -eq 64 ] || { echo "Invalid font SHA-256 length" >&2; exit 4; }
+    case "$font_file" in
+        mb_corpo_*.ttf|daimler_*.ttf) ;;
+        *) echo "Unexpected font filename in manifest: $font_file" >&2; exit 4 ;;
+    esac
+    case "$font_file" in
+        */*|*..*) echo "Unsafe font filename in manifest: $font_file" >&2; exit 4 ;;
+    esac
+    ensure_font "$checksum" "$font_file"
+    font_count=$((font_count + 1))
+done < "$MANIFEST"
+[ "$font_count" -eq 23 ] || { echo "Incomplete InfiltratorOS font manifest" >&2; exit 4; }
 
 conf_tmp="$FONTCONFIG_FILE.new.$$"
 cat > "$conf_tmp" <<'EOF'

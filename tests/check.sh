@@ -17,9 +17,9 @@ grep -Fq '"--system-package-mode"' "$calculator_worker"
 grep -Fq '"/Programs/calculator"' "$calculator_worker"
 grep -Fq 'net.ssmith.calculator.desktop' "$calculator_worker"
 grep -Fq 'usr/share/icons/hicolor/scalable/apps/calculator.svg' "$calculator_worker"
-grep -Fq '"/System/Resources/Fonts/mb_corpo_a_cond_regular.ttf"' "$calculator_worker"
-grep -Fq '"/System/Resources/Fonts/mb_corpo_s_bold.ttf"' "$calculator_worker"
-grep -Fq '"/System/Resources/Fonts/mb_corpo_s_regular.ttf"' "$calculator_worker"
+grep -Fq '"/System/Resources/Fonts/mb_corpo_a_title_cond_regular.ttf"' "$calculator_worker"
+grep -Fq '"/System/Resources/Fonts/mb_corpo_s_title_bold.ttf"' "$calculator_worker"
+grep -Fq '"/System/Resources/Fonts/mb_corpo_s_title_regular.ttf"' "$calculator_worker"
 if grep -Fq '"/usr/bin/calculator"' "$calculator_worker"; then
     echo "Calculator worker must not require the obsolete /usr/bin executable." >&2
     exit 1

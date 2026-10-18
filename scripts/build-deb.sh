@@ -21,13 +21,7 @@ FONT_SEED_DIR="$PKGROOT/usr/lib/infiltratoros/font-seed"
 SYSTEM_ROOT="$PKGROOT/System"
 ARTWORK="$ROOT/assets/infiltratoros.png"
 ARTWORK_SHA256="4820891225675ed9bb0bb1bb82e3680df4bbdccc736ce5d092b80e95e5d05978"
-BRAND_FONT="$ROOT/assets/fonts/mb_corpo_a_cond_regular.ttf"
-UI_BOLD_FONT="$ROOT/assets/fonts/mb_corpo_s_bold.ttf"
-UI_REGULAR_FONT="$ROOT/assets/fonts/mb_corpo_s_regular.ttf"
-BRAND_SHA256="c8bcd7e1a7d71169b38491d9b7c1ffe7ba7b46e888f0c1219931343a47bc0e05"
-UI_BOLD_SHA256="d37ea986e2344d83390f94f170e6272b56efd00bfec808afe8314c4ca45d43b4"
-UI_REGULAR_SHA256="94ede6629443c03d4362dcef425fb3ff520be5d654370021a34e81286804465c"
-
+FONT_MANIFEST="$ROOT/assets/fonts/SHA256SUMS"
 rm -rf "$WORK"
 mkdir -p \
     "$PKGROOT/DEBIAN" \
@@ -57,18 +51,22 @@ mkdir -p \
     "$PKGROOT/Volumes" \
     "$PKGROOT/Temporary"
 printf '%s  %s\n' "$ARTWORK_SHA256" "$ARTWORK" | sha256sum -c -
-printf '%s  %s\n' "$BRAND_SHA256" "$BRAND_FONT" | sha256sum -c -
-printf '%s  %s\n' "$UI_BOLD_SHA256" "$UI_BOLD_FONT" | sha256sum -c -
-printf '%s  %s\n' "$UI_REGULAR_SHA256" "$UI_REGULAR_FONT" | sha256sum -c -
+test -f "$FONT_MANIFEST"
+test "$(wc -l < "$FONT_MANIFEST")" -eq 23
+test "$(find "$ROOT/assets/fonts" -maxdepth 1 -type f -name '*.ttf' | wc -l)" -eq 23
+test "$(awk '{print $1}' "$FONT_MANIFEST" | sort -u | wc -l)" -eq 23
+(cd "$ROOT/assets/fonts" && sha256sum -c SHA256SUMS)
 
 sed "s/@VERSION@/$VERSION/g" "$ROOT/debian/control.in" > "$PKGROOT/DEBIAN/control"
 install -m 0755 "$ROOT/debian/postinst" "$PKGROOT/DEBIAN/postinst"
 install -m 0755 "$ROOT/debian/prerm" "$PKGROOT/DEBIAN/prerm"
 install -m 0755 "$ROOT/packaging/ensure-native-fonts.sh" \
     "$PKGROOT/usr/lib/infiltratoros/ensure-native-fonts"
-install -m 0644 "$BRAND_FONT" "$FONT_SEED_DIR/mb_corpo_a_cond_regular.ttf"
-install -m 0644 "$UI_BOLD_FONT" "$FONT_SEED_DIR/mb_corpo_s_bold.ttf"
-install -m 0644 "$UI_REGULAR_FONT" "$FONT_SEED_DIR/mb_corpo_s_regular.ttf"
+install -m 0644 "$FONT_MANIFEST" "$FONT_SEED_DIR/SHA256SUMS"
+while IFS= read -r entry; do
+    font_file=${entry#*  }
+    install -m 0644 "$ROOT/assets/fonts/$font_file" "$FONT_SEED_DIR/$font_file"
+done < "$FONT_MANIFEST"
 install -m 0644 "$ROOT/packaging/infiltrator-native-path.sh" \
     "$PKGROOT/etc/profile.d/90-infiltratoros-native-path.sh"
 

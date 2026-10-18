@@ -4,6 +4,13 @@
 
 `scripts/build-deb.sh` owns package membership and reads the root VERSION. It accepts only a numeric semantic version before constructing staging paths, requires the supported amd64 host, verifies the approved artwork, and uses SOURCE_DATE_EPOCH for deterministic Debian archives.
 
+The 23 Mercedes-Benz/Daimler fonts are independently named, checked against a
+single `assets/fonts/SHA256SUMS` manifest and seeded in the InfiltratorOS
+package; the persistent native font cache is established by
+`packaging/ensure-native-fonts.sh`. The three obsolete version-1.000 MB Corpo
+files are not distributed. The font cache remains outside Debian package
+ownership to avoid removal by unrelated application uninstalls.
+
 The InfiltratorOS package owns establishment of the native filesystem skeleton documented in `FILESYSTEM.md`. The hierarchy is additive over the Debian/Linux base during migration: packaging creates the native roots and role directories, while subsystem code decides how individual capabilities are discovered and used. Named user directories are deliberately outside package ownership.
 
 `stage-theme.c` stages the approved theme; `select-theme.c` owns system theme selection. Debian maintainer scripts own invocation during package installation and removal.
