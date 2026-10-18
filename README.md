@@ -1,5 +1,7 @@
 # InfiltratorOS
 
+**InfiltratorOS product family:** [InfiltratorOS](https://github.com/Infiltrator-Projects/InfiltratorOS) · [System Monitor](https://github.com/Infiltrator-Projects/System-Monitor) · [Calculator](https://github.com/Infiltrator-Projects/Calculator) · [Files](https://github.com/Infiltrator-Projects/Files). Independently installable components, one [product-family and UI contract](docs/PRODUCT-FAMILY.md).
+
 The operating-system integration project for Infiltrator Projects. The current deliverable is an amd64 Debian/Linux Mint package containing the approved Plymouth theme and native provisioning for System Monitor, Calculator and Files.
 
 [Philosophy](docs/PHILOSOPHY.md) · [Architecture](docs/ARCHITECTURE.md) · [Filesystem](docs/FILESYSTEM.md) · [Validation](docs/VALIDATION.md) · [Changes](CHANGELOG.md). [VERSION](VERSION) owns package identity.
