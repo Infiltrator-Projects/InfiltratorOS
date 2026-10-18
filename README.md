@@ -64,7 +64,7 @@ InfiltratorOS adds `/System/Commands:/Programs` ahead of the inherited PATH for 
 
 The earlier provisional temporal discovery roots at `/usr/lib/infiltrator/temporal/calendars` and `/usr/lib/infiltrator/temporal/clocks` remain installed in parallel for now. They are not treated as a frozen external ABI and will not be removed implicitly while the new native hierarchy is being evaluated.
 
-The operating-system package depends directly on the standard `infiltrator-calendar-resources` capability pack. Calendar applications and System Settings consume those system resources rather than owning them, so removing either application does not remove the installed calendar implementations.
+From 1.0.24, the operating-system package depends directly on `infiltrator-calendar-resources (>= 1.19.66)`, built, released and published by Common (`Infiltrator-Projects/Libraries`). APT installs all 30 calendar and 23 clock modules into `/System/Resources/Calendars/` and `/System/Resources/Clocks/`. Calendar, Files and System Settings consume these independent resources; removing any consumer leaves the modules installed. Without optional modules, the applications use normal host calendars and timezones.
 
 After the package transaction, separate native workers resolve the latest published System Monitor, Calculator and Files releases. Each worker downloads the application's own published native installer and invokes its system-package mode, so the application repository remains the authority for compiler policy, PGO/LTO behaviour, package layout and native build metadata. InfiltratorOS verifies each installed native application and a shared native-build lock serialises heavyweight compilation and package operations.
 

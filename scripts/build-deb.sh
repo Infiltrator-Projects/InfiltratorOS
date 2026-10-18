@@ -16,7 +16,6 @@ DIST="$ROOT/dist"
 WORK="$ROOT/.build/infiltratoros_${VERSION}"
 PKGROOT="$WORK/root"
 THEME_DIR="$PKGROOT/usr/share/plymouth/themes/infiltratoros"
-TEMPORAL_ROOT="$PKGROOT/usr/lib/infiltrator/temporal"
 FONT_SEED_DIR="$PKGROOT/usr/lib/infiltratoros/font-seed"
 ICON_SEED_DIR="$PKGROOT/usr/lib/infiltratoros/icon-seed"
 ICON_PART_DIR="$ROOT/assets/icons"
@@ -34,8 +33,6 @@ mkdir -p \
     "$PKGROOT/usr/lib/infiltratoros" \
     "$FONT_SEED_DIR" \
     "$ICON_SEED_DIR" \
-    "$TEMPORAL_ROOT/calendars" \
-    "$TEMPORAL_ROOT/clocks" \
     "$SYSTEM_ROOT/Commands" \
     "$SYSTEM_ROOT/Libraries" \
     "$SYSTEM_ROOT/Devices" \
