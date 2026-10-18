@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.23 — Install icons directly in Icons
+
+- Install all 1,233 icons directly in /System/Resources/Icons, retaining application and normal/night identities in filenames.
+- Migrate the 1.0.22 subdirectory after verifying all replacement icons; preserve locally modified and added files, and remove only empty legacy directories.
+- Verify fresh installation, repeat installation and migration, including custom-file preservation and unsafe destination rejection.
+
 ## 1.0.22 — Mercedes native icon resources
 
 - Add a curated, checksum-verified portable Mercedes icon collection extracted from the six supplied Android application archives: 1,233 named icons and 816 distinct binaries.

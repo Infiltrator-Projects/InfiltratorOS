@@ -1,6 +1,6 @@
 #!/bin/sh
 # SPDX-License-Identifier: GPL-3.0-or-later
-# Install the verified Mercedes icon catalogue as persistent system resources.
+# Install the verified icon catalogue directly in the shared Icons directory.
 # The source archive is package-owned; individual applications do not own the
 # installed icons. A package removal must never delete shared icon resources.
 set -eu
@@ -24,12 +24,13 @@ for path in "$(native_path /System)" "$(native_path /System/Resources)" \
             "$(native_path /System/Resources/Icons/mercedes)"; do
     [ ! -L "$path" ] || { echo "Unsafe icon resource symlink: $path" >&2; exit 3; }
 done
-ICON_ROOT=$(native_path /System/Resources/Icons/mercedes)
+ICON_ROOT=$(native_path /System/Resources/Icons)
+LEGACY_ROOT="$ICON_ROOT/mercedes"
 # Paths are fixed, rather than derived from untrusted archive entries.
 for app in adapter connect eco-coach finance logbook remote-parking; do
     for variant in default night; do
-        dir="$ICON_ROOT/$app/$variant"
-        [ ! -L "$ICON_ROOT/$app" ] && [ ! -L "$dir" ] || {
+        dir="$LEGACY_ROOT/$app/$variant"
+        [ ! -L "$LEGACY_ROOT/$app" ] && [ ! -L "$dir" ] || {
             echo "Unsafe icon directory: $dir" >&2; exit 3;
         }
     done
@@ -80,8 +81,16 @@ while IFS= read -r entry || [ -n "$entry" ]; do
         *.png|*.webp) ;;
         *) echo "Invalid icon format: $name" >&2; exit 4 ;;
     esac
+    app=${name%%/*}
+    relative=${name#*/}
+    variant=${relative%%/*}
+    filename=${relative#*/}
+    case "$filename" in
+        ''|*[!a-zA-Z0-9._-]*) echo "Invalid icon filename: $filename" >&2; exit 4 ;;
+    esac
     from="$work/extracted/mercedes/$name"
-    to="$ICON_ROOT/$name"
+    to="$ICON_ROOT/$app-$variant-$filename"
+    [ ! -L "$to" ] || { echo "Unsafe icon destination: $to" >&2; exit 3; }
     if [ -f "$to" ] && [ ! -L "$to" ] && \
         printf '%s  %s\n' "$digest" "$to" | sha256sum -c - >/dev/null 2>&1; then
         count=$((count + 1))
@@ -93,12 +102,32 @@ while IFS= read -r entry || [ -n "$entry" ]; do
     staged="$directory/.${name##*/}.new.$$"
     rm -f -- "$staged"
     ln -- "$from" "$staged" 2>/dev/null || install -m 0644 -- "$from" "$staged"
-    mv -f -- "$staged" "$to"
+    mv -fT -- "$staged" "$to"
     staged=''
     printf '%s  %s\n' "$digest" "$to" | sha256sum -c - >/dev/null
     count=$((count + 1))
 done < "$manifest"
-[ "$count" -eq 1233 ] || { echo 'Incorrect Mercedes icon count' >&2; exit 4; }
+[ "$count" -eq 1233 ] || { echo 'Incorrect icon count' >&2; exit 4; }
+
+# Upgrade the 1.0.22 layout only after every replacement is verified. Remove
+# only unchanged seed files; custom files and locally changed icons survive.
+while IFS= read -r entry || [ -n "$entry" ]; do
+    [ -n "$entry" ] || continue
+    digest=${entry%%  *}
+    name=${entry#*  }
+    previous="$LEGACY_ROOT/$name"
+    if [ -f "$previous" ] && [ ! -L "$previous" ] && \
+        printf '%s  %s\n' "$digest" "$previous" | sha256sum -c - >/dev/null 2>&1; then
+        rm -f -- "$previous"
+    fi
+done < "$manifest"
+for app in adapter connect eco-coach finance logbook remote-parking; do
+    for variant in default night; do
+        rmdir -- "$LEGACY_ROOT/$app/$variant" 2>/dev/null || :
+    done
+    rmdir -- "$LEGACY_ROOT/$app" 2>/dev/null || :
+done
+rmdir -- "$LEGACY_ROOT" 2>/dev/null || :
 # No icon cache rebuild: these are app-selectable resources, not desktop
 # theme replacements. Existing GTK/desktop icon themes remain untouched.
-printf 'Verified %s Mercedes icons in %s\n' "$count" "$ICON_ROOT"
+printf 'Verified %s icons in %s\n' "$count" "$ICON_ROOT"

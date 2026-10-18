@@ -2,6 +2,7 @@
 set -eu
 ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
 sh -n "$ROOT/packaging/ensure-native-icons.sh"
+sh "$ROOT/tests/native-icons.sh"
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT HUP INT TERM
 for contract in process status; do

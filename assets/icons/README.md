@@ -21,7 +21,12 @@ The canonical `mercedes-icons-v1.tar.xz` file is stored in ten size-bounded
 numbered Git blobs; `PART_SHA256SUMS` verifies every piece. The Debian build
 reassembles and verifies the exact archive SHA-256
 `8d55ccbe5f1eefe3800ab12578a641524742b9482410d95757317434523b342c`. The archive is then installed as a single package-owned seed,
-and an idempotent helper populates `/System/Resources/Icons/mercedes`.
+and an idempotent helper populates `/System/Resources/Icons/` directly, with
+filenames such as `adapter-default-arrow_link_icon.png`. Application and
+normal/night distinctions live in the filenames, without resource subdirectories.
+On upgrade from 1.0.22, verified unchanged files in the old `mercedes` tree are
+removed after the new copies are verified. Modified and added files are retained;
+only empty legacy directories are removed.
 No application installer or package purge removes this system-owned catalogue.
 
 **Rights:** these are extracted manufacturer artworks. The APK files are not

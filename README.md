@@ -84,12 +84,16 @@ A GTK window follows each worker when a graphical session is available. Headless
 
 Application versions are resolved at installation time. The OS package does not maintain a second application release catalogue.
 
-## Shared Mercedes icon resources
+## Shared icon resources
 
 InfiltratorOS 1.0.22 and newer seed a deduplicated catalogue of 1,233
 portable PNG/WebP icon identities (816 distinct image binaries), extracted from
 six Mercedes Android application archives supplied for this project. The archive
 is checksum-verified as part of the package build and again before installation.
-Icons are installed under `/System/Resources/Icons/mercedes/<app>/<variant>/`.
+From 1.0.23, all icons are installed directly in `/System/Resources/Icons/`.
+Filenames use `<app>-<variant>-<resource>.png` (or `.webp`) to retain every
+application and normal/night variant without filename clashes. Upgrades migrate
+the old subdirectory by removing only verified, unchanged copies after the
+replacement icons have been installed; locally changed or added files survive.
 They do not overwrite the desktop's existing icon theme and survive removal of
 individual Infiltrator applications. See [icon inventory](assets/icons/README.md).

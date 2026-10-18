@@ -46,7 +46,9 @@ Desktop discovery currently selects the first eligible graphical user found in /
 ## Shared icon resources
 
 InfiltratorOS owns a verified icon payload seed in `/usr/lib/infiltratoros/icon-seed`.
-The post-install helper reconstructs only the product-owned Mercedes icon
-namespace at `/System/Resources/Icons/mercedes`, grouped by source application
-and normal/night variants. It preserves the host icon theme and does not
+The post-install helper installs every icon directly in `/System/Resources/Icons/`.
+Filenames encode the source application, normal/night variant and original resource
+name. The old `mercedes` directory is migrated only after every new copy is verified;
+cleanup removes only unchanged seed files and empty directories. It preserves
+custom files, locally modified legacy icons and the host icon theme, and does not
 require any individual app to own or uninstall the shared artwork.
