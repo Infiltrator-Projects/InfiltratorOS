@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.0.26 — Native Defragmenter provisioning
+
+- Add Defragmenter as an additive fourth native-provisioned application with the existing shared build lock, GTK progress window, status file and failure log.
+- Resolve the latest published Defragmenter native compiler and verify its SHA-256 against the release manifest before executing downloaded code as root.
+- Compile with the product-owned package builder and -O3, -march=native, -mtune=native and LTO; verify native +native1 package identity, Test Media, C++ services and desktop launchers.
+- Preserve Defragmenter's own Linux executable compatibility and existing filesystem utilities. Trained two-pass PGO remains outside Defragmenter's current local-installer contract.
+- Extend release packaging and CI qualification to the fourth worker.
+
 ## 1.0.23 — Install icons directly in Icons
 
 - Install all 1,233 icons directly in /System/Resources/Icons, retaining application and normal/night identities in filenames.

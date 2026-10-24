@@ -1,8 +1,8 @@
 # InfiltratorOS
 
-**InfiltratorOS product family:** [InfiltratorOS](https://github.com/Infiltrator-Projects/InfiltratorOS) · [System Monitor](https://github.com/Infiltrator-Projects/System-Monitor) · [Calculator](https://github.com/Infiltrator-Projects/Calculator) · [Files](https://github.com/Infiltrator-Projects/Files). Independently installable components, one [product-family and UI contract](docs/PRODUCT-FAMILY.md).
+**InfiltratorOS product family:** [InfiltratorOS](https://github.com/Infiltrator-Projects/InfiltratorOS) · [System Monitor](https://github.com/Infiltrator-Projects/System-Monitor) · [Calculator](https://github.com/Infiltrator-Projects/Calculator) · [Files](https://github.com/Infiltrator-Projects/Files) · [Defragmenter](https://github.com/Infiltrator-Projects/Defragmenter). Independently installable components, one [product-family and UI contract](docs/PRODUCT-FAMILY.md).
 
-The operating-system integration project for Infiltrator Projects. The current deliverable is an amd64 Debian/Linux Mint package containing the approved Plymouth theme and native provisioning for System Monitor, Calculator and Files.
+The operating-system integration project for Infiltrator Projects. The current deliverable is an amd64 Debian/Linux Mint package containing the approved Plymouth theme and native provisioning for System Monitor, Calculator, Files and Defragmenter.
 
 [Philosophy](docs/PHILOSOPHY.md) · [Architecture](docs/ARCHITECTURE.md) · [Filesystem](docs/FILESYSTEM.md) · [Validation](docs/VALIDATION.md) · [Changes](CHANGELOG.md). [VERSION](VERSION) owns package identity.
 
@@ -66,7 +66,9 @@ The earlier provisional temporal discovery roots at `/usr/lib/infiltrator/tempor
 
 From 1.0.25, the operating-system package depends directly on `infiltrator-calendar-resources (>= 1.19.67)`, built, released and published by Common (`Infiltrator-Projects/Libraries`). APT installs all 30 calendar and 23 clock modules into `/System/Resources/Calendars/` and `/System/Resources/Clocks/`. Calendar, Files and System Settings consume these independent resources; removing any consumer leaves the modules installed. Without optional modules, the applications use normal host calendars and timezones.
 
-After the package transaction, separate native workers resolve the latest published System Monitor, Calculator and Files releases. Each worker downloads the application's own published native installer and invokes its system-package mode, so the application repository remains the authority for compiler policy, PGO/LTO behaviour, package layout and native build metadata. InfiltratorOS verifies each installed native application and a shared native-build lock serialises heavyweight compilation and package operations.
+After the package transaction, separate native workers resolve the latest published System Monitor, Calculator, Files and Defragmenter releases. Each worker downloads the application's own published native installer and invokes its system-package mode, so the application repository remains the authority for compiler policy, PGO/LTO behaviour, package layout and native build metadata. InfiltratorOS verifies each installed native application and a shared native-build lock serialises heavyweight compilation and package operations.
+
+Defragmenter is additive: its provisioning worker downloads the product-owned published compiler, verifies its SHA-256 release manifest, applies -O3/CPU-native/LTO flags and verifies the native Debian package, Test Media utility and launchers. It does not purge existing filesystem utilities. The present Defragmenter local compiler does not implement trained two-pass PGO, unlike the Files and System Monitor installers; no PGO qualification is claimed. Defragmenter retains established /usr/bin executable paths until its own package authority explicitly migrates them.
 
 System Monitor and Calculator retain replacement policy: competing distribution applications are removed only after the corresponding Infiltrator replacement passes verification. Files is intentionally different at this stage: it is installed alongside the existing file manager, its launcher targets `/Programs/files`, and InfiltratorOS does not change the desktop's current default file-manager association.
 
@@ -81,6 +83,7 @@ A GTK window follows each worker when a graphical session is available. Headless
 | System Monitor | `/run/infiltratoros/system-monitor-install.status` | `/var/log/infiltratoros-system-monitor.log` |
 | Calculator | `/run/infiltratoros/calculator-install.status` | `/var/log/infiltratoros-calculator.log` |
 | Files | `/run/infiltratoros/files-install.status` | `/var/log/infiltratoros-files.log` |
+| Defragmenter | `/run/infiltratoros/defragmenter-install.status` | `/var/log/infiltratoros-defragmenter.log` |
 
 Application versions are resolved at installation time. The OS package does not maintain a second application release catalogue.
 

@@ -95,7 +95,7 @@ jobs:
           test "$(find "$native_icons" -mindepth 1 -type d | wc -l)" -eq 0
           INFILTRATR_NATIVE_ROOT="$native_root" INFILTRATR_ICON_SOURCE_DIR="$icon_seed" "$icon_helper"
           test "$(find "$native_icons" -maxdepth 1 -type f | wc -l)" -eq 1233
-          for product in system-monitor calculator files; do
+          for product in system-monitor calculator files defragmenter; do
             for program in "install-$product" "start-$product-install" "$product-progress"; do
               test -x "$RUNNER_TEMP/payload/usr/lib/infiltratoros/$program"
             done

@@ -1,12 +1,12 @@
 # InfiltratorOS product-family contract
 
-This is the family-level integration and presentation contract for [InfiltratorOS](../README.md), [System Monitor](https://github.com/Infiltrator-Projects/System-Monitor), [Calculator](https://github.com/Infiltrator-Projects/Calculator) and [Files](https://github.com/Infiltrator-Projects/Files). It documents the *current design authority*, not an assertion that all planned OS capabilities are implemented.
+This is the family-level integration and presentation contract for [InfiltratorOS](../README.md), [System Monitor](https://github.com/Infiltrator-Projects/System-Monitor), [Calculator](https://github.com/Infiltrator-Projects/Calculator) [Files](https://github.com/Infiltrator-Projects/Files) and [Defragmenter](https://github.com/Infiltrator-Projects/Defragmenter). It documents the *current design authority*, not an assertion that all planned OS capabilities are implemented.
 
 ## One family, independently installable products
 
-All four products identify as members of **InfiltratorOS** in their GitHub overview, help/about information and user-facing identity where appropriate. Each application remains useful when installed alone on a supported host. Installing InfiltratorOS may provision applications, but an application may not require the InfiltratorOS package merely to start or perform its own ordinary work.
+All five products identify as members of **InfiltratorOS** in their GitHub overview, help/about information and user-facing identity where appropriate. Each application remains useful when installed alone on a supported host. Installing InfiltratorOS may provision applications, but an application may not require the InfiltratorOS package merely to start or perform its own ordinary work.
 
-Application names remain **System Monitor**, **Calculator** and **Files**. Package and executable identities remain product-owned; Linux user-facing executables belong in `/Programs`. OS infrastructure and durable shared capabilities belong in `/System`, not private application directories. Linux compatibility metadata (desktop entries, packaging files) can remain in conventional host paths.
+Application names remain **System Monitor**, **Calculator**, **Files** and **Defragmenter**. Package and executable identities remain product-owned; Linux user-facing executables belong in `/Programs`. OS infrastructure and durable shared capabilities belong in `/System`, not private application directories. Linux compatibility metadata (desktop entries, packaging files) can remain in conventional host paths.
 
 ## Authoritative standards, not copied implementations
 
@@ -35,5 +35,6 @@ Do **not** forcibly homogenise languages, native toolkits, build systems, VERSIO
 - **System Monitor**: hardware, performance, process and system inspection/management.
 - **Calculator**: exact/shared mathematical and interaction semantics across native Linux, Windows and iPhone shells.
 - **Files**: namespace browsing, file operations, journalling and recovery; filesystem-specific capabilities are discovered, not assumed, and a separate filesystem remains authoritative for its own persistent format.
+- **Defragmenter**: native filesystem allocation analysis, offline relocation and recovery; the established Linux executable paths remain with its independent Debian package until the product qualifies a native namespace migration.
 
 An attractive shared appearance is insufficient if it sacrifices safety, performance, capabilities or independent installation. Product logic stays within its owning repository; new product-neutral mechanisms belong in Libraries/Common after their abstraction is justified.

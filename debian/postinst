@@ -7,5 +7,6 @@ set -eu
 /usr/lib/infiltratoros/start-system-monitor-install
 /usr/lib/infiltratoros/start-calculator-install
 /usr/lib/infiltratoros/start-files-install
+/usr/lib/infiltratoros/start-defragmenter-install
 
 exit 0

@@ -1,7 +1,7 @@
 #ifndef INFILTRATOR_INSTALL_PROFILE_H
 #define INFILTRATOR_INSTALL_PROFILE_H
 
-#if (defined(INSTALL_SYSTEM_MONITOR) + defined(INSTALL_CALCULATOR) + defined(INSTALL_FILES)) != 1
+#if (defined(INSTALL_SYSTEM_MONITOR) + defined(INSTALL_CALCULATOR) + defined(INSTALL_FILES) + defined(INSTALL_DEFRAGMENTER)) != 1
 #error "Select exactly one provisioning product"
 #elif defined(INSTALL_SYSTEM_MONITOR)
 #define INSTALL_NAME "System Monitor"
@@ -12,6 +12,9 @@
 #elif defined(INSTALL_FILES)
 #define INSTALL_NAME "Files"
 #define INSTALL_SLUG "files"
+#elif defined(INSTALL_DEFRAGMENTER)
+#define INSTALL_NAME "Defragmenter"
+#define INSTALL_SLUG "defragmenter"
 #endif
 
 #define STATUS_DIR "/run/infiltratoros"

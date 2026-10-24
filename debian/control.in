@@ -15,6 +15,10 @@ Description: InfiltratorOS branding and native application integration
  compiled with the same hardware-native policy. InfiltratorOS does not purge
  the existing distribution file manager or change the current default handler.
  .
+ Defragmenter is added through its checksum-verified native compiler with
+ CPU-native -O3 and LTO code generation. No other filesystem utilities are
+ removed and its product-owned Linux executable paths are preserved.
+ .
  The operating system also depends directly on Common's shared clock and
  calendar resource package. APT installs its 53 independent modules in the
  system resource folders. Calendar, Files and System Settings consume those

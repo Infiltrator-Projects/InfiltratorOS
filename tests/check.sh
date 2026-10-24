@@ -54,3 +54,20 @@ if grep -Fq '"purge"' "$files_worker"; then
     echo "Files provisioning must not purge the existing distribution file manager." >&2
     exit 1
 fi
+
+defragmenter_worker="$ROOT/packaging/install-defragmenter.c"
+cc -std=c11 -O2 -DNDEBUG -Wall -Wextra -Werror -Wpedantic \
+    "$defragmenter_worker" -o "$WORK/install-defragmenter"
+grep -Fq 'repos/Infiltrator-Projects/Defragmenter/releases/latest' "$defragmenter_worker"
+grep -Fq 'Defragmenter-' "$defragmenter_worker"
+grep -Fq 'RELEASE_SHA256SUMS.txt' "$defragmenter_worker"
+grep -Fq '"/usr/bin/sha256sum"' "$defragmenter_worker"
+grep -Fq '"-O3 -march=native -mtune=native -flto"' "$defragmenter_worker"
+grep -Fq '"/usr/bin/defragmenter-test-media"' "$defragmenter_worker"
+grep -Fq '"/usr/lib/defragmenter/defragmenter-operation-engine"' "$defragmenter_worker"
+grep -Fq '"/usr/share/applications/io.github.defragmenter.desktop"' "$defragmenter_worker"
+grep -Fq '+native1' "$defragmenter_worker"
+if grep -Fq '"purge"' "$defragmenter_worker"; then
+    echo "Defragmenter provisioning must not remove other filesystem utilities." >&2
+    exit 1
+fi

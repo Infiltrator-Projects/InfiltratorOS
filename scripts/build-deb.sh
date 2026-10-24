@@ -86,11 +86,12 @@ cc -std=c11 -O2 -Wall -Wextra -Werror \
 cc -std=c11 -O2 -Wall -Wextra -Werror "$ROOT/packaging/select-theme.c" \
     -o "$PKGROOT/usr/lib/infiltratoros/select-theme"
 
-for product in system-monitor calculator files; do
+for product in system-monitor calculator files defragmenter; do
     case "$product" in
         system-monitor) profile=INSTALL_SYSTEM_MONITOR ;;
         calculator) profile=INSTALL_CALCULATOR ;;
         files) profile=INSTALL_FILES ;;
+        defragmenter) profile=INSTALL_DEFRAGMENTER ;;
     esac
     cc -std=c11 -O2 -Wall -Wextra -Werror -Wpedantic \
         "$ROOT/packaging/install-$product.c" \
