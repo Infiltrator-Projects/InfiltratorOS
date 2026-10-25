@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.0.32 — Direct native fonts and icons; no Seed directories
+
+- Eliminate installed `/System/Resources/Fonts/Seed` and `/System/Resources/Icons/Seed` entirely. The 23 verified TTF files are packaged directly into `/System/Resources/Fonts`, and 1,233 verified flat PNG/WebP files directly into `/System/Resources/Icons`.
+- Package the two SHA-256 inventories under `/System/Resources/Documentation/InfiltratorOS`; helpers verify their resource files in place rather than copying/hard-linking a second seed.
+- Extract the validated source icon archive **during the package build**, not on the installed machine. No installer archive or duplicate resources remain anywhere in the installed native directories.
+- Qualify direct placement, canonical resource hashes, absence of seed paths, font configuration, icon legacy migration and unsafe/missing resource refusal. Debian package upgrades replace the old package-owned `Seed` files.
+- Application ownership, `/Temporary` setup, `/Volumes`, Files/Nemo coexistence and Defragmenter installation layout are unchanged by this resource-only correction.
+
 ## 1.0.31 — Native /Temporary installation layout
 
 - Respect the InfiltratorOS filesystem contract: all OS-owned installation worker executables, native-installer downloads, status/progress records, build locks and worker logs live within `/Temporary/InfiltratorOS`, created before resource setup and workers run.
