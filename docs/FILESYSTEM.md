@@ -57,7 +57,7 @@ The intended future Setup installer will select an on-disk format based on quali
 
 Filesystem limitations must be represented honestly: Setup may adapt the layout to avoid missing symbolic links when safe, but it cannot treat duplicated files as hard links or claim unsupported namespace, permission, mapping or durability semantics. A format that can hold a boot image does not automatically qualify as a system root. For the detailed, phased cross-project contract, see [Bootable Filesystem Integration Contract](https://github.com/Infiltrator-Projects/Filesystems/blob/main/docs/BOOTABLE_FILESYSTEM_CONTRACT.md).
 
-Defragmenter is a documented existing-package compatibility exception during this migration: its independently released package owns `/usr/bin/defragmenter` and `/usr/bin/defragmenter-test-media`. InfiltratorOS does not create duplicate executables or compatibility symlinks in `/Programs`; any migration must be owned and regression-tested in Defragmenter itself. This does not authorise new InfiltratorOS applications to use `/usr/bin`.
+Defragmenter's independently released package installs the user-launchable applications `/Programs/defragmenter` and `/Programs/defragmenter-test-media`. Its private filesystem workers remain under `/usr/lib/defragmenter` pending a separate infrastructure-migration qualification. InfiltratorOS creates no duplicate executables or compatibility symlinks.
 
 ## Transitional status
 
