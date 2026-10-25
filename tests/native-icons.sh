@@ -1,76 +1,94 @@
 #!/bin/sh
-# Exercise the actual seed and installer across fresh and upgraded resources.
+# Exercise package-owned direct icons: clean install, repeat verification,
+# legacy migration, local modifications and symlink defence. No Seed directory.
 set -eu
 ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
 WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT HUP INT TERM
-seed="$WORK/seed"
-mkdir -p "$seed" "$WORK/reference"
-cat "$ROOT"/assets/icons/mercedes-icons-v1.part?? > "$seed/mercedes-icons-v1.tar.xz"
-tar -xJf "$seed/mercedes-icons-v1.tar.xz" -C "$WORK/reference"
-awk '{ name=$2; gsub("/", "-", name); print $1 "  " name }' \
-    "$WORK/reference/SHA256SUMS" > "$WORK/flat-checksums"
-test "$(awk '{ print $2 }' "$WORK/flat-checksums" | sort -u | wc -l)" -eq 1233
+mkdir -p "$WORK/reference" "$WORK/flat"
+cat "$ROOT"/assets/icons/mercedes-icons-v1.part?? > "$WORK/icons.tar.xz"
+printf '%s  %s\n' \
+  '8d55ccbe5f1eefe3800ab12578a641524742b9482410d95757317434523b342c' \
+  "$WORK/icons.tar.xz" | sha256sum -c - >/dev/null
+tar -xJf "$WORK/icons.tar.xz" -C "$WORK/reference"
+(cd "$WORK/reference/mercedes" && sha256sum -c "$WORK/reference/SHA256SUMS") >/dev/null
+manifest="$WORK/icons.sha256"
+: > "$manifest"
+while IFS= read -r entry || [ -n "$entry" ]; do
+    digest=${entry%%  *}
+    name=${entry#*  }
+    flat=$(printf '%s' "$name" | tr / -)
+    install -m 0644 "$WORK/reference/mercedes/$name" "$WORK/flat/$flat"
+    printf '%s  %s\n' "$digest" "$flat" >> "$manifest"
+done < "$WORK/reference/SHA256SUMS"
+test "$(wc -l < "$manifest")" -eq 1233
+(cd "$WORK/flat" && sha256sum -c "$manifest") >/dev/null
+
 helper="$ROOT/packaging/ensure-native-icons.sh"
-install_icons() {
-    INFILTRATR_NATIVE_ROOT="$1" INFILTRATR_ICON_SOURCE_DIR="$seed" sh "$helper"
+stage_icons() {
+    root=$1
+    mkdir -p "$root/System/Resources/Icons" \
+             "$root/System/Resources/Documentation/InfiltratorOS"
+    cp -a "$WORK/flat/." "$root/System/Resources/Icons/"
+    cp "$manifest" "$root/System/Resources/Documentation/InfiltratorOS/icons.sha256"
 }
 verify_icons() {
-    (cd "$1/System/Resources/Icons" && sha256sum -c "$WORK/flat-checksums") > "$WORK/verified"
+    INFILTRATR_NATIVE_ROOT="$1" sh "$helper"
 }
 
-# Fresh installation has 1,233 verified files directly in Icons, and no folders.
 fresh="$WORK/fresh"
-install_icons "$fresh"
+stage_icons "$fresh"
+verify_icons "$fresh"
 icons="$fresh/System/Resources/Icons"
+test ! -e "$icons/Seed"
 test "$(find "$icons" -maxdepth 1 -type f | wc -l)" -eq 1233
 test "$(find "$icons" -mindepth 1 -type d | wc -l)" -eq 0
-verify_icons "$fresh"
 find "$icons" -type f -printf '%f %i %T@\n' | sort > "$WORK/before"
-install_icons "$fresh"
+verify_icons "$fresh"
 find "$icons" -type f -printf '%f %i %T@\n' | sort > "$WORK/after"
 cmp "$WORK/before" "$WORK/after"
-verify_icons "$fresh"
 
-# An unmodified 1.0.22 tree disappears only after its flat replacements verify.
 upgrade="$WORK/upgrade"
+stage_icons "$upgrade"
 icons="$upgrade/System/Resources/Icons"
-mkdir -p "$icons"
 cp -a "$WORK/reference/mercedes" "$icons/"
 printf 'shared custom icon\n' > "$icons/custom.svg"
-install_icons "$upgrade"
+verify_icons "$upgrade"
 test ! -e "$icons/mercedes"
 test "$(find "$icons" -maxdepth 1 -type f | wc -l)" -eq 1234
 grep -qx 'shared custom icon' "$icons/custom.svg"
-verify_icons "$upgrade"
 
-# Migration must retain a modified old icon and an unrelated file in that tree.
 preserve="$WORK/preserve"
+stage_icons "$preserve"
 icons="$preserve/System/Resources/Icons"
-mkdir -p "$icons"
 cp -a "$WORK/reference/mercedes" "$icons/"
 changed="$icons/mercedes/adapter/default/arrow_link_icon.png"
-# Break the archive hard link before modifying this one resource.
 rm "$changed"
 printf 'locally modified icon\n' > "$changed"
 printf 'local addition\n' > "$icons/mercedes/custom.svg"
-install_icons "$preserve"
+verify_icons "$preserve"
 grep -qx 'locally modified icon' "$changed"
 grep -qx 'local addition' "$icons/mercedes/custom.svg"
 test "$(find "$icons/mercedes" -type f | wc -l)" -eq 2
-verify_icons "$preserve"
 
-# A destination symlink must never redirect a write outside the Icons directory.
 unsafe="$WORK/unsafe"
+stage_icons "$unsafe"
 icons="$unsafe/System/Resources/Icons"
-mkdir -p "$icons" "$WORK/outside"
+mkdir -p "$WORK/outside"
 printf 'outside sentinel\n' > "$WORK/outside/sentinel"
-ln -s "$WORK/outside" "$icons/adapter-default-arrow_link_icon.png"
-if install_icons "$unsafe" > "$WORK/unsafe-log" 2>&1; then
-    echo 'Icon installation accepted a destination symlink' >&2
-    exit 1
+rm "$icons/adapter-default-arrow_link_icon.png"
+ln -s "$WORK/outside/sentinel" "$icons/adapter-default-arrow_link_icon.png"
+if verify_icons "$unsafe" > "$WORK/unsafe-log" 2>&1; then
+    echo 'Accepted an unsafe icon symlink' >&2; exit 1
 fi
-grep -q 'Unsafe icon destination:' "$WORK/unsafe-log"
-test "$(find "$WORK/outside" -type f | wc -l)" -eq 1
+grep -q 'Missing/unsafe packaged icon:' "$WORK/unsafe-log"
 grep -qx 'outside sentinel' "$WORK/outside/sentinel"
-printf 'Native icon installation and migration checks passed.\n'
+
+missing="$WORK/missing"
+stage_icons "$missing"
+rm "$missing/System/Resources/Icons/adapter-default-arrow_link_icon.png"
+if verify_icons "$missing" > "$WORK/missing-log" 2>&1; then
+    echo 'Accepted a missing directly packaged icon' >&2; exit 1
+fi
+
+printf 'Direct native icon package and legacy migration checks passed.\n'
