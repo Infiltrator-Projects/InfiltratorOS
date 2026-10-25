@@ -15,12 +15,13 @@ export SOURCE_DATE_EPOCH
 DIST="$ROOT/dist"
 WORK="$ROOT/.build/infiltratoros_${VERSION}"
 PKGROOT="$WORK/root"
-# Application install workers are packaged inside the Debian maintainer script,
-# staged only under /run during installation, and never installed as OS files.
+# Application workers remain only in the signed maintainer-script bundle;
+# they are staged under /Temporary/InfiltratorOS during installation.
 RUNTIME_BUILD="$WORK/native-runtime"
 THEME_DIR="$PKGROOT/usr/share/plymouth/themes/infiltratoros"
-FONT_SEED_DIR="$PKGROOT/System/Resources/Fonts/Seed"
-ICON_SEED_DIR="$PKGROOT/System/Resources/Icons/Seed"
+FONT_DIR="$PKGROOT/System/Resources/Fonts"
+ICON_DIR="$PKGROOT/System/Resources/Icons"
+RESOURCE_MANIFEST_DIR="$PKGROOT/System/Resources/Documentation/InfiltratorOS"
 ICON_PART_DIR="$ROOT/assets/icons"
 ICON_ARCHIVE_SHA256="8d55ccbe5f1eefe3800ab12578a641524742b9482410d95757317434523b342c"
 SYSTEM_ROOT="$PKGROOT/System"
@@ -36,8 +37,9 @@ mkdir -p \
     "$PKGROOT/etc/profile.d" \
     "$PKGROOT/etc/xdg/autostart" \
     "$PKGROOT/System/Commands/InfiltratorOS" \
-    "$FONT_SEED_DIR" \
-    "$ICON_SEED_DIR" \
+    "$FONT_DIR" \
+    "$ICON_DIR" \
+    "$RESOURCE_MANIFEST_DIR" \
     "$SYSTEM_ROOT/Commands" \
     "$SYSTEM_ROOT/Libraries" \
     "$SYSTEM_ROOT/Devices" \
@@ -66,9 +68,41 @@ test "$(awk '{print $1}' "$FONT_MANIFEST" | sort -u | wc -l)" -eq 23
 test "$(find "$ICON_PART_DIR" -maxdepth 1 -type f -name 'mercedes-icons-v1.part??' | wc -l)" -eq 10
 test "$(wc -l < "$ICON_PART_DIR/PART_SHA256SUMS")" -eq 10
 (cd "$ICON_PART_DIR" && sha256sum -c PART_SHA256SUMS)
-cat "$ICON_PART_DIR"/mercedes-icons-v1.part?? > "$ICON_SEED_DIR/mercedes-icons-v1.tar.xz"
-printf '%s  %s\n' "$ICON_ARCHIVE_SHA256" "$ICON_SEED_DIR/mercedes-icons-v1.tar.xz" | sha256sum -c -
-test "$(tar -tJf "$ICON_SEED_DIR/mercedes-icons-v1.tar.xz" | grep -c '^mercedes/')" -eq 1233
+# The source archive exists only in the build workspace, never on an
+# installed machine. The Debian payload owns precisely 1,233 flat icons.
+archive="$WORK/mercedes-icons-v1.tar.xz"
+cat "$ICON_PART_DIR"/mercedes-icons-v1.part?? > "$archive"
+printf '%s  %s\n' "$ICON_ARCHIVE_SHA256" "$archive" | sha256sum -c -
+test "$(tar -tJf "$archive" | grep -c '^mercedes/')" -eq 1233
+mkdir -p "$WORK/icon-source"
+tar -xJf "$archive" -C "$WORK/icon-source" --no-same-owner
+original_manifest="$WORK/icon-source/SHA256SUMS"
+test "$(wc -l < "$original_manifest")" -eq 1233
+(cd "$WORK/icon-source/mercedes" && sha256sum -c "$original_manifest") >/dev/null
+icon_manifest="$RESOURCE_MANIFEST_DIR/icons.sha256"
+: > "$icon_manifest"
+icon_count=0
+while IFS= read -r entry || [ -n "$entry" ]; do
+    digest=${entry%%  *}
+    name=${entry#*  }
+    case "$name" in
+        adapter/default/*|adapter/night/*|connect/default/*|connect/night/*|\
+        eco-coach/default/*|eco-coach/night/*|finance/default/*|finance/night/*|\
+        logbook/default/*|logbook/night/*|remote-parking/default/*|remote-parking/night/*) ;;
+        *) echo "Invalid icon name: $name" >&2; exit 1 ;;
+    esac
+    case "$name" in *'..'*|*'//'*) echo "Unsafe icon path: $name" >&2; exit 1 ;; esac
+    case "$name" in *.png|*.webp) ;; *) echo "Invalid icon format: $name" >&2; exit 1 ;; esac
+    flat=$(printf '%s' "$name" | tr / -)
+    case "$flat" in *[!a-zA-Z0-9._-]*|'') echo "Unsafe flattened icon: $flat" >&2; exit 1 ;; esac
+    test ! -e "$ICON_DIR/$flat"
+    install -m 0644 -- "$WORK/icon-source/mercedes/$name" "$ICON_DIR/$flat"
+    printf '%s  %s\n' "$digest" "$flat" >> "$icon_manifest"
+    icon_count=$((icon_count + 1))
+done < "$original_manifest"
+test "$icon_count" -eq 1233
+(cd "$ICON_DIR" && sha256sum -c "$icon_manifest") >/dev/null
+test "$(find "$ICON_DIR" -maxdepth 1 -type f | wc -l)" -eq 1233
 
 sed "s/@VERSION@/$VERSION/g" "$ROOT/debian/control.in" > "$PKGROOT/DEBIAN/control"
 install -m 0755 "$ROOT/debian/postinst" "$PKGROOT/DEBIAN/postinst"
@@ -77,11 +111,13 @@ install -m 0755 "$ROOT/packaging/ensure-native-fonts.sh" \
     "$PKGROOT/System/Commands/InfiltratorOS/ensure-native-fonts"
 install -m 0755 "$ROOT/packaging/ensure-native-icons.sh" \
     "$PKGROOT/System/Commands/InfiltratorOS/ensure-native-icons"
-install -m 0644 "$FONT_MANIFEST" "$FONT_SEED_DIR/SHA256SUMS"
+install -m 0644 "$FONT_MANIFEST" "$RESOURCE_MANIFEST_DIR/fonts.sha256"
 while IFS= read -r entry; do
     font_file=${entry#*  }
-    install -m 0644 "$ROOT/assets/fonts/$font_file" "$FONT_SEED_DIR/$font_file"
+    install -m 0644 "$ROOT/assets/fonts/$font_file" "$FONT_DIR/$font_file"
 done < "$FONT_MANIFEST"
+(cd "$FONT_DIR" && sha256sum -c "$RESOURCE_MANIFEST_DIR/fonts.sha256") >/dev/null
+test "$(find "$FONT_DIR" -maxdepth 1 -type f -name '*.ttf' | wc -l)" -eq 23
 install -m 0644 "$ROOT/packaging/infiltrator-native-path.sh" \
     "$PKGROOT/etc/profile.d/90-infiltratoros-native-path.sh"
 install -m 0755 "$ROOT/packaging/activate-calendar.py" \
