@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.0.30 — Fix installer execution on Ubuntu/Mint noexec /run
+
+- Fix failed native application setup on physical Mint systems where `/run` is mounted `noexec`; installer helpers cannot be executed from that filesystem.
+- Keep runtime state and progress under `/run/infiltratoros`, but stage the temporary native binaries under `/var/lib/infiltratoros-native-worker.*` on the normal executable root filesystem. Automatically remove the temporary executable directory at terminal completion or timeout.
+- Preserve the 34 permanent package files, native system folders, fonts, icons, applications, `/Volumes`, and Nemo policy. A fresh InfiltratorOS package configuration recreates `/System`, `/Programs`, `/Users`, and `/Temporary` after the user explicitly clears them.
+- Extend CI to reject regression to the noexec `/run` execution path.
+
+
 ## 1.0.29 — Fail-closed temporary installer validation
 
 - Stop extraction immediately if the embedded installation bundle fails base64 decoding, SHA-256 verification, archive extraction or individual worker checks, even when called through a guarded error-handling conditional.
