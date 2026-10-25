@@ -28,7 +28,10 @@ unpack_native_workers() {
 if [ "${1:-}" = "--verify-installer-bundle" ]; then
     inspect=$(mktemp -d)
     trap 'rm -rf -- "$inspect"' EXIT HUP INT TERM
-    unpack_native_workers "$inspect"
+    if ! unpack_native_workers "$inspect"; then
+        echo 'Invalid embedded InfiltratorOS native installer bundle.' >&2
+        exit 1
+    fi
     test "$(find "$inspect" -maxdepth 1 -type f | wc -l)" -eq 12
     exit 0
 fi
