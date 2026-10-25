@@ -63,7 +63,15 @@ grep -Fq 'Defragmenter-' "$defragmenter_worker"
 grep -Fq 'RELEASE_SHA256SUMS.txt' "$defragmenter_worker"
 grep -Fq '"/usr/bin/sha256sum"' "$defragmenter_worker"
 grep -Fq '"-O3 -march=native -mtune=native -flto"' "$defragmenter_worker"
-grep -Fq '"/usr/bin/defragmenter-test-media"' "$defragmenter_worker"
+grep -Fq '"/Programs/defragmenter"' "$defragmenter_worker"
+grep -Fq '"/Programs/defragmenter-desktop"' "$defragmenter_worker"
+grep -Fq '"/Programs/defragmenter-test-media"' "$defragmenter_worker"
+grep -Fq '"Exec=/Programs/defragmenter"' "$defragmenter_worker"
+grep -Fq '"Exec=/Programs/defragmenter-test-media"' "$defragmenter_worker"
+if grep -Fq '"/usr/bin/defragmenter' "$defragmenter_worker"; then
+    echo "Defragmenter worker must not require retired /usr/bin application paths." >&2
+    exit 1
+fi
 grep -Fq '"/usr/lib/defragmenter/defragmenter-operation-engine"' "$defragmenter_worker"
 grep -Fq '"/usr/share/applications/io.github.defragmenter.desktop"' "$defragmenter_worker"
 grep -Fq '+native1' "$defragmenter_worker"
