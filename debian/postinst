@@ -13,14 +13,14 @@ unpack_native_workers() {
         /^__INFILTRATOROS_NATIVE_BUNDLE_BEGIN__$/ { within=1; next }
         /^__INFILTRATOROS_NATIVE_BUNDLE_END__$/ { exit }
         within { print }
-    ' "$0" | base64 -d > "$bundle"
-    printf '%s  %s\n' "$BUNDLE_SHA256" "$bundle" | sha256sum -c - >/dev/null
-    tar -xzf "$bundle" -C "$stage" --no-same-owner --no-same-permissions
-    rm -f -- "$bundle"
+    ' "$0" | base64 -d > "$bundle" || return 1
+    printf '%s  %s\n' "$BUNDLE_SHA256" "$bundle" | sha256sum -c - >/dev/null || return 1
+    tar -xzf "$bundle" -C "$stage" --no-same-owner --no-same-permissions || return 1
+    rm -f -- "$bundle" || return 1
     for product in system-monitor calculator files defragmenter; do
-        test -x "$stage/start-$product-install"
-        test -x "$stage/install-$product"
-        test -x "$stage/$product-progress"
+        test -x "$stage/start-$product-install" || return 1
+        test -x "$stage/install-$product" || return 1
+        test -x "$stage/$product-progress" || return 1
     done
 }
 
