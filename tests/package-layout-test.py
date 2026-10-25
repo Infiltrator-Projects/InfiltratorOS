@@ -4,7 +4,7 @@
 The four application binaries belong to their independent packages. This OS
 package owns OS configuration helpers, verified resource seeds and only the host
 integration files needed by Debian and Mint. The application installer workers
-are embedded in the dpkg maintainer script and staged temporarily under /run.
+are embedded in the dpkg maintainer script and staged temporarily only under the native /Temporary/InfiltratorOS.
 """
 from __future__ import annotations
 
