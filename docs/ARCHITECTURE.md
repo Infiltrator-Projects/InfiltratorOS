@@ -38,7 +38,7 @@ The operating system depends directly on the standard Calendar Resources capabil
 
 Calculator's worker additionally treats desktop integration as part of the installed application contract. Success requires the canonical `calculator` package, executable `/Programs/calculator`, BUILD-INFO, the visible `net.ssmith.calculator.desktop` launcher with its native Exec path, the Calculator icon and AppStream metadata, the native PATH bridge and the shared MB Corpo resource contract. Only after that contract passes may obsolete Calculator package identities or competing distribution calculators be purged.
 
-Defragmenter's additive worker downloads its immutable published local compiler and verifies SHA-256 against the release manifest before privileged execution. Its package builder owns compilation and native +native1 Debian identity; the OS worker supplies -O3, CPU-native and LTO flags, acquires the shared global build lock, and verifies the installed package, Test Media, filesystem services and desktop launchers. The Defragmenter package owns `/Programs/defragmenter` and `/Programs/defragmenter-test-media`, and locates private filesystem services in `/System/Filesystems/Defragmenter`, the native font bootstrap in `/System/Commands`, and product resources/documentation under `/System/Resources`; the old `/usr/lib/defragmenter` and `/usr/share/doc/defragmenter` trees must not remain. Two-pass PGO is not claimed for a build without a trained profile.
+Defragmenter's additive worker downloads its immutable published local compiler and verifies SHA-256 against the release manifest before privileged execution. Its package builder owns compilation and native +native1 Debian identity; the OS worker supplies -O3, CPU-native and LTO flags, acquires the shared global build lock, and verifies the installed package, Test Media, filesystem services and desktop launchers. The Defragmenter package owns `/Programs/defragmenter` and `/Programs/defragmenter-test-media`, and locates private application workers under `/System/Commands/Defragmenter`, the native font bootstrap in `/System/Commands`, and product resources/documentation under `/System/Resources`; the old `/usr/lib/defragmenter` and `/usr/share/doc/defragmenter` trees must not remain. Two-pass PGO is not claimed for a build without a trained profile.
 
 Files' worker treats its native layout and launcher as installed-state contracts without claiming replacement ownership. Success requires the canonical `files` package, executable `/Programs/files`, aggressive two-pass PGO BUILD-INFO, absence of the obsolete `/usr/bin/files` executable and a desktop launcher targeting `/Programs/files`. Existing file-manager packages and default-handler policy remain untouched.
 
@@ -50,11 +50,11 @@ Desktop discovery currently selects the first eligible graphical user found in /
 
 ## Package destination inventory
 
-The Debian data payload contains **1,267 regular files**: four OS helpers
+The Debian data payload contains **1,269 regular files**: five OS helpers
 in `/System/Commands/InfiltratorOS`, 23 direct font files, 1,233 direct flat
 icon files, two SHA-256 inventories in
 `/System/Resources/Documentation/InfiltratorOS`, three Plymouth integration
-files and two Linux compatibility files under `/etc`. The twelve temporary
+files and three Linux compatibility files under `/etc`. The twelve temporary
 application setup executables are only in the Debian maintainer-script bundle,
 not installed permanently. The four actual applications remain owned by their
 independent packages. CI checks that no duplicate resource or `Seed` path
@@ -68,3 +68,7 @@ The generated Debian package contains the flat icon files directly under
 inventory, then removes only unchanged old nested `mercedes` icons and
 empty legacy directories. Custom and modified legacy icons and the host
 icon theme remain untouched.
+
+## Native application icons
+
+Nemo's raw executable file icons are per-user GVfs metadata, not an ELF or desktop-entry property. A Cinnamon-only autostart command (`activate-program-icons`) runs unprivileged in each logged-in user's session, reads the actual native app artwork under `/System/Resources/Icons`, and registers icon metadata for the `/Programs` launchables. The user never needs to run `gio` manually. It preserves preexisting custom-icon choices and uses installed theme icons where an application supplies no own native image. Newly installed programs are processed at the following Cinnamon login.
