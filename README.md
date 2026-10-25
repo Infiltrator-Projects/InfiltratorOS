@@ -110,3 +110,7 @@ the old subdirectory by removing only verified, unchanged copies after the
 replacement icons have been installed; locally changed or added files survive.
 They do not overwrite the desktop's existing icon theme. Their owner is
 InfiltratorOS, not any individual application. See [icon inventory](assets/icons/README.md).
+
+## Native executable icons in Cinnamon
+
+InfiltratorOS installs a user-session-only Cinnamon autostart integration, `/System/Commands/InfiltratorOS/activate-program-icons`, that automatically applies Nemo's per-user custom file icons to installed native executables under `/Programs`. It uses each app's `/System/Resources/Icons` artwork where available and the existing desktop theme otherwise. It preserves explicitly assigned user icons. This is required because package `postinst` executes as root, while Nemo's GVfs executable-icon metadata belongs to the logged-in user. It does not create extra launchers, require terminal `gio` commands or modify `/Volumes`. New installations are picked up at the next Cinnamon login.
