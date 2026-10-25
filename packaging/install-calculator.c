@@ -16,10 +16,10 @@
 #define RELEASE_PREFIX "https://github.com/Infiltrator-Projects/Calculator/releases/download/"
 #define PATH_LEN 4096
 #define JSON_LIMIT (4U * 1024U * 1024U)
-#define STATUS_DIR "/run/infiltratoros"
+#define STATUS_DIR "/Temporary/InfiltratorOS"
 #define STATUS_PATH STATUS_DIR "/calculator-install.status"
-#define APP_LOCK_PATH "/run/lock/infiltratoros-calculator.lock"
-#define GLOBAL_LOCK_PATH "/run/lock/infiltratoros-native-install.lock"
+#define APP_LOCK_PATH STATUS_DIR "/calculator.lock"
+#define GLOBAL_LOCK_PATH STATUS_DIR "/native-install.lock"
 
 static void write_status(const char *state, int progress,
                          const char *stage, const char *detail)
@@ -407,7 +407,7 @@ int main(void)
     write_status("running", 12, "Checking the latest Calculator release",
                  "InfiltratorOS is selecting Calculator's newest published native installer.");
 
-    char work[] = "/tmp/calculator-XXXXXX";
+    char work[] = STATUS_DIR "/calculator-XXXXXX";
     if (!mkdtemp(work)) fail("cannot create temporary Calculator working directory");
 
     char json_path[PATH_LEN];
