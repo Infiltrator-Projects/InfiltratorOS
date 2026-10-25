@@ -137,7 +137,7 @@ jobs:
               test ! -e "$RUNNER_TEMP/payload/System/Commands/InfiltratorOS/$program"
             done
           done
-          test "$(find "$RUNNER_TEMP/payload/System/Commands/InfiltratorOS" -maxdepth 1 -type f | wc -l)" -eq 4
+          test "$(find "$RUNNER_TEMP/payload/System/Commands/InfiltratorOS" -maxdepth 1 -type f | wc -l)" -eq 5
           git archive --format=zip --prefix="infiltratoros-$version/" HEAD > "dist/infiltratoros-$version-source.zip"
           printf '%s\n' "$GITHUB_SHA" > dist/SOURCE_COMMIT
           (cd dist && sha256sum *.deb *.zip SOURCE_COMMIT > SHA256SUMS.txt)
