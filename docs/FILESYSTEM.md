@@ -65,3 +65,5 @@ Defragmenter's independently released package installs `/Programs/defragmenter`,
 The active Linux kernel remains in the distribution's existing boot/module/firmware locations until a future migration is explicitly designed and qualified. The current `/usr/lib/infiltrator/temporal` experiment is retained in parallel until temporal resources are migrated deliberately; it is not silently removed by establishing this hierarchy.
 
 The hierarchy should stay small. New top-level directories require a distinct user-visible role rather than mirroring implementation detail.
+
+InfiltratorOS installs native provisioning tools under `/System/Commands/InfiltratorOS/`. Package-owned verified font and icon seeds live under `/System/Resources/Fonts/Seed` and `/System/Resources/Icons/Seed`, while shared caches remain persistent. The stock Mint Calendar is replaced **only in the user's Cinnamon panel configuration**, after installing the independently packaged Infiltrator Calendar. This is a reversible per-user operation and does not purge Cinnamon. Files stays alongside Nemo until Files is production-complete; InfiltratorOS does not replace the default file manager.
