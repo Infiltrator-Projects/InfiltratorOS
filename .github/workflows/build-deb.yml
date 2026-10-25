@@ -123,6 +123,8 @@ jobs:
           grep -Fq 'export TMPDIR' "$RUNNER_TEMP/control/postinst"
           grep -Fq '/Temporary/InfiltratorOS/native-worker.' "$GITHUB_WORKSPACE/packaging/start-native-install.c"
           ! grep -Eq '^WORKER_PARENT=|^STATUS_ROOT=/run|/var/lib/infiltratoros-native-worker|/run/infiltratoros' "$RUNNER_TEMP/control/postinst"
+          # Native temp is cleared on four successes; failures retain diagnostics.
+          grep -Fq 'rm -rf -- "$STATUS_ROOT"' "$RUNNER_TEMP/control/postinst"
           # A missing/mismatched digest must terminate guarded extraction.
           cp "$RUNNER_TEMP/control/postinst" "$RUNNER_TEMP/tampered-postinst"
           sed -i -E "s/^BUNDLE_SHA256=.*/BUNDLE_SHA256='0000000000000000000000000000000000000000000000000000000000000000'/" "$RUNNER_TEMP/tampered-postinst"
