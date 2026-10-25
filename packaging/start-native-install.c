@@ -189,11 +189,29 @@ static int prepare_progress(void *context)
     return installer_redirect_io("/dev/null");
 }
 
+static char runtime_worker[TEXT_LIMIT];
+static char runtime_progress[TEXT_LIMIT];
+
+static void resolve_temporary_runtime(void)
+{
+    const char *root = getenv("INFILTRATOROS_INSTALL_RUNTIME");
+    static const char prefix[] = "/run/infiltratoros/native-worker.";
+    if (!root || strncmp(root, prefix, sizeof(prefix) - 1U) != 0 ||
+        strchr(root + sizeof(prefix) - 1U, '/') != NULL ||
+        !root[sizeof(prefix) - 1U])
+        die("the temporary installation runtime is missing");
+    if (snprintf(runtime_worker, sizeof(runtime_worker), "%s/install-%s", root,
+                 INSTALL_SLUG) >= (int)sizeof(runtime_worker) ||
+        snprintf(runtime_progress, sizeof(runtime_progress), "%s/%s-progress",
+                 root, INSTALL_SLUG) >= (int)sizeof(runtime_progress))
+        die("temporary installation runtime path is too long");
+}
+
 static void spawn_progress_ui(DesktopSession *session)
 {
     if (!session->found) return;
-    char *const arguments[] = { PROGRESS_UI, STATUS_PATH, NULL };
-    if (installer_spawn_detached(PROGRESS_UI, arguments, prepare_progress, session) != 0)
+    char *const arguments[] = { runtime_progress, STATUS_PATH, NULL };
+    if (installer_spawn_detached(runtime_progress, arguments, prepare_progress, session) != 0)
         fprintf(stderr, INSTALL_NAME " progress window: %s\n", strerror(errno));
 }
 
@@ -211,11 +229,12 @@ static void report_start_failure(int error)
 int main(void)
 {
     if (geteuid() != 0) die("must run as root");
+    resolve_temporary_runtime();
     ensure_status_dir();
     write_initial_status();
     DesktopSession session = find_desktop_session();
-    char *const arguments[] = { WORKER, NULL };
-    if (installer_spawn_detached(WORKER, arguments, prepare_worker, NULL) != 0) {
+    char *const arguments[] = { runtime_worker, NULL };
+    if (installer_spawn_detached(runtime_worker, arguments, prepare_worker, NULL) != 0) {
         report_start_failure(errno);
         spawn_progress_ui(&session);
         return EXIT_FAILURE;
