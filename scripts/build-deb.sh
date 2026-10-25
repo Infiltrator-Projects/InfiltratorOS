@@ -16,8 +16,8 @@ DIST="$ROOT/dist"
 WORK="$ROOT/.build/infiltratoros_${VERSION}"
 PKGROOT="$WORK/root"
 THEME_DIR="$PKGROOT/usr/share/plymouth/themes/infiltratoros"
-FONT_SEED_DIR="$PKGROOT/usr/lib/infiltratoros/font-seed"
-ICON_SEED_DIR="$PKGROOT/usr/lib/infiltratoros/icon-seed"
+FONT_SEED_DIR="$PKGROOT/System/Resources/Fonts/Seed"
+ICON_SEED_DIR="$PKGROOT/System/Resources/Icons/Seed"
 ICON_PART_DIR="$ROOT/assets/icons"
 ICON_ARCHIVE_SHA256="8d55ccbe5f1eefe3800ab12578a641524742b9482410d95757317434523b342c"
 SYSTEM_ROOT="$PKGROOT/System"
@@ -30,7 +30,7 @@ mkdir -p \
     "$THEME_DIR" \
     "$DIST" \
     "$PKGROOT/etc/profile.d" \
-    "$PKGROOT/usr/lib/infiltratoros" \
+    "$PKGROOT/System/Commands/InfiltratorOS" \
     "$FONT_SEED_DIR" \
     "$ICON_SEED_DIR" \
     "$SYSTEM_ROOT/Commands" \
@@ -69,9 +69,9 @@ sed "s/@VERSION@/$VERSION/g" "$ROOT/debian/control.in" > "$PKGROOT/DEBIAN/contro
 install -m 0755 "$ROOT/debian/postinst" "$PKGROOT/DEBIAN/postinst"
 install -m 0755 "$ROOT/debian/prerm" "$PKGROOT/DEBIAN/prerm"
 install -m 0755 "$ROOT/packaging/ensure-native-fonts.sh" \
-    "$PKGROOT/usr/lib/infiltratoros/ensure-native-fonts"
+    "$PKGROOT/System/Commands/InfiltratorOS/ensure-native-fonts"
 install -m 0755 "$ROOT/packaging/ensure-native-icons.sh" \
-    "$PKGROOT/usr/lib/infiltratoros/ensure-native-icons"
+    "$PKGROOT/System/Commands/InfiltratorOS/ensure-native-icons"
 install -m 0644 "$FONT_MANIFEST" "$FONT_SEED_DIR/SHA256SUMS"
 while IFS= read -r entry; do
     font_file=${entry#*  }
@@ -85,7 +85,7 @@ cc -std=c11 -O2 -Wall -Wextra -Werror \
 "$WORK/stage-theme" "$ROOT/plymouth/infiltratoros.plymouth" \
     "$ROOT/plymouth/infiltratoros.script" "$ARTWORK" "$THEME_DIR"
 cc -std=c11 -O2 -Wall -Wextra -Werror "$ROOT/packaging/select-theme.c" \
-    -o "$PKGROOT/usr/lib/infiltratoros/select-theme"
+    -o "$PKGROOT/System/Commands/InfiltratorOS/select-theme"
 
 for product in system-monitor calculator files defragmenter; do
     case "$product" in
@@ -96,19 +96,25 @@ for product in system-monitor calculator files defragmenter; do
     esac
     cc -std=c11 -O2 -Wall -Wextra -Werror -Wpedantic \
         "$ROOT/packaging/install-$product.c" \
-        -o "$PKGROOT/usr/lib/infiltratoros/install-$product"
+        -o "$PKGROOT/System/Commands/InfiltratorOS/install-$product"
     cc -std=c11 -O2 -Wall -Wextra -Werror -Wpedantic "-D$profile" \
         "$ROOT/packaging/start-native-install.c" "$ROOT/packaging/installer-process.c" \
-        -o "$PKGROOT/usr/lib/infiltratoros/start-$product-install"
+        -o "$PKGROOT/System/Commands/InfiltratorOS/start-$product-install"
     # pkg-config emits compiler arguments, intentionally split by the shell.
     # shellcheck disable=SC2086
     cc -std=c11 -O2 -Wall -Wextra -Werror -Wpedantic "-D$profile" \
         $(pkg-config --cflags gtk+-3.0) \
         "$ROOT/packaging/native-install-progress.c" "$ROOT/packaging/installer-status.c" \
-        -o "$PKGROOT/usr/lib/infiltratoros/$product-progress" $(pkg-config --libs gtk+-3.0)
+        -o "$PKGROOT/System/Commands/InfiltratorOS/$product-progress" $(pkg-config --libs gtk+-3.0)
 done
 
 test "$(file -b --mime-type "$THEME_DIR/infiltratoros.png")" = image/png
+test ! -e "$PKGROOT/usr/lib/infiltratoros"
+for product in system-monitor calculator files defragmenter; do
+    for tool in "install-$product" "start-$product-install" "$product-progress"; do
+        test -x "$PKGROOT/System/Commands/InfiltratorOS/$tool"
+    done
+done
 OUT="$DIST/infiltratoros_${VERSION}_amd64.deb"
 dpkg-deb --root-owner-group --build "$PKGROOT" "$OUT"
 dpkg-deb --info "$OUT" >/dev/null
