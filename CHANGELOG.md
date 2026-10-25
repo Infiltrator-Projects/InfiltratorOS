@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.0.28 — One OS installation, no permanent application install workers
+
+- Remove all twelve per-application installer launchers, workers and GTK progress executables from the installed `/System/Commands/InfiltratorOS` package payload.
+- Embed the original four application-native provisioning pipelines in the single InfiltratorOS Debian maintainer script as a checksum-verified compressed bundle. Unpack only under `/run/infiltratoros` while provisioning is active and remove it after all four jobs finish (including failures); `/run` is volatile on reboot.
+- Retain normal `/System` directories, fonts, icons, calendar and theme configuration, native installed applications, logs and status files.
+- Keep independent GitHub application releases as the authoritative compilation sources and retain Nemo during Files installation.
+- Require CI to verify the embedded bundle and forbid permanent provisioning binaries in the package payload.
+
 ## 1.0.26 — Native Defragmenter provisioning
 
 - Add Defragmenter as an additive fourth native-provisioned application with the existing shared build lock, GTK progress window, status file and failure log.
