@@ -4,12 +4,17 @@ Section: misc
 Priority: optional
 Architecture: amd64
 Maintainer: Infiltrator Projects <noreply@infiltrator-projects.invalid>
-Depends: plymouth, apt, wget, ca-certificates, bash, fontconfig, infiltrator-calendar-resources (>= 1.19.67), libgtk-3-0 | libgtk-3-0t64
+Depends: plymouth, apt, wget, ca-certificates, bash, fontconfig, python3, calendar (>= 1.0.125), infiltrator-calendar-resources (>= 1.19.67), libgtk-3-0 | libgtk-3-0t64
 Description: InfiltratorOS branding and native application integration
  Installs the canonical InfiltratorOS Plymouth splash for Debian and
  Linux Mint derived systems, selects it as the active theme, rebuilds
  initramfs, and replaces distribution System Monitor and Calculator packages
  with Infiltrator builds compiled aggressively for the local CPU.
+ .
+ The independently published Infiltrator Calendar package is installed as a
+ dependency. A backed-up per-user Cinnamon login migration swaps the stock
+ calendar applet's panel entry for the Infiltrator applet without removing the
+ Cinnamon package or altering any other panel items.
  .
  Files is installed as an additional native file manager in /Programs and is
  compiled with the same hardware-native policy. InfiltratorOS does not purge
@@ -17,7 +22,8 @@ Description: InfiltratorOS branding and native application integration
  .
  Defragmenter is added through its checksum-verified native compiler with
  CPU-native -O3 and LTO code generation. No other filesystem utilities are
- removed and its product-owned Linux executable paths are preserved.
+ removed and its user-facing programs and private engines occupy the native /Programs and
+ /System hierarchy.
  .
  The operating system also depends directly on Common's shared clock and
  calendar resource package. APT installs its 53 independent modules in the
