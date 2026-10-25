@@ -91,8 +91,8 @@ if grep -Fq '"/usr/bin/defragmenter' "$defragmenter_worker"; then
     exit 1
 fi
 grep -Fq '"/System/Commands/Defragmenter/defragmenter-operation-engine"' "$defragmenter_worker"
-grep -Fq '"/System/Filesystems/Defragmenter/defragmenter-mapper"' "$defragmenter_worker"
-grep -Fq '"/System/Filesystems/Defragmenter/ext4/ext-metadata-worker"' "$defragmenter_worker"
+grep -Fq '"/System/Commands/Defragmenter/defragmenter-mapper"' "$defragmenter_worker"
+grep -Fq '"/System/Commands/Defragmenter/ext4/ext-metadata-worker"' "$defragmenter_worker"
 grep -Fq '"/System/Resources/Documentation/Defragmenter/README.md"' "$defragmenter_worker"
 if grep -Fq '"/usr/lib/defragmenter/' "$defragmenter_worker"; then
     echo "Defragmenter may not require obsolete private /usr/lib paths." >&2
@@ -104,4 +104,8 @@ if grep -Fq '"purge"' "$defragmenter_worker"; then
     echo "Defragmenter provisioning must not remove other filesystem utilities." >&2
     exit 1
 fi
-\n# Native per-user icon integration, no root-set GVfs file metadata.\nsh -n "$ROOT/packaging/activate-program-icons.sh"\ngrep -Fq "OnlyShowIn=X-Cinnamon;" "$ROOT/packaging/infiltrator-program-icons.desktop"\ngrep -Fq "metadata::custom-icon" "$ROOT/packaging/activate-program-icons.sh"\n
+
+# Native per-user icon integration: never run root-set GVfs metadata.
+sh -n "$ROOT/packaging/activate-program-icons.sh"
+grep -Fq 'OnlyShowIn=X-Cinnamon;' "$ROOT/packaging/infiltrator-program-icons.desktop"
+grep -Fq 'metadata::custom-icon' "$ROOT/packaging/activate-program-icons.sh"
