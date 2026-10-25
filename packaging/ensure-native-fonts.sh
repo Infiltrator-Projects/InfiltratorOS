@@ -12,7 +12,7 @@ case "$ROOT" in
     ""|/*) ;;
     *) echo "INFILTRATR_NATIVE_ROOT must be empty or absolute" >&2; exit 2 ;;
 esac
-SOURCE_DIR="${INFILTRATR_FONT_SOURCE_DIR:-/usr/lib/infiltratoros/font-seed}"
+SOURCE_DIR="${INFILTRATR_FONT_SOURCE_DIR:-/System/Resources/Fonts/Seed}"
 case "$SOURCE_DIR" in
     /*) ;;
     *) echo "INFILTRATR_FONT_SOURCE_DIR must be absolute" >&2; exit 2 ;;
