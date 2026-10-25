@@ -16,7 +16,7 @@ register_icon() {
     [ -f "$file" ] && [ -x "$file" ] && [ ! -L "$file" ] || return 0
 
     # Do not overwrite user-selected custom artwork.
-    current=$(gio info -a metadata::custom-icon -a metadata::custom-icon-name "$file" 2>/dev/null || :)
+    current=$(gio info -a metadata::custom-icon,metadata::custom-icon-name "$file" 2>/dev/null || :)
     case "$current" in
         *'metadata::custom-icon:'*|*'metadata::custom-icon-name:'*) return 0 ;;
     esac
