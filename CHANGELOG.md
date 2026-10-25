@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.0.33 — Automatic Cinnamon/Nemo icons for native programs
+
+- Add a per-user Cinnamon login integration to register file-manager custom icons for all five installed user-facing native executables without terminal commands. Root-run Debian scripts cannot set GVfs metadata in a user's desktop session.
+- Prefer the actual application-owned artwork under `/System/Resources/Icons`; fall back to installed desktop theme icons for Files if its own native artwork is not yet present.
+- Preserve existing user custom icons; never override icon metadata already set by the user, never add executable wrappers or duplicate icon data. Apply at graphical user login, including after application installation.
+- Keep the implementation in the OS-owned `/System/Commands/InfiltratorOS` hierarchy and Cinnamon's existing XDG autostart mechanism. No application installers or temporary workers are permanently added.
+
+
 ## 1.0.32 — Direct native fonts and icons; no Seed directories
 
 - Eliminate installed `/System/Resources/Fonts/Seed` and `/System/Resources/Icons/Seed` entirely. The 23 verified TTF files are packaged directly into `/System/Resources/Fonts`, and 1,233 verified flat PNG/WebP files directly into `/System/Resources/Icons`.
