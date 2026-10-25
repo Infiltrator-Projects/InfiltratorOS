@@ -2,6 +2,8 @@ name: Build InfiltratorOS DEB
 on:
   push:
     branches: [main]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 permissions:
   contents: read
@@ -35,7 +37,7 @@ jobs:
           dpkg-deb -x dist/*.deb "$RUNNER_TEMP/payload"
           cmp assets/infiltratoros.png "$RUNNER_TEMP/payload/usr/share/plymouth/themes/infiltratoros/infiltratoros.png"
           test ! -e "$RUNNER_TEMP/payload/usr/lib/infiltrator/temporal"
-          dpkg-deb -f dist/*.deb Depends | grep -Fq "infiltrator-calendar-resources (>= 1.19.67)"
+          dpkg-deb -f dist/*.deb Depends | grep -Fq "infiltrator-calendar-resources (>= 1.19.75)"
           dpkg-deb -f dist/*.deb Depends | grep -Fq "calendar (>= 1.0.125)"
           test -f "$RUNNER_TEMP/payload/etc/profile.d/90-infiltratoros-native-path.sh"
           sh -n "$RUNNER_TEMP/payload/etc/profile.d/90-infiltratoros-native-path.sh"
