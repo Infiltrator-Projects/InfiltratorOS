@@ -20,6 +20,6 @@
 #define STATUS_DIR "/run/infiltratoros"
 #define STATUS_PATH STATUS_DIR "/" INSTALL_SLUG "-install.status"
 #define LOG_PATH "/var/log/infiltratoros-" INSTALL_SLUG ".log"
-#define WORKER "/usr/lib/infiltratoros/install-" INSTALL_SLUG
-#define PROGRESS_UI "/usr/lib/infiltratoros/" INSTALL_SLUG "-progress"
+#define WORKER "/System/Commands/InfiltratorOS/install-" INSTALL_SLUG
+#define PROGRESS_UI "/System/Commands/InfiltratorOS/" INSTALL_SLUG "-progress"
 #endif
