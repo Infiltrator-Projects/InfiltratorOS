@@ -8,7 +8,7 @@ umask 022
 
 ARCHIVE_SHA256='8d55ccbe5f1eefe3800ab12578a641524742b9482410d95757317434523b342c'
 ROOT=${INFILTRATR_NATIVE_ROOT:-}
-SOURCE_DIR=${INFILTRATR_ICON_SOURCE_DIR:-/usr/lib/infiltratoros/icon-seed}
+SOURCE_DIR=${INFILTRATR_ICON_SOURCE_DIR:-/System/Resources/Icons/Seed}
 case "$ROOT" in ''|/*) ;; *) echo 'Native root must be absolute' >&2; exit 2 ;; esac
 case "$SOURCE_DIR" in /*) ;; *) echo 'Icon source directory must be absolute' >&2; exit 2 ;; esac
 source="$SOURCE_DIR/mercedes-icons-v1.tar.xz"
