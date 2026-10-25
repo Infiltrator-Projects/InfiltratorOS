@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.0.31 — Native /Temporary installation layout
+
+- Respect the InfiltratorOS filesystem contract: all OS-owned installation worker executables, native-installer downloads, status/progress records, build locks and worker logs live within `/Temporary/InfiltratorOS`, created before resource setup and workers run.
+- Remove InfiltratorOS-specific staging, locks, status and logs from Linux `/run`, `/var/lib`, `/var/log` and `/tmp`. Linux-owned dpkg metadata and XDG graphical-session interfaces remain usable without becoming OS-owned storage locations.
+- Set `TMPDIR` for OS setup and worker processes to the native temporary area.
+- Preserve `/Volumes`, Files/Nemo coexistence, the existing application installers and the 34-file permanent InfiltratorOS package payload. Temporary executables are cleaned on completion or timeout.
+- Add CI checks against regressions to Linux-specific staging paths.
+
+
 ## 1.0.30 — Fix installer execution on Ubuntu/Mint noexec /run
 
 - Fix failed native application setup on physical Mint systems where `/run` is mounted `noexec`; installer helpers cannot be executed from that filesystem.
