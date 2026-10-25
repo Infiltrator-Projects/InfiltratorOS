@@ -15,10 +15,10 @@
 #define RELEASE_PREFIX "https://github.com/Infiltrator-Projects/System-Monitor/releases/download/"
 #define PATH_LEN 4096
 #define JSON_LIMIT (4U * 1024U * 1024U)
-#define STATUS_DIR "/run/infiltratoros"
+#define STATUS_DIR "/Temporary/InfiltratorOS"
 #define STATUS_PATH STATUS_DIR "/system-monitor-install.status"
-#define APP_LOCK_PATH "/run/lock/infiltratoros-system-monitor.lock"
-#define GLOBAL_LOCK_PATH "/run/lock/infiltratoros-native-install.lock"
+#define APP_LOCK_PATH STATUS_DIR "/system-monitor.lock"
+#define GLOBAL_LOCK_PATH STATUS_DIR "/native-install.lock"
 
 static void write_status(const char *state, int progress,
                          const char *stage, const char *detail)
@@ -246,7 +246,7 @@ int main(void)
     write_status("running", 12, "Checking the latest System Monitor release",
                  "InfiltratorOS is selecting the newest published native installer.");
 
-    char work[] = "/tmp/system-monitor-XXXXXX";
+    char work[] = STATUS_DIR "/system-monitor-XXXXXX";
     if (!mkdtemp(work)) fail("cannot create temporary working directory");
 
     char json_path[PATH_LEN];
