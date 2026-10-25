@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=InfiltratorOS Native Program Icons
+Comment=Show the installed application's approved artwork in Cinnamon/Nemo
+Exec=/System/Commands/InfiltratorOS/activate-program-icons
+OnlyShowIn=X-Cinnamon;
+NoDisplay=true
+Terminal=false
+X-GNOME-Autostart-Delay=10
