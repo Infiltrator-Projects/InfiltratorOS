@@ -195,7 +195,7 @@ static char runtime_progress[TEXT_LIMIT];
 static void resolve_temporary_runtime(void)
 {
     const char *root = getenv("INFILTRATOROS_INSTALL_RUNTIME");
-    static const char prefix[] = "/run/infiltratoros/native-worker.";
+    static const char prefix[] = "/var/lib/infiltratoros-native-worker.";
     if (!root || strncmp(root, prefix, sizeof(prefix) - 1U) != 0 ||
         strchr(root + sizeof(prefix) - 1U, '/') != NULL ||
         !root[sizeof(prefix) - 1U])
