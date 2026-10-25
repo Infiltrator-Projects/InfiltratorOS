@@ -15,6 +15,9 @@ export SOURCE_DATE_EPOCH
 DIST="$ROOT/dist"
 WORK="$ROOT/.build/infiltratoros_${VERSION}"
 PKGROOT="$WORK/root"
+# Application install workers are packaged inside the Debian maintainer script,
+# staged only under /run during installation, and never installed as OS files.
+RUNTIME_BUILD="$WORK/native-runtime"
 THEME_DIR="$PKGROOT/usr/share/plymouth/themes/infiltratoros"
 FONT_SEED_DIR="$PKGROOT/System/Resources/Fonts/Seed"
 ICON_SEED_DIR="$PKGROOT/System/Resources/Icons/Seed"
@@ -27,6 +30,7 @@ FONT_MANIFEST="$ROOT/assets/fonts/SHA256SUMS"
 rm -rf "$WORK"
 mkdir -p \
     "$PKGROOT/DEBIAN" \
+    "$RUNTIME_BUILD" \
     "$THEME_DIR" \
     "$DIST" \
     "$PKGROOT/etc/profile.d" \
@@ -101,16 +105,16 @@ for product in system-monitor calculator files defragmenter; do
     esac
     cc -std=c11 -O2 -Wall -Wextra -Werror -Wpedantic \
         "$ROOT/packaging/install-$product.c" \
-        -o "$PKGROOT/System/Commands/InfiltratorOS/install-$product"
+        -o "$RUNTIME_BUILD/install-$product"
     cc -std=c11 -O2 -Wall -Wextra -Werror -Wpedantic "-D$profile" \
         "$ROOT/packaging/start-native-install.c" "$ROOT/packaging/installer-process.c" \
-        -o "$PKGROOT/System/Commands/InfiltratorOS/start-$product-install"
+        -o "$RUNTIME_BUILD/start-$product-install"
     # pkg-config emits compiler arguments, intentionally split by the shell.
     # shellcheck disable=SC2086
     cc -std=c11 -O2 -Wall -Wextra -Werror -Wpedantic "-D$profile" \
         $(pkg-config --cflags gtk+-3.0) \
         "$ROOT/packaging/native-install-progress.c" "$ROOT/packaging/installer-status.c" \
-        -o "$PKGROOT/System/Commands/InfiltratorOS/$product-progress" $(pkg-config --libs gtk+-3.0)
+        -o "$RUNTIME_BUILD/$product-progress" $(pkg-config --libs gtk+-3.0)
 done
 
 test "$(file -b --mime-type "$THEME_DIR/infiltratoros.png")" = image/png
@@ -120,9 +124,25 @@ grep -Fxq 'Exec=/System/Commands/InfiltratorOS/activate-calendar' \
     "$PKGROOT/etc/xdg/autostart/infiltrator-calendar.desktop"
 for product in system-monitor calculator files defragmenter; do
     for tool in "install-$product" "start-$product-install" "$product-progress"; do
-        test -x "$PKGROOT/System/Commands/InfiltratorOS/$tool"
+        test -x "$RUNTIME_BUILD/$tool"
+        test ! -e "$PKGROOT/System/Commands/InfiltratorOS/$tool"
     done
 done
+# The package contains one maintainer-script-driven installation transaction.
+# The twelve internal worker binaries exist only in this integrity-checked
+# embedded bundle, NOT as permanent entries in the installed filesystem.
+tar --sort=name --mtime="@$SOURCE_DATE_EPOCH" --owner=0 --group=0 \
+    --numeric-owner -czf "$WORK/native-runtime.tar.gz" -C "$RUNTIME_BUILD" .
+runtime_digest=$(sha256sum "$WORK/native-runtime.tar.gz" | cut -d' ' -f1)
+sed -i "s/@NATIVE_RUNTIME_SHA256@/$runtime_digest/g" "$PKGROOT/DEBIAN/postinst"
+cat >> "$PKGROOT/DEBIAN/postinst" <<'RUNTIME_MARKER'
+: <<'__INFILTRATOROS_NATIVE_BUNDLE_END__'
+__INFILTRATOROS_NATIVE_BUNDLE_BEGIN__
+RUNTIME_MARKER
+base64 -w 76 "$WORK/native-runtime.tar.gz" >> "$PKGROOT/DEBIAN/postinst"
+printf '%s\\n' '__INFILTRATOROS_NATIVE_BUNDLE_END__' >> "$PKGROOT/DEBIAN/postinst"
+sh -n "$PKGROOT/DEBIAN/postinst"
+sh "$PKGROOT/DEBIAN/postinst" --verify-installer-bundle
 OUT="$DIST/infiltratoros_${VERSION}_amd64.deb"
 dpkg-deb --root-owner-group --build "$PKGROOT" "$OUT"
 dpkg-deb --info "$OUT" >/dev/null
