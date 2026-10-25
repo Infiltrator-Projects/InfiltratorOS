@@ -41,6 +41,7 @@ mkdir -p \
     "$SYSTEM_ROOT/Kernel/Modules" \
     "$SYSTEM_ROOT/Kernel/Firmware" \
     "$SYSTEM_ROOT/Resources/Calendars" \
+    "$SYSTEM_ROOT/Resources/Documentation" \
     "$SYSTEM_ROOT/Resources/Clocks" \
     "$SYSTEM_ROOT/Resources/Fonts" \
     "$SYSTEM_ROOT/Resources/Locales" \
