@@ -35,6 +35,6 @@ Do **not** forcibly homogenise languages, native toolkits, build systems, VERSIO
 - **System Monitor**: hardware, performance, process and system inspection/management.
 - **Calculator**: exact/shared mathematical and interaction semantics across native Linux, Windows and iPhone shells.
 - **Files**: namespace browsing, file operations, journalling and recovery; filesystem-specific capabilities are discovered, not assumed, and a separate filesystem remains authoritative for its own persistent format.
-- **Defragmenter**: native filesystem allocation analysis, offline relocation and recovery; the established Linux executable paths remain with its independent Debian package until the product qualifies a native namespace migration.
+- **Defragmenter**: native filesystem allocation analysis, offline relocation and recovery; its independent Debian package owns `/Programs/defragmenter` and `/Programs/defragmenter-test-media`, while private workers remain outside `/Programs`.
 
 An attractive shared appearance is insufficient if it sacrifices safety, performance, capabilities or independent installation. Product logic stays within its owning repository; new product-neutral mechanisms belong in Libraries/Common after their abstraction is justified.
