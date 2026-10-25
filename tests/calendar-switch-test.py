@@ -78,7 +78,7 @@ with tempfile.TemporaryDirectory(prefix="calendar-switch-test-") as work:
     applet.write_text('{"uuid":"other@provider"}', encoding="utf-8")
     state["entries"] = list(saved)
     try:
-        invoke()
+        invoke("--activate")
     except RuntimeError:
         pass
     else:
