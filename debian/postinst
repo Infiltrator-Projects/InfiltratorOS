@@ -3,7 +3,10 @@
 # installation-only; they are never installed in /System/Commands.
 set -eu
 
-RUNTIME_ROOT=/run/infiltratoros
+STATUS_ROOT=/run/infiltratoros
+# /run is noexec on many Debian/Ubuntu boot configurations. Native ELF
+# installer workers must be staged on an executable filesystem instead.
+WORKER_PARENT=/var/lib
 BUNDLE_SHA256='@NATIVE_RUNTIME_SHA256@'
 
 unpack_native_workers() {
@@ -45,9 +48,9 @@ fi
 /System/Commands/InfiltratorOS/ensure-native-icons
 /System/Commands/InfiltratorOS/select-theme configure
 
-mkdir -p "$RUNTIME_ROOT"
-chmod 0755 "$RUNTIME_ROOT"
-stage=$(mktemp -d "$RUNTIME_ROOT/native-worker.XXXXXXXX")
+mkdir -p "$STATUS_ROOT"
+chmod 0755 "$STATUS_ROOT"
+stage=$(mktemp -d "$WORKER_PARENT/infiltratoros-native-worker.XXXXXXXX")
 # Progress windows run as the graphical desktop user and need directory access.
 chmod 0755 "$stage"
 if ! unpack_native_workers "$stage"; then
@@ -66,15 +69,16 @@ done
 
 # Clean the installation-only executables once all four builds have finished,
 # including when a build fails. Logs and status stay available for diagnostics.
-# /run is temporary storage and is automatically emptied at reboot even when
-# a process crashes or the system loses power before the cleanup completes.
+# Never execute installer binaries from /run (which may be noexec).
+# Ordinary completion, failures and timeout remove the ephemeral executable
+# directory; status files and logs remain in their existing locations.
 (
     trap '' HUP INT TERM
     elapsed=0
     while [ "$elapsed" -lt 86400 ]; do
         finished=yes
         for product in system-monitor calculator files defragmenter; do
-            status="$RUNTIME_ROOT/$product-install.status"
+            status="$STATUS_ROOT/$product-install.status"
             if [ ! -f "$status" ] || ! grep -Eq '^state=(complete|failed)$' "$status"; then
                 finished=no
                 break
@@ -85,7 +89,7 @@ done
             sleep 20
             finished=yes
             for product in system-monitor calculator files defragmenter; do
-                status="$RUNTIME_ROOT/$product-install.status"
+                status="$STATUS_ROOT/$product-install.status"
                 if [ ! -f "$status" ] || ! grep -Eq '^state=(complete|failed)$' "$status"; then
                     finished=no
                     break
@@ -99,6 +103,7 @@ done
         sleep 5
         elapsed=$((elapsed + 5))
     done
+    rm -rf -- "$stage"
 ) </dev/null >/dev/null 2>&1 &
 
 exit 0
