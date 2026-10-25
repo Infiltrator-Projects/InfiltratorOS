@@ -378,12 +378,12 @@ int main(void)
     if (!verified_native_package(version, package_info) ||
         !installed("defragmenter") ||
         access("/Programs/defragmenter", X_OK) != 0 ||
-        access("/Programs/defragmenter-desktop", X_OK) != 0 ||
+        access("/Programs/defragmenter-desktop", F_OK) == 0 ||
         access("/Programs/defragmenter-test-media", X_OK) != 0 ||
-        access("/System/Filesystems/Defragmenter/defragmenter-operation-engine", X_OK) != 0 ||
-        access("/System/Filesystems/Defragmenter/defragmenter-mapper", X_OK) != 0 ||
-        access("/System/Filesystems/Defragmenter/ext4/ext-metadata-worker", X_OK) != 0 ||
-        access("/System/Filesystems/Defragmenter/defragmenter-privileged-helper", X_OK) != 0 ||
+        access("/System/Commands/Defragmenter/defragmenter-operation-engine", X_OK) != 0 ||
+        access("/System/Commands/Defragmenter/defragmenter-mapper", X_OK) != 0 ||
+        access("/System/Commands/Defragmenter/ext4/ext-metadata-worker", X_OK) != 0 ||
+        access("/System/Commands/Defragmenter/defragmenter-privileged-helper", X_OK) != 0 ||
         access("/System/Commands/defragmenter-ensure-fonts", X_OK) != 0 ||
         access("/System/Resources/Documentation/Defragmenter/README.md", R_OK) != 0 ||
         access("/System/Resources/Icons/defragmenter.png", R_OK) != 0 ||
