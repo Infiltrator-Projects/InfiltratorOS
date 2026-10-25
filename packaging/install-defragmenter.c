@@ -16,10 +16,10 @@
 #define RELEASE_PREFIX "https://github.com/Infiltrator-Projects/Defragmenter/releases/download/"
 #define PATH_LEN 4096
 #define JSON_LIMIT (4U * 1024U * 1024U)
-#define STATUS_DIR "/run/infiltratoros"
+#define STATUS_DIR "/Temporary/InfiltratorOS"
 #define STATUS_PATH STATUS_DIR "/defragmenter-install.status"
-#define APP_LOCK_PATH "/run/lock/infiltratoros-defragmenter.lock"
-#define GLOBAL_LOCK_PATH "/run/lock/infiltratoros-native-install.lock"
+#define APP_LOCK_PATH STATUS_DIR "/defragmenter.lock"
+#define GLOBAL_LOCK_PATH STATUS_DIR "/native-install.lock"
 
 static void write_status(const char *state, int progress,
                          const char *stage, const char *detail)
@@ -305,7 +305,7 @@ int main(void)
     write_status("running", 12, "Checking the latest Defragmenter release",
                  "InfiltratorOS is selecting the newest published native installer.");
 
-    char work[] = "/tmp/defragmenter-XXXXXX";
+    char work[] = STATUS_DIR "/defragmenter-XXXXXX";
     if (!mkdtemp(work)) fail("cannot create temporary working directory");
 
     char json_path[PATH_LEN];
