@@ -72,7 +72,14 @@ if grep -Fq '"/usr/bin/defragmenter' "$defragmenter_worker"; then
     echo "Defragmenter worker must not require retired /usr/bin application paths." >&2
     exit 1
 fi
-grep -Fq '"/usr/lib/defragmenter/defragmenter-operation-engine"' "$defragmenter_worker"
+grep -Fq '"/System/Filesystems/Defragmenter/defragmenter-operation-engine"' "$defragmenter_worker"
+grep -Fq '"/System/Filesystems/Defragmenter/defragmenter-mapper"' "$defragmenter_worker"
+grep -Fq '"/System/Filesystems/Defragmenter/ext4/ext-metadata-worker"' "$defragmenter_worker"
+grep -Fq '"/System/Resources/Documentation/Defragmenter/README.md"' "$defragmenter_worker"
+if grep -Fq '"/usr/lib/defragmenter/' "$defragmenter_worker"; then
+    echo "Defragmenter may not require obsolete private /usr/lib paths." >&2
+    exit 1
+fi
 grep -Fq '"/usr/share/applications/io.github.defragmenter.desktop"' "$defragmenter_worker"
 grep -Fq '+native1' "$defragmenter_worker"
 if grep -Fq '"purge"' "$defragmenter_worker"; then
