@@ -124,6 +124,10 @@ install -m 0755 "$ROOT/packaging/activate-calendar.py" \
     "$PKGROOT/System/Commands/InfiltratorOS/activate-calendar"
 install -m 0644 "$ROOT/packaging/infiltrator-calendar.desktop" \
     "$PKGROOT/etc/xdg/autostart/infiltrator-calendar.desktop"
+install -m 0755 "$ROOT/packaging/activate-program-icons.sh" \
+    "$PKGROOT/System/Commands/InfiltratorOS/activate-program-icons"
+install -m 0644 "$ROOT/packaging/infiltrator-program-icons.desktop" \
+    "$PKGROOT/etc/xdg/autostart/infiltrator-program-icons.desktop"
 
 cc -std=c11 -O2 -Wall -Wextra -Werror \
     "$ROOT/packaging/stage-theme.c" -o "$WORK/stage-theme"
@@ -155,6 +159,9 @@ done
 
 test "$(file -b --mime-type "$THEME_DIR/infiltratoros.png")" = image/png
 test ! -e "$PKGROOT/usr/lib/infiltratoros"
+test -x "$PKGROOT/System/Commands/InfiltratorOS/activate-program-icons"
+grep -Fxq "Exec=/System/Commands/InfiltratorOS/activate-program-icons" \
+    "$PKGROOT/etc/xdg/autostart/infiltrator-program-icons.desktop"
 test -x "$PKGROOT/System/Commands/InfiltratorOS/activate-calendar"
 grep -Fxq 'Exec=/System/Commands/InfiltratorOS/activate-calendar' \
     "$PKGROOT/etc/xdg/autostart/infiltrator-calendar.desktop"
