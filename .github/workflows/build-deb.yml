@@ -109,11 +109,12 @@ jobs:
           # One InfiltratorOS package invokes the internal install workers.
           # The workers must NOT become permanent /System command files.
           sh "$RUNNER_TEMP/control/postinst" --verify-installer-bundle
-          # Ubuntu/Mint /run may be noexec. Execute workers only from a
-          # persistent filesystem's transient installation staging area.
-          grep -Fq 'WORKER_PARENT=/var/lib' "$RUNNER_TEMP/control/postinst"
-          grep -Fq '/var/lib/infiltratoros-native-worker.' "$GITHUB_WORKSPACE/packaging/start-native-install.c"
-          ! grep -Fq 'stage=$(mktemp -d "$STATUS_ROOT/' "$RUNNER_TEMP/control/postinst"
+          # Prevent OS-owned runtime files outside the native /Temporary.
+          grep -Fq 'STATUS_ROOT=/Temporary/InfiltratorOS' "$RUNNER_TEMP/control/postinst"
+          grep -Fq 'stage=$(mktemp -d "$STATUS_ROOT/native-worker.XXXXXXXX")' "$RUNNER_TEMP/control/postinst"
+          grep -Fq 'export TMPDIR' "$RUNNER_TEMP/control/postinst"
+          grep -Fq '/Temporary/InfiltratorOS/native-worker.' "$GITHUB_WORKSPACE/packaging/start-native-install.c"
+          ! grep -Eq '^WORKER_PARENT=|^STATUS_ROOT=/run|/var/lib/infiltratoros-native-worker|/run/infiltratoros' "$RUNNER_TEMP/control/postinst"
           # A missing/mismatched digest must terminate guarded extraction.
           cp "$RUNNER_TEMP/control/postinst" "$RUNNER_TEMP/tampered-postinst"
           sed -i -E "s/^BUNDLE_SHA256=.*/BUNDLE_SHA256='0000000000000000000000000000000000000000000000000000000000000000'/" "$RUNNER_TEMP/tampered-postinst"
