@@ -140,7 +140,7 @@ cat >> "$PKGROOT/DEBIAN/postinst" <<'RUNTIME_MARKER'
 __INFILTRATOROS_NATIVE_BUNDLE_BEGIN__
 RUNTIME_MARKER
 base64 -w 76 "$WORK/native-runtime.tar.gz" >> "$PKGROOT/DEBIAN/postinst"
-printf '%s\\n' '__INFILTRATOROS_NATIVE_BUNDLE_END__' >> "$PKGROOT/DEBIAN/postinst"
+printf '%s\n' '__INFILTRATOROS_NATIVE_BUNDLE_END__' >> "$PKGROOT/DEBIAN/postinst"
 sh -n "$PKGROOT/DEBIAN/postinst"
 sh "$PKGROOT/DEBIAN/postinst" --verify-installer-bundle
 OUT="$DIST/infiltratoros_${VERSION}_amd64.deb"
