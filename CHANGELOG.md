@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.29 — Fail-closed temporary installer validation
+
+- Stop extraction immediately if the embedded installation bundle fails base64 decoding, SHA-256 verification, archive extraction or individual worker checks, even when called through a guarded error-handling conditional.
+- Add a regression test proving a deliberately mismatched embedded SHA-256 cannot pass installer qualification.
+- Keep the 1.0.28 architecture of one InfiltratorOS installer, 34 persistent package files and temporary native installation workers.
+
+
 ## 1.0.28 — One OS installation, no permanent application install workers
 
 - Remove all twelve per-application installer launchers, workers and GTK progress executables from the installed `/System/Commands/InfiltratorOS` package payload.
