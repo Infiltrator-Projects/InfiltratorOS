@@ -25,13 +25,14 @@ MANIFEST_ROOT = "System/Resources/Documentation/InfiltratorOS/"
 def expected_paths(source_root: pathlib.Path) -> set[str]:
     entries = {
         COMMAND_ROOT + command for command in (
-            "activate-calendar", "ensure-native-fonts", "ensure-native-icons",
+            "activate-calendar", "activate-program-icons", "ensure-native-fonts", "ensure-native-icons",
             "select-theme",
         )
     }
     entries.update({
         "etc/profile.d/90-infiltratoros-native-path.sh",
         "etc/xdg/autostart/infiltrator-calendar.desktop",
+        "etc/xdg/autostart/infiltrator-program-icons.desktop",
         MANIFEST_ROOT + "fonts.sha256",
         MANIFEST_ROOT + "icons.sha256",
     })
