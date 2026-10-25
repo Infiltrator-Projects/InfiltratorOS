@@ -4,6 +4,23 @@ ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
 sh -n "$ROOT/packaging/ensure-native-icons.sh"
 python3 "$ROOT/tests/calendar-switch-test.py"
 sh "$ROOT/tests/native-icons.sh"
+
+# InfiltratorOS-owned install state must live under the native /Temporary.
+profile="$ROOT/packaging/installer-profile.h"
+grep -Fq '#define STATUS_DIR "/Temporary/InfiltratorOS"' "$profile"
+grep -Fq '#define LOG_PATH STATUS_DIR "/" INSTALL_SLUG "-install.log"' "$profile"
+grep -Fq '"/Temporary/InfiltratorOS/native-worker."' "$ROOT/packaging/start-native-install.c"
+for product in system-monitor calculator files defragmenter; do
+    worker="$ROOT/packaging/install-$product.c"
+    grep -Fq '#define STATUS_DIR "/Temporary/InfiltratorOS"' "$worker"
+    grep -Fq '#define APP_LOCK_PATH STATUS_DIR "/' "$worker"
+    grep -Fq '#define GLOBAL_LOCK_PATH STATUS_DIR "/native-install.lock"' "$worker"
+    grep -Fq "STATUS_DIR \"/$product-XXXXXX\"" "$worker"
+    if grep -Eq '"/(run/infiltratoros|run/lock/infiltratoros|tmp/)' "$worker"; then
+        echo "Native $product worker still writes to Linux temporary storage" >&2
+        exit 1
+    fi
+done
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT HUP INT TERM
 for contract in process status; do
