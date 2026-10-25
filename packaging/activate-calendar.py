@@ -46,6 +46,8 @@ def main():
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--restore", action="store_true",
                         help="Restore the original panel entries from the backup")
+    parser.add_argument("--activate", action="store_true",
+                        help="Explicitly reactivate Calendar after an earlier restore")
     args = parser.parse_args()
 
     if os.geteuid() == 0:
@@ -67,11 +69,11 @@ def main():
         _, observed = setting_get()
         if observed != saved:
             raise RuntimeError("Cinnamon did not accept the restored panel")
-        marker.unlink(missing_ok=True)
-        print("Original Cinnamon panel entries restored")
+        marker.write_text("Original calendar restored by user; leave it alone on future logins\n", encoding="utf-8")
+        print("Original Cinnamon panel entries restored; auto-migration disabled")
         return 0
 
-    if marker.is_file():
+    if marker.is_file() and not args.activate:
         print("Calendar migration already performed; respecting the user's panel changes")
         return 0
 
