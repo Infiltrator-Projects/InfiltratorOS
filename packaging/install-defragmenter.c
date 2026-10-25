@@ -380,8 +380,13 @@ int main(void)
         access("/Programs/defragmenter", X_OK) != 0 ||
         access("/Programs/defragmenter-desktop", X_OK) != 0 ||
         access("/Programs/defragmenter-test-media", X_OK) != 0 ||
-        access("/usr/lib/defragmenter/defragmenter-operation-engine", X_OK) != 0 ||
-        access("/usr/lib/defragmenter/defragmenter-mapper", X_OK) != 0 ||
+        access("/System/Filesystems/Defragmenter/defragmenter-operation-engine", X_OK) != 0 ||
+        access("/System/Filesystems/Defragmenter/defragmenter-mapper", X_OK) != 0 ||
+        access("/System/Filesystems/Defragmenter/ext4/ext-metadata-worker", X_OK) != 0 ||
+        access("/System/Filesystems/Defragmenter/defragmenter-privileged-helper", X_OK) != 0 ||
+        access("/System/Commands/defragmenter-ensure-fonts", X_OK) != 0 ||
+        access("/System/Resources/Documentation/Defragmenter/README.md", R_OK) != 0 ||
+        access("/System/Resources/Icons/defragmenter.png", R_OK) != 0 ||
         !file_contains("/usr/share/applications/io.github.defragmenter.desktop",
                        "Exec=/Programs/defragmenter") ||
         !file_contains("/usr/share/applications/io.github.defragmenter.TestMedia.desktop",
