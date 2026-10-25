@@ -2,8 +2,9 @@
 """Reject every unexpected file/symlink in an InfiltratorOS Debian payload.
 
 The four application binaries belong to their independent packages. This OS
-package owns provisioning commands, verified resource seeds and only the host
-integration files needed by Debian and Mint.
+package owns OS configuration helpers, verified resource seeds and only the host
+integration files needed by Debian and Mint. The application installer workers
+are embedded in the dpkg maintainer script and staged temporarily under /run.
 """
 from __future__ import annotations
 
@@ -25,12 +26,6 @@ def expected_paths(source_root: pathlib.Path) -> set[str]:
             "select-theme",
         )
     }
-    for product in PRODUCTS:
-        entries.update({
-            COMMAND_ROOT + "install-" + product,
-            COMMAND_ROOT + "start-" + product + "-install",
-            COMMAND_ROOT + product + "-progress",
-        })
     entries.update({
         "etc/profile.d/90-infiltratoros-native-path.sh",
         "etc/xdg/autostart/infiltrator-calendar.desktop",
@@ -105,8 +100,8 @@ def main() -> int:
             print("UNAPPROVED LOCATION:", name, file=sys.stderr)
         return 1
     print(
-        f"InfiltratorOS layout: {len(actual)} files at approved locations; "
-        "no symlinks or misplaced files"
+        f"InfiltratorOS layout: {len(actual)} persistent files at approved locations; "
+        "zero installed application-worker executables"
     )
     return 0
 
