@@ -62,6 +62,13 @@ with tempfile.TemporaryDirectory(prefix="calendar-switch-test-") as work:
     assert state["writes"] == 1, "idempotent operation must not overwrite user changes"
     assert invoke("--restore") == 0
     assert state["entries"] == saved
+    writes = state["writes"]
+    assert invoke() == 0, "Auto-start may not undo a deliberate restore"
+    assert state["writes"] == writes
+    assert invoke("--activate") == 0
+    assert state["entries"] == expected
+    assert invoke("--restore") == 0
+    assert state["entries"] == saved
     # If no stock applet is present, don't insert a new icon or rewrite the panel.
     state["entries"] = ["panel1:left:0:menu@cinnamon.org:0"]
     before = state["writes"]
