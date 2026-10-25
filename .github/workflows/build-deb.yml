@@ -106,11 +106,15 @@ jobs:
           test "$(find "$native_icons" -mindepth 1 -type d | wc -l)" -eq 0
           INFILTRATR_NATIVE_ROOT="$native_root" INFILTRATR_ICON_SOURCE_DIR="$icon_seed" "$icon_helper"
           test "$(find "$native_icons" -maxdepth 1 -type f | wc -l)" -eq 1233
+          # One InfiltratorOS package invokes the internal install workers.
+          # The workers must NOT become permanent /System command files.
+          sh "$RUNNER_TEMP/control/postinst" --verify-installer-bundle
           for product in system-monitor calculator files defragmenter; do
             for program in "install-$product" "start-$product-install" "$product-progress"; do
-              test -x "$RUNNER_TEMP/payload/System/Commands/InfiltratorOS/$program"
+              test ! -e "$RUNNER_TEMP/payload/System/Commands/InfiltratorOS/$program"
             done
           done
+          test "$(find "$RUNNER_TEMP/payload/System/Commands/InfiltratorOS" -maxdepth 1 -type f | wc -l)" -eq 4
           git archive --format=zip --prefix="infiltratoros-$version/" HEAD > "dist/infiltratoros-$version-source.zip"
           printf '%s\n' "$GITHUB_SHA" > dist/SOURCE_COMMIT
           (cd dist && sha256sum *.deb *.zip SOURCE_COMMIT > SHA256SUMS.txt)
