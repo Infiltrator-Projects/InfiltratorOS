@@ -109,6 +109,13 @@ jobs:
           # One InfiltratorOS package invokes the internal install workers.
           # The workers must NOT become permanent /System command files.
           sh "$RUNNER_TEMP/control/postinst" --verify-installer-bundle
+          # A missing/mismatched digest must terminate guarded extraction.
+          cp "$RUNNER_TEMP/control/postinst" "$RUNNER_TEMP/tampered-postinst"
+          sed -i -E "s/^BUNDLE_SHA256=.*/BUNDLE_SHA256='0000000000000000000000000000000000000000000000000000000000000000'/" "$RUNNER_TEMP/tampered-postinst"
+          if sh "$RUNNER_TEMP/tampered-postinst" --verify-installer-bundle; then
+            echo "Installer accepted a tampered archive digest" >&2
+            exit 1
+          fi
           for product in system-monitor calculator files defragmenter; do
             for program in "install-$product" "start-$product-install" "$product-progress"; do
               test ! -e "$RUNNER_TEMP/payload/System/Commands/InfiltratorOS/$program"
