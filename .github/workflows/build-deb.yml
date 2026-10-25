@@ -30,6 +30,9 @@ jobs:
           cp dist/*.deb "$RUNNER_TEMP/first.deb"
           sh scripts/build-deb.sh
           cmp "$RUNNER_TEMP/first.deb" dist/*.deb
+          # Enforce an exhaustive allowlist of every installed regular file;
+          # no legacy /usr/bin program copies or unexpected host paths.
+          python3 tests/package-layout-test.py dist/*.deb
           version=$(tr -d '\r\n' < VERSION)
           test "$(dpkg-deb -f dist/*.deb Version)" = "$version"
           dpkg-deb -e dist/*.deb "$RUNNER_TEMP/control"
