@@ -17,9 +17,9 @@
 #define INSTALL_SLUG "defragmenter"
 #endif
 
-#define STATUS_DIR "/run/infiltratoros"
+#define STATUS_DIR "/Temporary/InfiltratorOS"
 #define STATUS_PATH STATUS_DIR "/" INSTALL_SLUG "-install.status"
-#define LOG_PATH "/var/log/infiltratoros-" INSTALL_SLUG ".log"
+#define LOG_PATH STATUS_DIR "/" INSTALL_SLUG "-install.log"
 #define WORKER "/System/Commands/InfiltratorOS/install-" INSTALL_SLUG
 #define PROGRESS_UI "/System/Commands/InfiltratorOS/" INSTALL_SLUG "-progress"
 #endif
