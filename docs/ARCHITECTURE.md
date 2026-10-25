@@ -27,7 +27,7 @@ The operating system depends directly on the standard Calendar Resources capabil
 
 ## Shared native installation mechanics
 
-`start-native-install.c` and `native-install-progress.c` compile once per product profile. `installer-profile.h` maps compile-time identity to fixed installed paths. Runtime arguments cannot select another privileged worker.
+`start-native-install.c` and `native-install-progress.c` compile once per product profile. `installer-profile.h` maps compile-time product identity to status and log paths. All twelve per-application executables are bundled inside the **single InfiltratorOS Debian post-installation script**, SHA-256 verified and unpacked under `/run/infiltratoros/native-worker.*` for the duration of setup. They are NOT package-owned `/System` commands. The launcher accepts only the temporary installation runtime path established by `postinst`; runtime arguments cannot select another privileged product worker. A post-installation monitor removes that temporary directory when all workers report terminal status. If installation is interrupted, `/run` is cleared at reboot. Reinstalling InfiltratorOS runs the installation script again.
 
 `installer-process.c` owns detached process lifetime. The parent reaps the first child and receives a close-on-exec pipe acknowledgement from the grandchild. Setup and exec failures return their errno; a successful exec acknowledges startup, independently of later worker success. Standard streams are redirected explicitly and inherited descriptors are closed. Progress windows drop to the discovered desktop user.
 
@@ -47,11 +47,11 @@ Desktop discovery currently selects the first eligible graphical user found in /
 
 ## Package destination inventory
 
-The Debian payload contains 46 regular files: 16 provisioning/OS helpers in
+The Debian data payload contains 34 regular files: **four OS configuration helpers** in
 `/System/Commands/InfiltratorOS`, 23 font faces and their SHA-256 manifest in
 `/System/Resources/Fonts/Seed`, one archive in `/System/Resources/Icons/Seed`,
 three Plymouth integration files in `/usr/share/plymouth/themes/infiltratoros`,
-and two host integration files under `/etc`. The actual programs built by the
+and two host integration files under `/etc`. The twelve application provisioning executables are installation-only bundle members stored in Debian control metadata, not files left in the installed native hierarchy. The actual programs built by the
 four product installers belong to those products' separate Debian packages,
 not to the InfiltratorOS package itself. The test
 `tests/package-layout-test.py` rejects any missing, duplicated, unexpected or
