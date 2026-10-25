@@ -58,7 +58,15 @@ The package selects the canonical Plymouth image, configures Debian/Mint compati
 
 The package establishes the native InfiltratorOS filesystem skeleton under `/System`, `/Programs`, `/Users`, `/Volumes` and `/Temporary`. `/Programs` is the sole native home for user-launchable applications. `/System` contains operating-system infrastructure such as Commands, Libraries, Devices, Filesystems, Kernel, Preferences and shared Resources; there is deliberately no `/System/Programs`. The hierarchy is additive over the Linux base while the native model is being proven, and the complete current contract is documented in [Filesystem](docs/FILESYSTEM.md).
 
-The 23 MB Corpo and Daimler TTFs are committed under [`assets/fonts`](assets/fonts) with a single SHA-256 manifest. Package construction verifies every file and stages the fonts under `/System/Resources/Fonts/Seed`; configuration then establishes or repairs the persistent `/System/Resources/Fonts` cache from that local seed with no font download. The bootstrap prefers hard links when the seed and native cache share a filesystem, avoiding duplicate font data, and falls back to verified copies only when a split filesystem requires it. The native cache and Fontconfig registration are deliberately not package-owned, so removing InfiltratorOS cannot break independently installed Infiltrator applications.
+The 23 MB Corpo/Daimler fonts are SHA-256 verified during package construction
+and installed **directly** under `/System/Resources/Fonts/`. Likewise, all 1,233
+PNG/WebP icons are validated against their canonical source checksums and
+packaged **directly** under `/System/Resources/Icons/`. Their verification
+manifests belong under `/System/Resources/Documentation/InfiltratorOS/`.
+No installed `Seed` folders, archives or duplicate resources exist.
+Post-install helpers verify the direct resources and register Fontconfig.
+The InfiltratorOS package owns these files, so reinstalling it restores them;
+individual application removal does not remove shared resources.
 
 InfiltratorOS depends on Calendar and uses a per-user Cinnamon login migration to replace only the stock Calendar panel applet while preserving its panel position and a reversible backup; it does not purge Cinnamon or alter Nemo. `/System/Commands/InfiltratorOS/activate-calendar --restore` reverses the change and stops automatic reactivation; `--activate` explicitly applies it again.
 
@@ -91,14 +99,14 @@ Application versions are resolved at installation time. The OS package does not 
 
 ## Shared icon resources
 
-InfiltratorOS 1.0.22 and newer seed a deduplicated catalogue of 1,233
-portable PNG/WebP icon identities (816 distinct image binaries), extracted from
-six Mercedes Android application archives supplied for this project. The archive
-is checksum-verified as part of the package build and again before installation.
-From 1.0.23, all icons are installed directly in `/System/Resources/Icons/`.
+InfiltratorOS provides 1,233 named portable PNG/WebP icon identities
+(816 distinct image binaries) from six Mercedes Android application sources.
+The source archive is SHA-256 checked and unpacked **during package build only**.
+The resulting individual icons are package-owned files directly under
+`/System/Resources/Icons/`; no archive or `Seed` directory is installed.
 Filenames use `<app>-<variant>-<resource>.png` (or `.webp`) to retain every
 application and normal/night variant without filename clashes. Upgrades migrate
 the old subdirectory by removing only verified, unchanged copies after the
 replacement icons have been installed; locally changed or added files survive.
-They do not overwrite the desktop's existing icon theme and survive removal of
-individual Infiltrator applications. See [icon inventory](assets/icons/README.md).
+They do not overwrite the desktop's existing icon theme. Their owner is
+InfiltratorOS, not any individual application. See [icon inventory](assets/icons/README.md).
