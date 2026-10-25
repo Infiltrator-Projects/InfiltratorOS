@@ -4,12 +4,15 @@
 
 `scripts/build-deb.sh` owns package membership and reads the root VERSION. It accepts only a numeric semantic version before constructing staging paths, requires the supported amd64 host, verifies the approved artwork, and uses SOURCE_DATE_EPOCH for deterministic Debian archives.
 
-The 23 Mercedes-Benz/Daimler fonts are independently named, checked against a
-single `assets/fonts/SHA256SUMS` manifest and seeded in the InfiltratorOS
-package; the persistent native font cache is established by
-`packaging/ensure-native-fonts.sh`. The three obsolete version-1.000 MB Corpo
-files are not distributed. The font cache remains outside Debian package
-ownership to avoid removal by unrelated application uninstalls.
+The 23 Mercedes-Benz/Daimler fonts are verified against
+`assets/fonts/SHA256SUMS` and directly packaged under
+`/System/Resources/Fonts`. The 1,233 flat icon files are checked during
+build against the canonical archive checksum and installed directly under
+`/System/Resources/Icons`. Their verification inventories are installed
+in `/System/Resources/Documentation/InfiltratorOS`.
+No seed directories, duplicate installed resources or persistent source archive
+exist. The operating-system Debian package owns all these files; reinstalls
+restore them, while independent application uninstallers do not remove them.
 
 The InfiltratorOS package owns establishment of the native filesystem skeleton documented in `FILESYSTEM.md`. The hierarchy is additive over the Debian/Linux base during migration: packaging creates the native roots and role directories, while subsystem code decides how individual capabilities are discovered and used. Named user directories are deliberately outside package ownership.
 
@@ -47,22 +50,21 @@ Desktop discovery currently selects the first eligible graphical user found in /
 
 ## Package destination inventory
 
-The Debian data payload contains 34 regular files: **four OS configuration helpers** in
-`/System/Commands/InfiltratorOS`, 23 font faces and their SHA-256 manifest in
-`/System/Resources/Fonts/Seed`, one archive in `/System/Resources/Icons/Seed`,
-three Plymouth integration files in `/usr/share/plymouth/themes/infiltratoros`,
-and two host integration files under `/etc`. The twelve application provisioning executables are installation-only bundle members stored in Debian control metadata, not files left in the installed native hierarchy. The actual programs built by the
-four product installers belong to those products' separate Debian packages,
-not to the InfiltratorOS package itself. The test
-`tests/package-layout-test.py` rejects any missing, duplicated, unexpected or
-symlinked payload entry and runs against each candidate `.deb` in CI.
+The Debian data payload contains **1,267 regular files**: four OS helpers
+in `/System/Commands/InfiltratorOS`, 23 direct font files, 1,233 direct flat
+icon files, two SHA-256 inventories in
+`/System/Resources/Documentation/InfiltratorOS`, three Plymouth integration
+files and two Linux compatibility files under `/etc`. The twelve temporary
+application setup executables are only in the Debian maintainer-script bundle,
+not installed permanently. The four actual applications remain owned by their
+independent packages. CI checks that no duplicate resource or `Seed` path
+enters the Debian payload.
 
 ## Shared icon resources
 
-InfiltratorOS owns a verified icon archive at `/System/Resources/Icons/Seed/mercedes-icons-v1.tar.xz`.
-The post-install helper installs every icon directly in `/System/Resources/Icons/`.
-Filenames encode the source application, normal/night variant and original resource
-name. The old `mercedes` directory is migrated only after every new copy is verified;
-cleanup removes only unchanged seed files and empty directories. It preserves
-custom files, locally modified legacy icons and the host icon theme, and does not
-require any individual app to own or uninstall the shared artwork.
+Only the build process reassembles the verified source icon archive.
+The generated Debian package contains the flat icon files directly under
+`/System/Resources/Icons/`. The installation helper validates their digest
+inventory, then removes only unchanged old nested `mercedes` icons and
+empty legacy directories. Custom and modified legacy icons and the host
+icon theme remain untouched.
