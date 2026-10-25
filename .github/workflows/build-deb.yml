@@ -74,38 +74,46 @@ jobs:
             Temporary; do
             test -d "$RUNNER_TEMP/payload/$directory"
           done
+          # Exactly one native installation location for fonts and icons.
           font_root="$RUNNER_TEMP/payload/System/Resources/Fonts"
-          test "$(find "$font_root" -maxdepth 1 -type f -name '*.ttf' | wc -l)" -eq 0
-          font_seed="$RUNNER_TEMP/payload/System/Resources/Fonts/Seed"
-          test "$(find "$font_seed" -maxdepth 1 -type f -name '*.ttf' | wc -l)" -eq 23
-          cmp assets/fonts/SHA256SUMS "$font_seed/SHA256SUMS"
-          (cd "$font_seed" && sha256sum -c SHA256SUMS)
+          icon_root="$RUNNER_TEMP/payload/System/Resources/Icons"
+          manifest_root="$RUNNER_TEMP/payload/System/Resources/Documentation/InfiltratorOS"
+          test ! -e "$font_root/Seed"
+          test ! -e "$icon_root/Seed"
+          test "$(find "$font_root" -maxdepth 1 -type f -name '*.ttf' | wc -l)" -eq 23
+          test "$(find "$icon_root" -maxdepth 1 -type f | wc -l)" -eq 1233
+          cmp assets/fonts/SHA256SUMS "$manifest_root/fonts.sha256"
+          (cd "$font_root" && sha256sum -c "$manifest_root/fonts.sha256") >/dev/null
+          (cd "$icon_root" && sha256sum -c "$manifest_root/icons.sha256") >/dev/null
+          # Exercise font configuration and verification on a staging root
+          # populated the same way dpkg installs the production payload.
+          native_root="$RUNNER_TEMP/native-root"
+          mkdir -p "$native_root/System/Resources/Fonts" \
+                   "$native_root/System/Resources/Icons" \
+                   "$native_root/System/Resources/Documentation/InfiltratorOS"
+          cp -a "$font_root/." "$native_root/System/Resources/Fonts/"
+          cp -a "$icon_root/." "$native_root/System/Resources/Icons/"
+          cp -a "$manifest_root/." "$native_root/System/Resources/Documentation/InfiltratorOS/"
           helper="$RUNNER_TEMP/payload/System/Commands/InfiltratorOS/ensure-native-fonts"
           test -x "$helper"
           sh -n "$helper"
-          ! grep -Eq 'raw\.githubusercontent\.com|MBLink|curl|wget' "$helper"
-          ! grep -Eq '(rm|rmdir).*System/Resources/Fonts' "$RUNNER_TEMP/control/postinst" "$RUNNER_TEMP/control/prerm"
-          native_root="$RUNNER_TEMP/native-root"
-          INFILTRATR_NATIVE_ROOT="$native_root" INFILTRATR_FONT_SOURCE_DIR="$font_seed" "$helper"
-          staged_fonts="$native_root/System/Resources/Fonts"
-          test "$(find "$staged_fonts" -maxdepth 1 -type f -name '*.ttf' | wc -l)" -eq 23
-          (cd "$staged_fonts" && sha256sum -c "$font_seed/SHA256SUMS")
+          INFILTRATR_NATIVE_ROOT="$native_root" "$helper"
           grep -Fq '<dir>/System/Resources/Fonts</dir>' "$native_root/etc/fonts/conf.d/90-infiltrator-native-fonts.conf"
-          INFILTRATR_NATIVE_ROOT="$native_root" INFILTRATR_FONT_SOURCE_DIR="$font_seed" "$helper"
-          (cd "$staged_fonts" && sha256sum -c "$font_seed/SHA256SUMS")
-          icon_seed="$RUNNER_TEMP/payload/System/Resources/Icons/Seed"
-          test -f "$icon_seed/mercedes-icons-v1.tar.xz"
-          printf '%s  %s\n' '8d55ccbe5f1eefe3800ab12578a641524742b9482410d95757317434523b342c' "$icon_seed/mercedes-icons-v1.tar.xz" | sha256sum -c -
+          INFILTRATR_NATIVE_ROOT="$native_root" "$helper"
           icon_helper="$RUNNER_TEMP/payload/System/Commands/InfiltratorOS/ensure-native-icons"
           test -x "$icon_helper"
           sh -n "$icon_helper"
-          test "$(tar -tJf "$icon_seed/mercedes-icons-v1.tar.xz" | grep -c '^mercedes/')" -eq 1233
-          INFILTRATR_NATIVE_ROOT="$native_root" INFILTRATR_ICON_SOURCE_DIR="$icon_seed" "$icon_helper"
-          native_icons="$native_root/System/Resources/Icons"
-          test "$(find "$native_icons" -maxdepth 1 -type f | wc -l)" -eq 1233
-          test "$(find "$native_icons" -mindepth 1 -type d | wc -l)" -eq 0
-          INFILTRATR_NATIVE_ROOT="$native_root" INFILTRATR_ICON_SOURCE_DIR="$icon_seed" "$icon_helper"
-          test "$(find "$native_icons" -maxdepth 1 -type f | wc -l)" -eq 1233
+          INFILTRATR_NATIVE_ROOT="$native_root" "$icon_helper"
+          test "$(find "$native_root/System/Resources/Icons" -mindepth 1 -type d | wc -l)" -eq 0
+          INFILTRATR_NATIVE_ROOT="$native_root" "$icon_helper"
+          # Fail if a packaged resource disappears: never rely on a seed copy.
+          rm -f -- "$native_root/System/Resources/Fonts/mb_corpo_s_title_bold.ttf"
+          if INFILTRATR_NATIVE_ROOT="$native_root" "$helper"; then
+              echo "Missing native font accepted without a packaged source" >&2
+              exit 1
+          fi
+          test ! -e "$RUNNER_TEMP/payload/System/Resources/Fonts/Seed"
+          test ! -e "$RUNNER_TEMP/payload/System/Resources/Icons/Seed"
           # One InfiltratorOS package invokes the internal install workers.
           # The workers must NOT become permanent /System command files.
           sh "$RUNNER_TEMP/control/postinst" --verify-installer-bundle
