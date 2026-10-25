@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=InfiltratorOS Calendar Panel Migration
+Comment=Activate the verified Infiltrator Calendar in place of the stock Cinnamon clock
+Exec=/System/Commands/InfiltratorOS/activate-calendar
+OnlyShowIn=X-Cinnamon;
+NoDisplay=true
+Terminal=false
+X-GNOME-Autostart-Delay=5
