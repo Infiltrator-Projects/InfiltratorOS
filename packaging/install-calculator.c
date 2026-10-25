@@ -297,7 +297,7 @@ static const char *installed_contract_error(void)
         return "the canonical Calculator package is not installed";
     if (!executable_file("/Programs/calculator"))
         return "the Calculator package is installed but /Programs/calculator is missing or not executable";
-    if (!regular_file("/usr/share/doc/calculator/BUILD-INFO"))
+    if (!regular_file("/System/Resources/Documentation/Calculator/BUILD-INFO"))
         return "Calculator native build metadata is missing after installation";
     if (!regular_file(desktop))
         return "Calculator desktop launcher is missing after installation";
