@@ -1,12 +1,12 @@
 #!/bin/sh
 set -eu
 
-/usr/lib/infiltratoros/ensure-native-fonts
-/usr/lib/infiltratoros/ensure-native-icons
-/usr/lib/infiltratoros/select-theme configure
-/usr/lib/infiltratoros/start-system-monitor-install
-/usr/lib/infiltratoros/start-calculator-install
-/usr/lib/infiltratoros/start-files-install
-/usr/lib/infiltratoros/start-defragmenter-install
+/System/Commands/InfiltratorOS/ensure-native-fonts
+/System/Commands/InfiltratorOS/ensure-native-icons
+/System/Commands/InfiltratorOS/select-theme configure
+/System/Commands/InfiltratorOS/start-system-monitor-install
+/System/Commands/InfiltratorOS/start-calculator-install
+/System/Commands/InfiltratorOS/start-files-install
+/System/Commands/InfiltratorOS/start-defragmenter-install
 
 exit 0
