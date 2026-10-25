@@ -3,10 +3,8 @@
 # installation-only; they are never installed in /System/Commands.
 set -eu
 
-STATUS_ROOT=/run/infiltratoros
-# /run is noexec on many Debian/Ubuntu boot configurations. Native ELF
-# installer workers must be staged on an executable filesystem instead.
-WORKER_PARENT=/var/lib
+STATUS_ROOT=/Temporary/InfiltratorOS
+# All InfiltratorOS-owned installation files stay under the native /Temporary root.
 BUNDLE_SHA256='@NATIVE_RUNTIME_SHA256@'
 
 unpack_native_workers() {
@@ -44,13 +42,16 @@ if [ "${1:-}" != configure ]; then
     exit 0
 fi
 
+mkdir -p "$STATUS_ROOT"
+chmod 0755 "$STATUS_ROOT"
+TMPDIR="$STATUS_ROOT"
+export TMPDIR
+
 /System/Commands/InfiltratorOS/ensure-native-fonts
 /System/Commands/InfiltratorOS/ensure-native-icons
 /System/Commands/InfiltratorOS/select-theme configure
 
-mkdir -p "$STATUS_ROOT"
-chmod 0755 "$STATUS_ROOT"
-stage=$(mktemp -d "$WORKER_PARENT/infiltratoros-native-worker.XXXXXXXX")
+stage=$(mktemp -d "$STATUS_ROOT/native-worker.XXXXXXXX")
 # Progress windows run as the graphical desktop user and need directory access.
 chmod 0755 "$stage"
 if ! unpack_native_workers "$stage"; then
@@ -63,15 +64,14 @@ fi
 # native installation lock and downloads only its own product's GitHub .run.
 for product in system-monitor calculator files defragmenter; do
     if ! INFILTRATOROS_INSTALL_RUNTIME="$stage" "$stage/start-$product-install"; then
-        echo "Failed to launch $product installer; see /run/infiltratoros status." >&2
+        echo "Failed to launch $product installer; see /Temporary/InfiltratorOS status." >&2
     fi
 done
 
 # Clean the installation-only executables once all four builds have finished,
 # including when a build fails. Logs and status stay available for diagnostics.
-# Never execute installer binaries from /run (which may be noexec).
-# Ordinary completion, failures and timeout remove the ephemeral executable
-# directory; status files and logs remain in their existing locations.
+# Executables run from the native /Temporary and are cleaned on completion
+# or timeout; status and logs remain in /Temporary/InfiltratorOS.
 (
     trap '' HUP INT TERM
     elapsed=0
