@@ -82,7 +82,7 @@ grep -Fq 'RELEASE_SHA256SUMS.txt' "$defragmenter_worker"
 grep -Fq '"/usr/bin/sha256sum"' "$defragmenter_worker"
 grep -Fq '"-O3 -march=native -mtune=native -flto"' "$defragmenter_worker"
 grep -Fq '"/Programs/defragmenter"' "$defragmenter_worker"
-grep -Fq '"/Programs/defragmenter-desktop"' "$defragmenter_worker"
+grep -Fq '"/Programs/defragmenter-desktop", F_OK' "$defragmenter_worker"
 grep -Fq '"/Programs/defragmenter-test-media"' "$defragmenter_worker"
 grep -Fq '"Exec=/Programs/defragmenter"' "$defragmenter_worker"
 grep -Fq '"Exec=/Programs/defragmenter-test-media"' "$defragmenter_worker"
@@ -90,7 +90,7 @@ if grep -Fq '"/usr/bin/defragmenter' "$defragmenter_worker"; then
     echo "Defragmenter worker must not require retired /usr/bin application paths." >&2
     exit 1
 fi
-grep -Fq '"/System/Filesystems/Defragmenter/defragmenter-operation-engine"' "$defragmenter_worker"
+grep -Fq '"/System/Commands/Defragmenter/defragmenter-operation-engine"' "$defragmenter_worker"
 grep -Fq '"/System/Filesystems/Defragmenter/defragmenter-mapper"' "$defragmenter_worker"
 grep -Fq '"/System/Filesystems/Defragmenter/ext4/ext-metadata-worker"' "$defragmenter_worker"
 grep -Fq '"/System/Resources/Documentation/Defragmenter/README.md"' "$defragmenter_worker"
@@ -104,3 +104,4 @@ if grep -Fq '"purge"' "$defragmenter_worker"; then
     echo "Defragmenter provisioning must not remove other filesystem utilities." >&2
     exit 1
 fi
+\n# Native per-user icon integration, no root-set GVfs file metadata.\nsh -n "$ROOT/packaging/activate-program-icons.sh"\ngrep -Fq "OnlyShowIn=X-Cinnamon;" "$ROOT/packaging/infiltrator-program-icons.desktop"\ngrep -Fq "metadata::custom-icon" "$ROOT/packaging/activate-program-icons.sh"\n
