@@ -30,6 +30,7 @@ mkdir -p \
     "$THEME_DIR" \
     "$DIST" \
     "$PKGROOT/etc/profile.d" \
+    "$PKGROOT/etc/xdg/autostart" \
     "$PKGROOT/System/Commands/InfiltratorOS" \
     "$FONT_SEED_DIR" \
     "$ICON_SEED_DIR" \
@@ -79,6 +80,10 @@ while IFS= read -r entry; do
 done < "$FONT_MANIFEST"
 install -m 0644 "$ROOT/packaging/infiltrator-native-path.sh" \
     "$PKGROOT/etc/profile.d/90-infiltratoros-native-path.sh"
+install -m 0755 "$ROOT/packaging/activate-calendar.py" \
+    "$PKGROOT/System/Commands/InfiltratorOS/activate-calendar"
+install -m 0644 "$ROOT/packaging/infiltrator-calendar.desktop" \
+    "$PKGROOT/etc/xdg/autostart/infiltrator-calendar.desktop"
 
 cc -std=c11 -O2 -Wall -Wextra -Werror \
     "$ROOT/packaging/stage-theme.c" -o "$WORK/stage-theme"
@@ -110,6 +115,9 @@ done
 
 test "$(file -b --mime-type "$THEME_DIR/infiltratoros.png")" = image/png
 test ! -e "$PKGROOT/usr/lib/infiltratoros"
+test -x "$PKGROOT/System/Commands/InfiltratorOS/activate-calendar"
+grep -Fxq 'Exec=/System/Commands/InfiltratorOS/activate-calendar' \
+    "$PKGROOT/etc/xdg/autostart/infiltrator-calendar.desktop"
 for product in system-monitor calculator files defragmenter; do
     for tool in "install-$product" "start-$product-install" "$product-progress"; do
         test -x "$PKGROOT/System/Commands/InfiltratorOS/$tool"
