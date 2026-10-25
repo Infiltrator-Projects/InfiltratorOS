@@ -377,14 +377,15 @@ int main(void)
         (int)sizeof(package_info)) fail("invalid package verification path");
     if (!verified_native_package(version, package_info) ||
         !installed("defragmenter") ||
-        access("/usr/bin/defragmenter", X_OK) != 0 ||
-        access("/usr/bin/defragmenter-test-media", X_OK) != 0 ||
+        access("/Programs/defragmenter", X_OK) != 0 ||
+        access("/Programs/defragmenter-desktop", X_OK) != 0 ||
+        access("/Programs/defragmenter-test-media", X_OK) != 0 ||
         access("/usr/lib/defragmenter/defragmenter-operation-engine", X_OK) != 0 ||
         access("/usr/lib/defragmenter/defragmenter-mapper", X_OK) != 0 ||
         !file_contains("/usr/share/applications/io.github.defragmenter.desktop",
-                       "Exec=/usr/bin/defragmenter") ||
+                       "Exec=/Programs/defragmenter") ||
         !file_contains("/usr/share/applications/io.github.defragmenter.TestMedia.desktop",
-                       "Exec=/usr/bin/defragmenter-test-media"))
+                       "Exec=/Programs/defragmenter-test-media"))
         fail("native package identity, executables or launchers failed qualification");
     unlink(package_info);
     unlink(installer_path);
