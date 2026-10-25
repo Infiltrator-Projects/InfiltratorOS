@@ -1,12 +1,101 @@
 #!/bin/sh
+# InfiltratorOS installation entry point. The embedded native workers are
+# installation-only; they are never installed in /System/Commands.
 set -eu
+
+RUNTIME_ROOT=/run/infiltratoros
+BUNDLE_SHA256='@NATIVE_RUNTIME_SHA256@'
+
+unpack_native_workers() {
+    stage=$1
+    bundle="$stage/runtime.tar.gz"
+    awk '
+        /^__INFILTRATOROS_NATIVE_BUNDLE_BEGIN__$/ { within=1; next }
+        /^__INFILTRATOROS_NATIVE_BUNDLE_END__$/ { exit }
+        within { print }
+    ' "$0" | base64 -d > "$bundle"
+    printf '%s  %s\n' "$BUNDLE_SHA256" "$bundle" | sha256sum -c - >/dev/null
+    tar -xzf "$bundle" -C "$stage" --no-same-owner --no-same-permissions
+    rm -f -- "$bundle"
+    for product in system-monitor calculator files defragmenter; do
+        test -x "$stage/start-$product-install"
+        test -x "$stage/install-$product"
+        test -x "$stage/$product-progress"
+    done
+}
+
+# CI inspection never mutates the installed system or launches applications.
+if [ "${1:-}" = "--verify-installer-bundle" ]; then
+    inspect=$(mktemp -d)
+    trap 'rm -rf -- "$inspect"' EXIT HUP INT TERM
+    unpack_native_workers "$inspect"
+    test "$(find "$inspect" -maxdepth 1 -type f | wc -l)" -eq 12
+    exit 0
+fi
+
+# Package configuration and reinstall share one canonical installation path.
+if [ "${1:-}" != configure ]; then
+    exit 0
+fi
 
 /System/Commands/InfiltratorOS/ensure-native-fonts
 /System/Commands/InfiltratorOS/ensure-native-icons
 /System/Commands/InfiltratorOS/select-theme configure
-/System/Commands/InfiltratorOS/start-system-monitor-install
-/System/Commands/InfiltratorOS/start-calculator-install
-/System/Commands/InfiltratorOS/start-files-install
-/System/Commands/InfiltratorOS/start-defragmenter-install
+
+mkdir -p "$RUNTIME_ROOT"
+chmod 0755 "$RUNTIME_ROOT"
+stage=$(mktemp -d "$RUNTIME_ROOT/native-worker.XXXXXXXX")
+# Progress windows run as the graphical desktop user and need directory access.
+chmod 0755 "$stage"
+if ! unpack_native_workers "$stage"; then
+    rm -rf -- "$stage"
+    echo 'InfiltratorOS could not verify its native installation workers.' >&2
+    exit 1
+fi
+
+# The launcher owns detached worker lifetime. Each worker acquires the shared
+# native installation lock and downloads only its own product's GitHub .run.
+for product in system-monitor calculator files defragmenter; do
+    if ! INFILTRATOROS_INSTALL_RUNTIME="$stage" "$stage/start-$product-install"; then
+        echo "Failed to launch $product installer; see /run/infiltratoros status." >&2
+    fi
+done
+
+# Clean the installation-only executables once all four builds have finished,
+# including when a build fails. Logs and status stay available for diagnostics.
+# /run is temporary storage and is automatically emptied at reboot even when
+# a process crashes or the system loses power before the cleanup completes.
+(
+    trap '' HUP INT TERM
+    elapsed=0
+    while [ "$elapsed" -lt 86400 ]; do
+        finished=yes
+        for product in system-monitor calculator files defragmenter; do
+            status="$RUNTIME_ROOT/$product-install.status"
+            if [ ! -f "$status" ] || ! grep -Eq '^state=(complete|failed)$' "$status"; then
+                finished=no
+                break
+            fi
+        done
+        if [ "$finished" = yes ]; then
+            # Let late-running progress windows load their executable.
+            sleep 20
+            finished=yes
+            for product in system-monitor calculator files defragmenter; do
+                status="$RUNTIME_ROOT/$product-install.status"
+                if [ ! -f "$status" ] || ! grep -Eq '^state=(complete|failed)$' "$status"; then
+                    finished=no
+                    break
+                fi
+            done
+            if [ "$finished" = yes ]; then
+                rm -rf -- "$stage"
+                exit 0
+            fi
+        fi
+        sleep 5
+        elapsed=$((elapsed + 5))
+    done
+) </dev/null >/dev/null 2>&1 &
 
 exit 0
