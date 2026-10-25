@@ -17,6 +17,7 @@ The native skeleton is:
 │   │   └── Firmware/
 │   ├── Resources/
 │   │   ├── Calendars/
+│   │   ├── Documentation/
 │   │   ├── Clocks/
 │   │   ├── Fonts/
 │   │   ├── Locales/
@@ -57,7 +58,7 @@ The intended future Setup installer will select an on-disk format based on quali
 
 Filesystem limitations must be represented honestly: Setup may adapt the layout to avoid missing symbolic links when safe, but it cannot treat duplicated files as hard links or claim unsupported namespace, permission, mapping or durability semantics. A format that can hold a boot image does not automatically qualify as a system root. For the detailed, phased cross-project contract, see [Bootable Filesystem Integration Contract](https://github.com/Infiltrator-Projects/Filesystems/blob/main/docs/BOOTABLE_FILESYSTEM_CONTRACT.md).
 
-Defragmenter's independently released package installs the user-launchable applications `/Programs/defragmenter` and `/Programs/defragmenter-test-media`. Its private filesystem workers remain under `/usr/lib/defragmenter` pending a separate infrastructure-migration qualification. InfiltratorOS creates no duplicate executables or compatibility symlinks.
+Defragmenter's independently released package installs `/Programs/defragmenter`, `/Programs/defragmenter-desktop` and `/Programs/defragmenter-test-media`. Its private filesystem workers and privileged helper reside under `/System/Filesystems/Defragmenter`, with the font bootstrap in `/System/Commands`. Artwork is under `/System/Resources/Icons` and `/System/Resources/Themes/Defragmenter`, while documentation is under `/System/Resources/Documentation/Defragmenter`. The former `/usr/lib/defragmenter` and `/usr/share/doc/defragmenter` are not native filesystem locations and must not be shipped by a current Defragmenter package. Linux desktop entries and icon-cache entries remain under standard host paths for desktop integration. InfiltratorOS creates no duplicate executables or compatibility symlinks.
 
 ## Transitional status
 
