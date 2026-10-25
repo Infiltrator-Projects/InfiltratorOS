@@ -36,9 +36,14 @@ jobs:
           cmp assets/infiltratoros.png "$RUNNER_TEMP/payload/usr/share/plymouth/themes/infiltratoros/infiltratoros.png"
           test ! -e "$RUNNER_TEMP/payload/usr/lib/infiltrator/temporal"
           dpkg-deb -f dist/*.deb Depends | grep -Fq "infiltrator-calendar-resources (>= 1.19.67)"
+          dpkg-deb -f dist/*.deb Depends | grep -Fq "calendar (>= 1.0.125)"
           test -f "$RUNNER_TEMP/payload/etc/profile.d/90-infiltratoros-native-path.sh"
           sh -n "$RUNNER_TEMP/payload/etc/profile.d/90-infiltratoros-native-path.sh"
           test ! -e "$RUNNER_TEMP/payload/System/Programs"
+          test ! -e "$RUNNER_TEMP/payload/usr/lib/infiltratoros"
+          test -x "$RUNNER_TEMP/payload/System/Commands/InfiltratorOS/activate-calendar"
+          test -f "$RUNNER_TEMP/payload/etc/xdg/autostart/infiltrator-calendar.desktop"
+          grep -Fxq 'Exec=/System/Commands/InfiltratorOS/activate-calendar' "$RUNNER_TEMP/payload/etc/xdg/autostart/infiltrator-calendar.desktop"
           for directory in \
             System \
             System/Commands \
@@ -51,6 +56,7 @@ jobs:
             System/Kernel/Firmware \
             System/Resources \
             System/Resources/Calendars \
+            System/Resources/Documentation \
             System/Resources/Clocks \
             System/Resources/Fonts \
             System/Resources/Locales \
@@ -65,11 +71,11 @@ jobs:
           done
           font_root="$RUNNER_TEMP/payload/System/Resources/Fonts"
           test "$(find "$font_root" -maxdepth 1 -type f -name '*.ttf' | wc -l)" -eq 0
-          font_seed="$RUNNER_TEMP/payload/usr/lib/infiltratoros/font-seed"
+          font_seed="$RUNNER_TEMP/payload/System/Resources/Fonts/Seed"
           test "$(find "$font_seed" -maxdepth 1 -type f -name '*.ttf' | wc -l)" -eq 23
           cmp assets/fonts/SHA256SUMS "$font_seed/SHA256SUMS"
           (cd "$font_seed" && sha256sum -c SHA256SUMS)
-          helper="$RUNNER_TEMP/payload/usr/lib/infiltratoros/ensure-native-fonts"
+          helper="$RUNNER_TEMP/payload/System/Commands/InfiltratorOS/ensure-native-fonts"
           test -x "$helper"
           sh -n "$helper"
           ! grep -Eq 'raw\.githubusercontent\.com|MBLink|curl|wget' "$helper"
@@ -82,10 +88,10 @@ jobs:
           grep -Fq '<dir>/System/Resources/Fonts</dir>' "$native_root/etc/fonts/conf.d/90-infiltrator-native-fonts.conf"
           INFILTRATR_NATIVE_ROOT="$native_root" INFILTRATR_FONT_SOURCE_DIR="$font_seed" "$helper"
           (cd "$staged_fonts" && sha256sum -c "$font_seed/SHA256SUMS")
-          icon_seed="$RUNNER_TEMP/payload/usr/lib/infiltratoros/icon-seed"
+          icon_seed="$RUNNER_TEMP/payload/System/Resources/Icons/Seed"
           test -f "$icon_seed/mercedes-icons-v1.tar.xz"
           printf '%s  %s\n' '8d55ccbe5f1eefe3800ab12578a641524742b9482410d95757317434523b342c' "$icon_seed/mercedes-icons-v1.tar.xz" | sha256sum -c -
-          icon_helper="$RUNNER_TEMP/payload/usr/lib/infiltratoros/ensure-native-icons"
+          icon_helper="$RUNNER_TEMP/payload/System/Commands/InfiltratorOS/ensure-native-icons"
           test -x "$icon_helper"
           sh -n "$icon_helper"
           test "$(tar -tJf "$icon_seed/mercedes-icons-v1.tar.xz" | grep -c '^mercedes/')" -eq 1233
@@ -97,7 +103,7 @@ jobs:
           test "$(find "$native_icons" -maxdepth 1 -type f | wc -l)" -eq 1233
           for product in system-monitor calculator files defragmenter; do
             for program in "install-$product" "start-$product-install" "$product-progress"; do
-              test -x "$RUNNER_TEMP/payload/usr/lib/infiltratoros/$program"
+              test -x "$RUNNER_TEMP/payload/System/Commands/InfiltratorOS/$program"
             done
           done
           git archive --format=zip --prefix="infiltratoros-$version/" HEAD > "dist/infiltratoros-$version-source.zip"
