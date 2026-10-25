@@ -60,7 +60,7 @@ The package establishes the native InfiltratorOS filesystem skeleton under `/Sys
 
 The 23 MB Corpo and Daimler TTFs are committed under [`assets/fonts`](assets/fonts) with a single SHA-256 manifest. Package construction verifies every file and stages the fonts under `/System/Resources/Fonts/Seed`; configuration then establishes or repairs the persistent `/System/Resources/Fonts` cache from that local seed with no font download. The bootstrap prefers hard links when the seed and native cache share a filesystem, avoiding duplicate font data, and falls back to verified copies only when a split filesystem requires it. The native cache and Fontconfig registration are deliberately not package-owned, so removing InfiltratorOS cannot break independently installed Infiltrator applications.
 
-InfiltratorOS depends on Calendar and uses a per-user Cinnamon login migration to replace only the stock Calendar panel applet while preserving its panel position and a reversible backup; it does not purge Cinnamon or alter Nemo. `/System/Commands/InfiltratorOS/activate-calendar --restore` reverses the change.
+InfiltratorOS depends on Calendar and uses a per-user Cinnamon login migration to replace only the stock Calendar panel applet while preserving its panel position and a reversible backup; it does not purge Cinnamon or alter Nemo. `/System/Commands/InfiltratorOS/activate-calendar --restore` reverses the change and stops automatic reactivation; `--activate` explicitly applies it again.
 
 InfiltratorOS adds `/System/Commands:/Programs` ahead of the inherited PATH for future login shells. Native applications are not mirrored into `/usr/bin` merely for compatibility.
 
