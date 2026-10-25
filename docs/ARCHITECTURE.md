@@ -15,7 +15,7 @@ The InfiltratorOS package owns establishment of the native filesystem skeleton d
 
 `stage-theme.c` stages the approved theme; `select-theme.c` owns system theme selection. Debian maintainer scripts own invocation during package installation and removal.
 
-System Monitor, Calculator, Files and Defragmenter retain separate provisioning workers because their acquisition and installed-state qualification are product-specific. Each worker downloads the product's published native installer and invokes its explicit system-package mode instead of reproducing compiler flags, package layout or application-owned build metadata. The application repository therefore remains the single authority for native compilation, optimisation, packaging and installation; InfiltratorOS owns orchestration, application/global locking, graphical progress and post-install contract verification.
+System Monitor, Calculator, Files and Defragmenter retain separate provisioning workers because their acquisition and installed-state qualification are product-specific. Each worker downloads the product's independently published native installer. System Monitor, Calculator and Files use its explicit system-package mode; Defragmenter uses its standalone native installer and supplies the qualified CPU-native/LTO flags. The individual product repositories remain authoritative for package layouts. The application repository therefore remains the single authority for native compilation, optimisation, packaging and installation; InfiltratorOS owns orchestration, application/global locking, graphical progress and post-install contract verification.
 
 Replacement policy remains product-specific. System Monitor and Calculator may remove competing distribution applications only after the corresponding Infiltrator replacement has passed verification. Files is additive at this stage: its worker must not purge the existing distribution file manager or change the desktop's default file-manager association.
 
@@ -45,9 +45,21 @@ A launcher writes a complete failure record if worker startup fails. Progress UI
 
 Desktop discovery currently selects the first eligible graphical user found in /proc. Multi-seat selection and physical boot qualification remain explicit integration concerns; neither is inferred from a package build.
 
+## Package destination inventory
+
+The Debian payload contains 46 regular files: 16 provisioning/OS helpers in
+`/System/Commands/InfiltratorOS`, 23 font faces and their SHA-256 manifest in
+`/System/Resources/Fonts/Seed`, one archive in `/System/Resources/Icons/Seed`,
+three Plymouth integration files in `/usr/share/plymouth/themes/infiltratoros`,
+and two host integration files under `/etc`. The actual programs built by the
+four product installers belong to those products' separate Debian packages,
+not to the InfiltratorOS package itself. The test
+`tests/package-layout-test.py` rejects any missing, duplicated, unexpected or
+symlinked payload entry and runs against each candidate `.deb` in CI.
+
 ## Shared icon resources
 
-InfiltratorOS owns a verified icon payload seed in `/usr/lib/infiltratoros/icon-seed`.
+InfiltratorOS owns a verified icon archive at `/System/Resources/Icons/Seed/mercedes-icons-v1.tar.xz`.
 The post-install helper installs every icon directly in `/System/Resources/Icons/`.
 Filenames encode the source application, normal/night variant and original resource
 name. The old `mercedes` directory is migrated only after every new copy is verified;
