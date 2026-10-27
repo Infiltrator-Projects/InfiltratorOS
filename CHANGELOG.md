@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.34
+
+Install all 31 calendars and 23 clocks from their independent checksum-verified source installers using explicit aggressive CPU-native/LTO/two-pass-PGO builds. Verify each native package and module, serialize them with existing application builds, and retain failure diagnostics. Retire the OS dependency on the combined resource package while preserving Common source and existing-module ownership transitions.
+
 ## 1.0.33 — Automatic Cinnamon/Nemo icons for native programs
 
 - Add a per-user Cinnamon login integration to register file-manager custom icons for all five installed user-facing native executables without terminal commands. Root-run Debian scripts cannot set GVfs metadata in a user's desktop session.

@@ -22,7 +22,7 @@ System Monitor, Calculator, Files and Defragmenter retain separate provisioning 
 
 Replacement policy remains product-specific. System Monitor and Calculator may remove competing distribution applications only after the corresponding Infiltrator replacement has passed verification. Files is additive at this stage: its worker must not purge the existing distribution file manager or change the desktop's default file-manager association.
 
-The operating system depends directly on the standard Calendar Resources capability pack. Calendar applications and System Settings consume those system resources rather than owning them, so application removal does not remove calendar implementations.
+The operating system provisions all 54 independently packaged calendar and clock resources from their published source installers. Calendar applications and System Settings consume those system resources rather than owning them, so application removal does not remove calendar implementations.
 
 ## Native executable ownership
 
@@ -30,7 +30,7 @@ The operating system depends directly on the standard Calendar Resources capabil
 
 ## Shared native installation mechanics
 
-`start-native-install.c` and `native-install-progress.c` compile once per product profile. `installer-profile.h` maps compile-time product identity to status and log paths. All twelve per-application executables are bundled inside the **single InfiltratorOS Debian post-installation script**, SHA-256 verified and unpacked under `/Temporary/InfiltratorOS/native-worker.*` for the duration of setup. They are NOT package-owned `/System` commands. The launcher accepts only the temporary installation runtime path established by `postinst`; runtime arguments cannot select another privileged product worker. A post-installation monitor removes that temporary directory when all workers report terminal status. All OS-owned temporary workers, downloads, status records, logs and locks live under `/Temporary/InfiltratorOS`. After all four installations succeed, the entire `/Temporary/InfiltratorOS` installer area is removed; failed installs retain diagnostic status and logs. Interrupted operations may leave temporary files, never permanent OS commands. Reinstalling InfiltratorOS runs the installation script again.
+`start-native-install.c` and `native-install-progress.c` compile once per product profile. `installer-profile.h` maps compile-time product identity to status and log paths. All fifteen installation workers are bundled inside the **single InfiltratorOS Debian post-installation script**, SHA-256 verified and unpacked under `/Temporary/InfiltratorOS/native-worker.*` for the duration of setup. They are NOT package-owned `/System` commands. The launcher accepts only the temporary installation runtime path established by `postinst`; runtime arguments cannot select another privileged product worker. A post-installation monitor removes that temporary directory when all workers report terminal status. All OS-owned temporary workers, downloads, status records, logs and locks live under `/Temporary/InfiltratorOS`. After all five installation groups succeed, the entire `/Temporary/InfiltratorOS` installer area is removed; failed installs retain diagnostic status and logs. Interrupted operations may leave temporary files, never permanent OS commands. Reinstalling InfiltratorOS runs the installation script again.
 
 `installer-process.c` owns detached process lifetime. The parent reaps the first child and receives a close-on-exec pipe acknowledgement from the grandchild. Setup and exec failures return their errno; a successful exec acknowledges startup, independently of later worker success. Standard streams are redirected explicitly and inherited descriptors are closed. Progress windows drop to the discovered desktop user.
 
@@ -54,9 +54,9 @@ The Debian data payload contains **1,269 regular files**: five OS helpers
 in `/System/Commands/InfiltratorOS`, 23 direct font files, 1,233 direct flat
 icon files, two SHA-256 inventories in
 `/System/Resources/Documentation/InfiltratorOS`, three Plymouth integration
-files and three Linux compatibility files under `/etc`. The twelve temporary
+files and three Linux compatibility files under `/etc`. The fifteen temporary
 application setup executables are only in the Debian maintainer-script bundle,
-not installed permanently. The four actual applications remain owned by their
+not installed permanently. The applications and 54 temporal modules remain owned by their
 independent packages. CI checks that no duplicate resource or `Seed` path
 enters the Debian payload.
 
@@ -72,3 +72,7 @@ icon theme remain untouched.
 ## Native application icons
 
 Nemo's raw executable file icons are per-user GVfs metadata, not an ELF or desktop-entry property. A Cinnamon-only autostart command (`activate-program-icons`) runs unprivileged in each logged-in user's session, reads the actual native app artwork under `/System/Resources/Icons`, and registers icon metadata for the `/Programs` launchables. The user never needs to run `gio` manually. It preserves preexisting custom-icon choices and uses installed theme icons where an application supplies no own native image. Newly installed programs are processed at the following Cinnamon login.
+
+## Independent temporal provisioning
+
+`install-temporal-resources.py` is embedded with the exact `temporal-resources.json` catalogue in the verified temporary worker bundle. It holds the same global native installation lock as System Monitor, installs build prerequisites after APT releases its transaction lock, then processes all 54 repositories. Each published release must have exactly its generic DEB, native RUN and source ZIP; the worker verifies the RUN size and GitHub-provided SHA-256 before executing its explicit aggressive system-package mode. Each source installer owns compilation, PGO training, tests and native package creation. The OS then verifies package identity/version, native build record, module hash and provider ABI identity. A failed provider is logged while the remaining providers are attempted, and any failure leaves the group failed with diagnostic logs retained. No provider installer becomes a persistent OS command.

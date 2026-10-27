@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Reject every unexpected file/symlink in an InfiltratorOS Debian payload.
 
-The four application binaries belong to their independent packages. This OS
+The application binaries and 54 temporal modules belong to their independent packages. This OS
 package owns OS helpers, direct native resources and only the host
 integration files needed by Debian and Mint. The application installer workers
 are embedded in the dpkg maintainer script and staged temporarily only under the native /Temporary/InfiltratorOS.
@@ -15,7 +15,7 @@ import sys
 import tarfile
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-PRODUCTS = ("system-monitor", "calculator", "files", "defragmenter")
+PRODUCTS = ("system-monitor", "calculator", "files", "defragmenter", "temporal-resources")
 COMMAND_ROOT = "System/Commands/InfiltratorOS/"
 FONT_ROOT = "System/Resources/Fonts/"
 ICON_ROOT = "System/Resources/Icons/"

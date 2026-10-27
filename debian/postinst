@@ -18,7 +18,7 @@ unpack_native_workers() {
     printf '%s  %s\n' "$BUNDLE_SHA256" "$bundle" | sha256sum -c - >/dev/null || return 1
     tar -xzf "$bundle" -C "$stage" --no-same-owner --no-same-permissions || return 1
     rm -f -- "$bundle" || return 1
-    for product in system-monitor calculator files defragmenter; do
+    for product in system-monitor calculator files defragmenter temporal-resources; do
         test -x "$stage/start-$product-install" || return 1
         test -x "$stage/install-$product" || return 1
         test -x "$stage/$product-progress" || return 1
@@ -33,7 +33,7 @@ if [ "${1:-}" = "--verify-installer-bundle" ]; then
         echo 'Invalid embedded InfiltratorOS native installer bundle.' >&2
         exit 1
     fi
-    test "$(find "$inspect" -maxdepth 1 -type f | wc -l)" -eq 12
+    test "$(find "$inspect" -maxdepth 1 -type f | wc -l)" -eq 15
     exit 0
 fi
 
@@ -62,14 +62,14 @@ fi
 
 # The launcher owns detached worker lifetime. Each worker acquires the shared
 # native installation lock and downloads only its own product's GitHub .run.
-for product in system-monitor calculator files defragmenter; do
+for product in system-monitor calculator files defragmenter temporal-resources; do
     if ! INFILTRATOROS_INSTALL_RUNTIME="$stage" "$stage/start-$product-install"; then
         echo "Failed to launch $product installer; see /Temporary/InfiltratorOS status." >&2
     fi
 done
 
-# Clean the installation-only executables once all four builds have finished.
-# Remove the entire temporary setup folder after four successful installs;
+# Clean the installation-only executables once all five installation groups have finished.
+# Remove the entire temporary setup folder after five successful installation groups;
 # retain status and logs only when at least one install failed.
 # Executables run from the native /Temporary and are cleaned on completion
 # or timeout; failures retain diagnostic status and logs.
@@ -78,7 +78,7 @@ done
     elapsed=0
     while [ "$elapsed" -lt 86400 ]; do
         finished=yes
-        for product in system-monitor calculator files defragmenter; do
+        for product in system-monitor calculator files defragmenter temporal-resources; do
             status="$STATUS_ROOT/$product-install.status"
             if [ ! -f "$status" ] || ! grep -Eq '^state=(complete|failed)$' "$status"; then
                 finished=no
@@ -89,7 +89,7 @@ done
             # Let late-running progress windows load their executable.
             sleep 20
             finished=yes
-            for product in system-monitor calculator files defragmenter; do
+            for product in system-monitor calculator files defragmenter temporal-resources; do
                 status="$STATUS_ROOT/$product-install.status"
                 if [ ! -f "$status" ] || ! grep -Eq '^state=(complete|failed)$' "$status"; then
                     finished=no
@@ -98,9 +98,9 @@ done
             done
             if [ "$finished" = yes ]; then
                 # Retain failure diagnostics; remove all OS-owned temp state
-                # only after every application completed successfully.
+                # only after every installation group completed successfully.
                 successful=yes
-                for product in system-monitor calculator files defragmenter; do
+                for product in system-monitor calculator files defragmenter temporal-resources; do
                     if ! grep -Fxq 'state=complete' "$STATUS_ROOT/$product-install.status"; then
                         successful=no
                         break

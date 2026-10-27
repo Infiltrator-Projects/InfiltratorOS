@@ -3,6 +3,7 @@ set -eu
 ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
 sh -n "$ROOT/packaging/ensure-native-icons.sh"
 python3 "$ROOT/tests/calendar-switch-test.py"
+python3 "$ROOT/tests/temporal-install-test.py"
 sh "$ROOT/tests/native-icons.sh"
 
 # InfiltratorOS-owned install state must live under the native /Temporary.
@@ -23,6 +24,9 @@ for product in system-monitor calculator files defragmenter; do
 done
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT HUP INT TERM
+cc -std=c11 -O2 -Wall -Wextra -Werror -Wpedantic -DINSTALL_TEMPORAL_RESOURCES \
+    "$ROOT/packaging/start-native-install.c" "$ROOT/packaging/installer-process.c" \
+    -o "$WORK/start-temporal-resources-install"
 for contract in process status; do
     cc -std=c11 -O2 -DNDEBUG -Wall -Wextra -Werror -Wpedantic \
         "$ROOT/tests/installer-$contract-test.c" "$ROOT/packaging/installer-$contract.c" \
