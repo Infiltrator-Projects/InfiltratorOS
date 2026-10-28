@@ -50,6 +50,7 @@ static gboolean refresh_aggregate(Ui *ui)
     }
     int complete = 0, failed = 0, queued = 0, running = 0;
     double fraction = 0.0;
+    char active_name[96] = {0}, active_stage[128] = {0};
     struct dirent *entry;
     while ((entry = readdir(directory)) != NULL) {
         const char *name = entry->d_name;
@@ -73,6 +74,11 @@ static gboolean refresh_aggregate(Ui *ui)
             ++running;
             if (job.progress >= 0 && job.progress <= 100)
                 fraction += (double)job.progress / 100.0;
+            if (active_name[0] == '\0') {
+                snprintf(active_name, sizeof(active_name), "%.*s",
+                         (int)(length - suffix_length), name);
+                snprintf(active_stage, sizeof(active_stage), "%.110s", job.stage);
+            }
         } else {
             ++queued;
         }
@@ -86,10 +92,17 @@ static gboolean refresh_aggregate(Ui *ui)
     const int finished = complete + failed;
     snprintf(stage, sizeof(stage), "%d of %d installations finished",
              finished, TOTAL_JOBS);
-    snprintf(detail, sizeof(detail),
-             "%d complete, %d failed, %d running, %d queued. "
-             "Per-job diagnostics are retained in /Temporary/InfiltratorOS.",
-             complete, failed, running, queued);
+    if (running && active_name[0]) {
+        snprintf(detail, sizeof(detail),
+                 "%d complete, %d failed, %d running, %d queued. Current: %s — %s. "
+                 "Per-job diagnostics: /Temporary/InfiltratorOS.",
+                 complete, failed, running, queued, active_name, active_stage);
+    } else {
+        snprintf(detail, sizeof(detail),
+                 "%d complete, %d failed, %d running, %d queued. "
+                 "Per-job diagnostics: /Temporary/InfiltratorOS.",
+                 complete, failed, running, queued);
+    }
     gtk_label_set_text(GTK_LABEL(ui->stage), stage);
     gtk_label_set_text(GTK_LABEL(ui->detail), detail);
     if (finished == TOTAL_JOBS) {
