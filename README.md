@@ -4,6 +4,8 @@
 
 The operating-system integration project for Infiltrator Projects. The current deliverable is an amd64 Debian/Linux Mint package containing the approved Plymouth theme and native provisioning for System Monitor, Calculator, Files and Defragmenter.
 
+**Core design:** InfiltratorOS is source-first and hardware-native by intent. Its native components are compiled from verified source for the local machine, with qualified CPU-specific optimisation, LTO and trained PGO where supported. Installation effort is deliberately traded for machine-specific binaries; the graphical system owns the complexity. The current Debian/Linux foundation remains transitional.
+
 [Philosophy](docs/PHILOSOPHY.md) · [Architecture](docs/ARCHITECTURE.md) · [Filesystem](docs/FILESYSTEM.md) · [Validation](docs/VALIDATION.md) · [Changes](CHANGELOG.md). [VERSION](VERSION) owns package identity.
 
 ## InfiltratorOS components
@@ -40,6 +42,12 @@ The product is currently alpha software. A renamed component uses its current
 name consistently in its application identity, packages, installed paths,
 publishing and documentation. Historical names do not become additional public
 APT packages or compatibility aliases.
+
+## Source-first native installation
+
+The [source-first operating-system philosophy](docs/PHILOSOPHY.md#source-first-hardware-native-execution) is a product requirement, not an optional compiler setting. Each independent component owns its source and build contract; InfiltratorOS coordinates release verification, local compilation, installed-state qualification and one graphical progress experience. Generic Debian packages remain available for bootstrap and compatibility, but are not misreported as hardware-native builds.
+
+The 31 calendar and 23 clock providers are completed, independently released system capabilities. Compiling each provider for a different machine does not imply that the provider itself needs new feature development. Separate `.so` modules and versioned interfaces are intentional. Native application/provider builds are already part of the current product; compiling the entire Linux base and qualifying all kernel/UEFI drivers remain separate, future work. See [Architecture](docs/ARCHITECTURE.md#source-first-and-hardware-native-build-contract) and [Validation](docs/VALIDATION.md#source-first-and-local-optimisation-evidence).
 
 ## Build and verify
 
