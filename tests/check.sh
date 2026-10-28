@@ -4,6 +4,7 @@ ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
 sh -n "$ROOT/packaging/ensure-native-icons.sh"
 python3 "$ROOT/tests/calendar-switch-test.py"
 python3 "$ROOT/tests/temporal-install-test.py"
+python3 "$ROOT/tests/filesystem-install-test.py"
 sh "$ROOT/tests/native-icons.sh"
 
 # InfiltratorOS-owned install state must live under the native /Temporary.
@@ -46,6 +47,8 @@ for product in system-monitor calculator files defragmenter; do
 done
 grep -Fq 'DPkg::Lock::Timeout=-1' "$ROOT/packaging/install-temporal-resources.py"
 ! grep -Fq 'DPkg::Lock::Timeout=300' "$ROOT/packaging/install-temporal-resources.py"
+grep -Fq 'DPkg::Lock::Timeout=-1' "$ROOT/packaging/install-filesystem-resources.py"
+! grep -Fq 'DPkg::Lock::Timeout=300' "$ROOT/packaging/install-filesystem-resources.py"
 # A single GTK window summarizes all statuses, individual providers remain
 # independently logged but must not spawn 54 graphical windows.
 grep -Fq 'refresh_aggregate' "$ROOT/packaging/native-install-progress.c"

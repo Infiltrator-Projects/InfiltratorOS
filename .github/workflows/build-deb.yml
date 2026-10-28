@@ -136,7 +136,7 @@ jobs:
             echo "Installer accepted a tampered archive digest" >&2
             exit 1
           fi
-          for product in system-monitor calculator files defragmenter temporal-resources; do
+          for product in system-monitor calculator files defragmenter temporal-resources filesystem-resources; do
             for program in "install-$product" "start-$product-install" "$product-progress"; do
               test ! -e "$RUNNER_TEMP/payload/System/Commands/InfiltratorOS/$program"
             done

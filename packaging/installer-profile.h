@@ -1,7 +1,7 @@
 #ifndef INFILTRATOR_INSTALL_PROFILE_H
 #define INFILTRATOR_INSTALL_PROFILE_H
 
-#if (defined(INSTALL_SYSTEM_MONITOR) + defined(INSTALL_CALCULATOR) + defined(INSTALL_FILES) + defined(INSTALL_DEFRAGMENTER) + defined(INSTALL_TEMPORAL_RESOURCES)) != 1
+#if (defined(INSTALL_SYSTEM_MONITOR) + defined(INSTALL_CALCULATOR) + defined(INSTALL_FILES) + defined(INSTALL_DEFRAGMENTER) + defined(INSTALL_TEMPORAL_RESOURCES) + defined(INSTALL_FILESYSTEM_RESOURCES)) != 1
 #error "Select exactly one provisioning product"
 #elif defined(INSTALL_SYSTEM_MONITOR)
 #define INSTALL_NAME "System Monitor"
@@ -18,6 +18,9 @@
 #elif defined(INSTALL_TEMPORAL_RESOURCES)
 #define INSTALL_NAME "Calendars and clocks"
 #define INSTALL_SLUG "temporal-resources"
+#elif defined(INSTALL_FILESYSTEM_RESOURCES)
+#define INSTALL_NAME "FAT filesystems"
+#define INSTALL_SLUG "filesystem-resources"
 #endif
 
 #define STATUS_DIR "/Temporary/InfiltratorOS"

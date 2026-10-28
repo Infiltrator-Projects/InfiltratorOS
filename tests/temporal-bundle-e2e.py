@@ -17,7 +17,7 @@ if os.geteuid() != 0 or os.environ.get("GITHUB_ACTIONS") != "true":
 package = Path(sys.argv[1]).resolve()
 ROOT = Path(__file__).resolve().parents[1]
 entries = json.loads((ROOT / "packaging/temporal-resources.json").read_text())
-products = ("system-monitor", "calculator", "files", "defragmenter", "temporal-resources")
+products = ("system-monitor", "calculator", "files", "defragmenter", "temporal-resources", "filesystem-resources")
 expected = {name for product in products for name in ("install-" + product, "start-" + product + "-install", product + "-progress")}
 native = Path("/Temporary/InfiltratorOS")
 native.mkdir(parents=True, exist_ok=True)
@@ -60,4 +60,23 @@ with tempfile.TemporaryDirectory(prefix="native-worker.", dir=native) as tempora
         assert ownership == entry["package"] + ": " + entry["resource"], ownership
     assert len(list(Path("/System/Resources/Calendars").glob("*.so"))) == 31
     assert len(list(Path("/System/Resources/Clocks").glob("*.so"))) == 23
-print("Exact InfiltratorOS bundle: 54 separate published RUN invocations built aggressively, installed, verified and transferred from legacy ownership")
+
+    # Qualify the real two-format worker from the exact sealed maintainer bundle.
+    filesystem_entries = json.loads((ROOT / "packaging/filesystem-resources.json").read_text())
+    assert [e["id"] for e in filesystem_entries] == ["fat12", "fat16"]
+    for entry in filesystem_entries:
+        slug = entry["repository"].lower()
+        subprocess.run([work / "workers/install-filesystem-resources", slug], check=True, env=env)
+        record = work / "status" / (slug + "-install.status")
+        assert "state=complete\n" in record.read_text()
+        module = Path(entry["resource"])
+        assert module.is_file(), module
+        owner = subprocess.check_output(["dpkg-query", "-S", entry["resource"]], text=True).strip()
+        assert owner == entry["package"] + ": " + entry["resource"], owner
+        version = subprocess.check_output(["dpkg-query", "-W", "-f=${Version}", entry["package"]], text=True)
+        assert version.endswith("+native1")
+        assert module.stat().st_size > 10000
+    assert len(list((work / "status").glob("*-install.status"))) == 56
+    assert len(list(Path("/System/Filesystems").glob("FAT*.so"))) == 2
+print("Exact InfiltratorOS bundle: 54 temporal and 2 filesystem published native RUN installers independently built, installed, verified and owned")
+

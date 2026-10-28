@@ -136,13 +136,14 @@ cc -std=c11 -O2 -Wall -Wextra -Werror \
 cc -std=c11 -O2 -Wall -Wextra -Werror "$ROOT/packaging/select-theme.c" \
     -o "$PKGROOT/System/Commands/InfiltratorOS/select-theme"
 
-for product in system-monitor calculator files defragmenter temporal-resources; do
+for product in system-monitor calculator files defragmenter temporal-resources filesystem-resources; do
     case "$product" in
         system-monitor) profile=INSTALL_SYSTEM_MONITOR ;;
         calculator) profile=INSTALL_CALCULATOR ;;
         files) profile=INSTALL_FILES ;;
         defragmenter) profile=INSTALL_DEFRAGMENTER ;;
         temporal-resources) profile=INSTALL_TEMPORAL_RESOURCES ;;
+        filesystem-resources) profile=INSTALL_FILESYSTEM_RESOURCES ;;
     esac
     if [ "$product" = temporal-resources ]; then
         # Embed the exact 54-provider catalogue in this installation-only worker.
@@ -153,6 +154,18 @@ catalogue = json.loads((root / "packaging/temporal-resources.json").read_text())
 assert len(catalogue) == 54
 source = (root / "packaging/install-temporal-resources.py").read_text()
 marker = "CATALOGUE = []  # @EMBED_TEMPORAL_CATALOGUE@"
+assert source.count(marker) == 1
+output.write_text(source.replace(marker, "CATALOGUE = " + repr(catalogue)))
+output.chmod(0o755)
+PY
+    elif [ "$product" = filesystem-resources ]; then
+        python3 - "$ROOT" "$RUNTIME_BUILD/install-$product" <<'PY'
+import json, pathlib, sys
+root, output = pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2])
+catalogue = json.loads((root / "packaging/filesystem-resources.json").read_text())
+assert len(catalogue) == 2
+source = (root / "packaging/install-filesystem-resources.py").read_text()
+marker = "CATALOGUE = []  # @EMBED_FILESYSTEM_CATALOGUE@"
 assert source.count(marker) == 1
 output.write_text(source.replace(marker, "CATALOGUE = " + repr(catalogue)))
 output.chmod(0o755)
@@ -181,14 +194,14 @@ grep -Fxq "Exec=/System/Commands/InfiltratorOS/activate-program-icons" \
 test -x "$PKGROOT/System/Commands/InfiltratorOS/activate-calendar"
 grep -Fxq 'Exec=/System/Commands/InfiltratorOS/activate-calendar' \
     "$PKGROOT/etc/xdg/autostart/infiltrator-calendar.desktop"
-for product in system-monitor calculator files defragmenter temporal-resources; do
+for product in system-monitor calculator files defragmenter temporal-resources filesystem-resources; do
     for tool in "install-$product" "start-$product-install" "$product-progress"; do
         test -x "$RUNTIME_BUILD/$tool"
         test ! -e "$PKGROOT/System/Commands/InfiltratorOS/$tool"
     done
 done
 # The package contains one maintainer-script-driven installation transaction.
-# The fifteen internal workers exist only in this integrity-checked
+# The eighteen internal workers exist only in this integrity-checked
 # embedded bundle, NOT as permanent entries in the installed filesystem.
 tar --sort=name --mtime="@$SOURCE_DATE_EPOCH" --owner=0 --group=0 \
     --numeric-owner -czf "$WORK/native-runtime.tar.gz" -C "$RUNTIME_BUILD" .
