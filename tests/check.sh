@@ -28,6 +28,15 @@ for product in system-monitor calculator files defragmenter; do
 done
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT HUP INT TERM
+mkdir -p "$WORK/native-checks"
+printf '%s\n' 'known-good-native-installer' > "$WORK/native.run"
+digest="$(sha256sum "$WORK/native.run" | cut -d' ' -f1)"
+printf '%s  %s\n' "$digest" "test-native-installer.run" > "$WORK/native-checks/Calculator.sha256"
+cc -std=c11 -O2 -Wall -Wextra -Werror -Wpedantic \
+    "$ROOT/tests/native-download-test.c" -o "$WORK/native-download-test"
+"$WORK/native-download-test" "$WORK/native-checks" \
+    "https://github.com/Infiltrator-Projects/Calculator/releases/download/v1.2.3/test-native-installer.run" \
+    "$WORK/native.run"
 cc -std=c11 -O2 -Wall -Wextra -Werror -Wpedantic -DINSTALL_TEMPORAL_RESOURCES \
     "$ROOT/packaging/start-native-install.c" "$ROOT/packaging/installer-process.c" \
     -o "$WORK/start-temporal-resources-install"
