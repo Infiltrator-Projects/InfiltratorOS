@@ -49,9 +49,15 @@ class InstallerTests(unittest.TestCase):
             version = "0.1.2" if entry["id"] == "fat32" else "0.1.3"
             release = copy.deepcopy(self.release)
             release["tag_name"] = "v" + version
+            prefix = (f"https://github.com/Infiltrator-Projects/{entry['repository']}"
+                      f"/releases/download/v{version}/")
             for asset in release["assets"]:
-                asset["name"] = asset["name"].replace("0.1.0", version)
-                asset["browser_download_url"] = asset["browser_download_url"].replace("0.1.0", version)
+                name = asset["name"].replace(self.entry["repository"].lower(),
+                                             entry["repository"].lower())
+                name = name.replace(self.entry["package"], entry["package"])
+                name = name.replace("0.1.0", version)
+                asset["name"] = name
+                asset["browser_download_url"] = prefix + name
             with self.assertRaisesRegex(ValueError, "missing required native driver"):
                 worker.release_installer(entry, release)
             prefix = (f"https://github.com/Infiltrator-Projects/{entry['repository']}"
