@@ -62,9 +62,9 @@ with tempfile.TemporaryDirectory(prefix="native-worker.", dir=native) as tempora
     assert len(list(Path("/System/Resources/Calendars").glob("*.so"))) == 31
     assert len(list(Path("/System/Resources/Clocks").glob("*.so"))) == 23
 
-    # Qualify the real two-format worker from the exact sealed maintainer bundle.
+    # Qualify the real three-format worker from the exact sealed maintainer bundle.
     filesystem_entries = json.loads((ROOT / "packaging/filesystem-resources.json").read_text())
-    assert [e["id"] for e in filesystem_entries] == ["fat12", "fat16"]
+    assert [e["id"] for e in filesystem_entries] == ["fat12", "fat16", "fat32"]
     for entry in filesystem_entries:
         slug = entry["repository"].lower()
         subprocess.run([work / "workers/install-filesystem-resources", slug], check=True, env=env)
@@ -77,7 +77,7 @@ with tempfile.TemporaryDirectory(prefix="native-worker.", dir=native) as tempora
         version = subprocess.check_output(["dpkg-query", "-W", "-f=${Version}", entry["package"]], text=True)
         assert version.endswith("+native1")
         assert module.stat().st_size > 10000
-    assert len(list((work / "status").glob("*-install.status"))) == 56
-    assert len(list(Path("/System/Filesystems").glob("FAT*.so"))) == 2
-print("Exact InfiltratorOS bundle: 54 temporal and 2 filesystem published native RUN installers independently built, installed, verified and owned")
+    assert len(list((work / "status").glob("*-install.status"))) == 57
+    assert {p.name for p in Path("/System/Filesystems").glob("FAT*.so")} == {"FAT12.so", "FAT16.so", "FAT32.so"}
+print("Exact InfiltratorOS bundle: 54 temporal and 3 filesystem published native RUN installers independently built, installed, verified and owned")
 
