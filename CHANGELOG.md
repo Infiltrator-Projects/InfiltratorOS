@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.0.35 — Independent temporal installers and run-safe cleanup
+
+- Launch 31 calendar and 23 clock native installers as 54 independent processes
+  with individual GTK progress windows, individual per-run statuses and logs,
+  published-release digest validation and per-provider native build verification.
+- Keep one reusable signed worker implementation, with a strict 54-provider
+  catalogue, rather than copying 54 implementations into InfiltratorOS.
+- Give the four application installer jobs the same run-specific status/log
+  isolation. Preserve the shared native build lock but never erase shared
+  /Temporary/InfiltratorOS while another installation may still be active.
+- Remove only the current run's temporary worker stage after all 58 jobs
+  succeed. Retain that run's logs and binaries when a job fails or times out.
+  Unit tests validate distinct provider and run statuses; packaged integration
+  tests exercise 54 separate published .run installers.
+
+
 ## 1.0.34
 
 Install all 31 calendars and 23 clocks from their independent checksum-verified source installers using explicit aggressive CPU-native/LTO/two-pass-PGO builds. Verify each native package and module, serialize them with existing application builds, and retain failure diagnostics. Retire the OS dependency on the combined resource package while preserving Common source and existing-module ownership transitions.
