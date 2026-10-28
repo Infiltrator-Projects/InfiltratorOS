@@ -15,7 +15,7 @@ import sys
 import tarfile
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-PRODUCTS = ("system-monitor", "calculator", "files", "defragmenter", "temporal-resources")
+PRODUCTS = ("system-monitor", "calculator", "files", "defragmenter", "temporal-resources", "filesystem-resources")
 COMMAND_ROOT = "System/Commands/InfiltratorOS/"
 FONT_ROOT = "System/Resources/Fonts/"
 ICON_ROOT = "System/Resources/Icons/"
