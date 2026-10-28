@@ -67,7 +67,7 @@ class InstallationContract(unittest.TestCase):
                          patch.object(worker.sys, "argv", ["installer", entry["repository"].lower()]):
                         worker.main()
                     status = runtime / "status" / (entry["repository"].lower() + "-install.status")
-                    self.assertIn("state=complete\\n", status.read_text())
+                    self.assertIn("state=complete\n", status.read_text())
                     self.assertEqual(len(list((runtime / "status").glob("*-install.status"))), 1)
                 self.assertEqual(attempted, [first["repository"], second["repository"]])
                 with patch.object(worker.sys, "argv", ["installer", "unknown-provider"]):
@@ -96,7 +96,7 @@ class InstallationContract(unittest.TestCase):
                 with self.assertRaisesRegex(RuntimeError, "training failed"):
                     worker.main()
                 status = runtime / "status" / (entry["repository"].lower() + "-install.status")
-                self.assertIn("state=running\\n", status.read_text())
+                self.assertIn("state=running\n", status.read_text())
                 self.assertFalse(any("state=complete" in x.read_text() for x in (runtime / "status").glob("*-install.status")))
 
 
