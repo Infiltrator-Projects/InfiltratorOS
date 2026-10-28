@@ -163,7 +163,7 @@ PY
 import json, pathlib, sys
 root, output = pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2])
 catalogue = json.loads((root / "packaging/filesystem-resources.json").read_text())
-assert len(catalogue) == 2
+assert len(catalogue) == 3
 source = (root / "packaging/install-filesystem-resources.py").read_text()
 marker = "CATALOGUE = []  # @EMBED_FILESYSTEM_CATALOGUE@"
 assert source.count(marker) == 1
