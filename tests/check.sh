@@ -39,7 +39,8 @@ grep -Fq 'dependencies-ready' "$ROOT/packaging/install-temporal-resources.py"
 grep -Fq 'status_root="$stage/status"' "$ROOT/debian/postinst"
 # Every native worker must wait for a live Mint aptk/dpkg frontend rather
 # than fail after an arbitrary 300-second timeout.
-for worker in "$ROOT"/packaging/install-{system-monitor,calculator,files,defragmenter}.c; do
+for product in system-monitor calculator files defragmenter; do
+    worker="$ROOT/packaging/install-$product.c"
     grep -Fq 'DPkg::Lock::Timeout=-1' "$worker"
     ! grep -Fq 'DPkg::Lock::Timeout=300' "$worker"
 done
