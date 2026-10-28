@@ -24,6 +24,16 @@ Replacement policy remains product-specific. System Monitor and Calculator may r
 
 The operating system provisions all 54 independently packaged calendar and clock resources from their published source installers. Calendar applications and System Settings consume those system resources rather than owning them, so application removal does not remove calendar implementations.
 
+## Source-first and hardware-native build contract
+
+The [InfiltratorOS source-first principle](PHILOSOPHY.md#source-first-hardware-native-execution) defines *why* the system builds locally. The owning component repository defines *how* its source is compiled, trained, tested and packaged; InfiltratorOS orchestrates verified acquisition, local installation, progress reporting, locking, failure recovery and installed-state checks. InfiltratorOS must not silently replace a qualified product-specific native build with a generic binary or invent a second compiler policy.
+
+A native installation resolves an immutable, integrity-checked component release, uses its published source installer or other qualified source-build entry point, detects and records the actual target architecture and available compiler capabilities, then builds and verifies its component. Native CPU tuning, `-O3`, LTO and measured two-pass PGO are applied only where the particular provider's verified build supports them. Unsupported optimisation stages must be reported as unsupported or not applied; a nominal optimisation flag or package name is insufficient proof. Installed binaries, build records, package ownership, ABI and capability identities are checked under each component's contract.
+
+Separately compiled modules are a deliberate feature, not a consolidation backlog. The 31 calendar and 23 clock providers are independent, released capabilities; their feature completion is distinct from the per-machine compilation performed during deployment. Their providers need not be edited or re-released solely because a new machine builds them. The same ownership boundary applies to individually managed filesystem engines, while their application-facing `.so`, Linux kernel `.ko` and UEFI `.efi` adapters have different build, runtime and qualification requirements.
+
+Generic Debian packages remain useful for bootstrap, repository distribution, compatibility and recovery; they do not by themselves satisfy a declared local-native installation. The present Debian/Mint and Linux kernel base is transitional and is not claimed to be wholly rebuilt from source by today's InfiltratorOS package. The future system-wide source-build goal must be distinguished from the native application and provider builds implemented now. Installation duration is an accepted, intentional trade-off, but unnecessary rebuilds, duplicate source authorities and unnecessary build machinery are not design objectives.
+
 ## Native executable ownership
 
 `/Programs` is the sole native home for launchable applications. Whether an application ships with InfiltratorOS or is installed independently is a packaging concern, not a filesystem classification. `/System` is restricted to operating-system infrastructure, with `/System/Commands` owning genuine command helpers. InfiltratorOS establishes `/System/Commands:/Programs` for future login shells and does not create `/usr/bin` aliases for native applications.
