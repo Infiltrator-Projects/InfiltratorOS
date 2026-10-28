@@ -44,3 +44,7 @@ The FAT 0.1.2+ installed-module contract additionally requires `LTO: enabled` an
 ## Independently released FAT modules
 
 `tests/filesystem-install-test.py` validates the two-item catalogue, exact two-asset stable release contract, digest/URL/size fail-closed rules and independent per-run status tracking. InfiltratorOS must not claim success unless the matching module is installed under `/System/Filesystems`, owned by the format-specific Debian package, built aggressively with local CPU/LTO flags and authenticated by BUILD-INFO hash plus format-specific V1/V3/V4/defrag exports. The individual FAT repositories separately qualify actual native package installation and filesystem fixtures before publication. Full Defragmenter integration and physical-media and firmware qualification remain separate evidence gates.
+
+### Three independent FAT installation workers (1.0.40)
+
+The SHA-256 sealed native bundle contains Filesystem-FAT12, Filesystem-FAT16 and Filesystem-FAT32. The three .so builds, native optimisations, package ownership and ABI signatures are verified separately. FAT32 does not claim the FAT12/FAT16 defrag ABI. Later releases require independently qualified .efi and kernel-specific .ko release assets. The OS worker does not load kernel modules or stage firmware drivers on arbitrary installations; host-specific deployment and physical-media/boot qualification remain separately gated.
