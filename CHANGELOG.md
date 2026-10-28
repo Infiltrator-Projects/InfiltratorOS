@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.0.38 — Require complete FAT12 and FAT16 SO, KO and EFI drivers (candidate)
+
+- Reject older FAT12/FAT16 shared-object-only releases; require all three driver forms.
+- Validate QEMU-tested Linux 6.12.107 kernel module, OVMF-tested UEFI image and the correct versioned shared object with independent hashes and Debian ownership.
+- Prepare matching host headers, build an actual `fat12.ko`/`fat16.ko` for `uname -r`, install through the per-format native Debian package and register it with `depmod`; refuse unsupported kernel ABIs.
+- Preserve the single aggregate progress window, aptk lock safety, separate installed filesystems and Defragmenter's SO lookup. Do not silently overwrite ESP/NVRAM or load the kernel drivers.
+
+
 ## 1.0.37 — Independently installed FAT12 and FAT16 shared-object modules
 
 - Add two independently published format packages under `/System/Filesystems` with their own .deb, source-embedded native .run, GitHub source ZIP and copy-preserving repository ownership.

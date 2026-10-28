@@ -16,7 +16,7 @@ class InstallerTests(unittest.TestCase):
     def setUp(self):
         self.entries = worker.catalogue()
         self.entry = self.entries[0]
-        version = "0.1.0"
+        version = "0.1.2"
         repo = self.entry["repository"]
         url = f"https://github.com/Infiltrator-Projects/{repo}/releases/download/v{version}/"
         self.release = {
@@ -38,7 +38,7 @@ class InstallerTests(unittest.TestCase):
 
     def test_two_assets_and_github_native_zip(self):
         version, url, digest, size = worker.release_installer(self.entry, self.release)
-        self.assertEqual(version, "0.1.0")
+        self.assertEqual(version, "0.1.2")
         self.assertEqual(digest, "a"*64)
         self.assertEqual(size, 100)
         self.assertTrue(url.endswith("-native-installer.run"))

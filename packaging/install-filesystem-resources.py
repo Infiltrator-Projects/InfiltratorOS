@@ -79,6 +79,8 @@ def release_installer(entry, release):
     if not isinstance(tag, str) or not re.fullmatch(r"v[0-9]+\.[0-9]+\.[0-9]+", tag):
         raise ValueError("Not a canonical version tag")
     version = tag[1:]
+    if tuple(map(int, version.split("."))) < (0, 1, 2):
+        raise ValueError("Shared-object-only FAT releases are not complete filesystems")
     run_name = f"{entry['repository'].lower()}-{version}-native-installer.run"
     deb_name = f"{entry['package']}_{version}_amd64.deb"
     assets = release.get("assets")
@@ -147,6 +149,48 @@ def verify(entry, version, root=Path("/"), query=True):
             raise ValueError("Wrong filesystem width or ABI")
     if "(NEEDED)" in subprocess.check_output(["/usr/bin/readelf", "-d", str(module)], text=True):
         raise ValueError("Unexpected ELF runtime dependency")
+    width = int(entry["id"][3:])
+    ko = root / "System/Kernel/Modules/6.12.107-qemu-tested-only" / f"fat{width}.ko"
+    efi = root / "System/Kernel/Firmware/EFI" / f"FAT{width}.efi"
+    for label, path in (("Kernel-SHA256", ko), ("EFI-SHA256", efi)):
+        if not path.is_file() or path.is_symlink() or path.stat().st_size < 5000:
+            raise ValueError("Missing qualified " + label + " payload")
+        if hashlib.sha256(path.read_bytes()).hexdigest() != data.get(label):
+            raise ValueError("Installed tested driver SHA256 mismatch: " + label)
+        if query:
+            owned = subprocess.check_output(["/usr/bin/dpkg-query", "-S", str(path)], text=True)
+            if not owned.startswith(entry["package"] + ":"):
+                raise ValueError("Wrong Debian owner for the selected driver: " + str(path))
+    if data.get("Kernel-Tested-Version") != "6.12.107":
+        raise ValueError("Reference Linux kernel ABI qualification missing")
+    actual_name = subprocess.check_output(["/usr/sbin/modinfo", "-F", "name", ko], text=True).strip()
+    if actual_name != f"fat{width}":
+        raise ValueError("Reference module identity mismatch")
+    import struct
+    binary = efi.read_bytes()
+    if binary[:2] != b"MZ":
+        raise ValueError("EFI driver missing PE header")
+    pe = struct.unpack_from("<I", binary, 0x3c)[0]
+    if binary[pe:pe+4] != b"PE\x00\x00" or struct.unpack_from("<H", binary, pe+4)[0] != 0x8664:
+        raise ValueError("Not a 64-bit UEFI driver")
+    # CI's own immutable QEMU/OVMF runtime proves the reference artifacts.
+    # A real OS installation MUST additionally prove a running-host KO.
+    if query and os.environ.get("GITHUB_ACTIONS") != "true":
+        host_version = os.uname().release
+        host = root / "lib/modules" / host_version / "updates/infiltrator" / f"fat{width}.ko"
+        if not host.is_file() or host.is_symlink() or data.get("Host-Kernel-Release") != host_version:
+            raise ValueError("No independently compiled module for the running kernel")
+        if hashlib.sha256(host.read_bytes()).hexdigest() != data.get("Host-Kernel-SHA256"):
+            raise ValueError("Running-kernel module SHA256 mismatch")
+        owner = subprocess.check_output(["/usr/bin/dpkg-query", "-S", str(host)], text=True)
+        if not owner.startswith(entry["package"] + ":"):
+            raise ValueError("Running kernel module not owned by FAT package")
+        name = subprocess.check_output(["/usr/sbin/modinfo", "-F", "name", host], text=True).strip()
+        vermagic = subprocess.check_output(["/usr/sbin/modinfo", "-F", "vermagic", host], text=True).split()[0]
+        if name != f"fat{width}" or vermagic != host_version:
+            raise ValueError("Running-kernel FAT driver ABI mismatch")
+        subprocess.run(["/usr/sbin/modprobe", "--dry-run", "--verbose", f"fat{width}"], check=True)
+
 
 def install(entry):
     url = f"https://api.github.com/repos/Infiltrator-Projects/{entry['repository']}/releases/latest"
@@ -158,7 +202,10 @@ def install(entry):
     with tempfile.TemporaryDirectory(dir=STATUS_DIR, prefix="filesystem-native-") as folder:
         installer = Path(folder) / "filesystem.run"
         download(location, installer, digest, length)
-        run([installer, "--profile", "aggressive", "--system-package-mode"])
+        arguments = [installer, "--profile", "aggressive", "--system-package-mode"]
+        if os.environ.get("GITHUB_ACTIONS") == "true":
+            arguments.append("--ci-reference-kernel-only")
+        run(arguments)
         verify(entry, version)
 
 def main():
@@ -199,7 +246,10 @@ def main():
                 status("running", 5, "Preparing filesystem build prerequisites", entry["name"])
                 run(["/usr/bin/apt-get", "-o", "DPkg::Lock::Timeout=-1", "check"])
                 run(["/usr/bin/apt-get", "-o", "DPkg::Lock::Timeout=-1", "update"])
-                run(["/usr/bin/apt-get", "-o", "DPkg::Lock::Timeout=-1", "install", "-y", "--no-install-recommends", "build-essential", "binutils", "python3"])
+                prerequisites = ["build-essential", "binutils", "python3", "kmod"]
+                if os.environ.get("GITHUB_ACTIONS") != "true":
+                    prerequisites.append("linux-headers-" + os.uname().release)
+                run(["/usr/bin/apt-get", "-o", "DPkg::Lock::Timeout=-1", "install", "-y", "--no-install-recommends", *prerequisites])
                 ready.touch(mode=0o644)
             status("running", 12, "Compiling " + entry["name"], "Using its independent checksum-verified source installer")
             install(entry)
