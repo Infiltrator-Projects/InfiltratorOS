@@ -2,6 +2,7 @@
 """Contract tests for the independently packaged FAT12/FAT16 installers."""
 import copy
 import importlib.util
+import json
 from pathlib import Path
 import tempfile
 import unittest
