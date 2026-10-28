@@ -10,6 +10,7 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
+#include "verify-native-download.h"
 
 #define RELEASE_API "https://api.github.com/repos/Infiltrator-Projects/System-Monitor/releases/latest"
 #define RELEASE_PREFIX "https://github.com/Infiltrator-Projects/System-Monitor/releases/download/"
@@ -312,6 +313,9 @@ int main(void)
         "--output-document", installer_path, url, NULL
     };
     required(download_argv);
+    if (release_dir && *release_dir &&
+        !verify_native_download(release_dir, "System-Monitor", url, installer_path))
+        fail("native installer does not match the published SHA-256 digest");
     if (chmod(installer_path, 0700) != 0)
         fail("cannot mark native installer executable");
 
