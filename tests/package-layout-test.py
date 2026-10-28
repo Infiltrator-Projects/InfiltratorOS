@@ -35,6 +35,7 @@ def expected_paths(source_root: pathlib.Path) -> set[str]:
         "etc/xdg/autostart/infiltrator-program-icons.desktop",
         MANIFEST_ROOT + "fonts.sha256",
         MANIFEST_ROOT + "icons.sha256",
+        MANIFEST_ROOT + "repository-key.gpg",
     })
     entries.update({
         "usr/share/plymouth/themes/infiltratoros/" + name
