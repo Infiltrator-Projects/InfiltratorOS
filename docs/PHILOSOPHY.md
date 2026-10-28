@@ -8,6 +8,16 @@ Substantive code commentary and maintained technical documentation are held to a
 
 Repository-specific design, architecture, safety and validation documents may strengthen or specialise this standard, but must not silently weaken or contradict it.
 
+## Source-first, hardware-native execution
+
+InfiltratorOS is designed as a **source-first, locally compiled and hardware-optimised operating system**. This is a core product requirement, not an incidental installer option. The intended native installation path obtains an exact, verified source release for each Infiltrator-owned component, compiles it on the target machine using a qualified toolchain, validates the result and installs the machine-specific binary. A generic precompiled package may serve bootstrap, compatibility or recovery needs, but it does not silently count as a completed native source build.
+
+Native compilation deliberately trades installation time and computing effort for binaries tailored to the installed hardware. Where the component, compiler and target support them, the native build policy favours appropriate CPU-specific instruction selection, aggressive optimisation, link-time optimisation (LTO) and properly trained, measured profile-guided optimisation (PGO). Flags are means, not evidence: successful compilation or a `+native` package suffix alone cannot establish that PGO was trained, that a binary was built for the actual machine, or that runtime performance improved. Correctness, safety, functional parity, recovery and measurable results remain mandatory.
+
+The complexity of acquiring, compiling, qualifying and installing source belongs to the system's graphical setup and software-management workflows, not to ordinary users. Verified source identity, bounded privileges, failure reporting and recoverable installation are part of that contract. Build optimisations and fallbacks must be recorded accurately rather than silently claimed.
+
+Independent component ownership is equally intentional. Each calendar, clock, filesystem and application has its own source authority and release lifecycle, while Common owns genuinely shared interfaces. A completed, unchanged provider does not require further feature development merely because it is separately compiled for each machine. Rebuilds or adaptations are justified by relevant source, toolchain, dependency, interface or hardware changes, not by a preference for monolithic binaries or generic distribution packages.
+
 ## One graphical operating system
 
 All components belong to InfiltratorOS and share a coherent visual and
