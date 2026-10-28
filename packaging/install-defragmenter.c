@@ -337,11 +337,24 @@ int main(void)
         snprintf(installer_path, sizeof(installer_path), "%s/defragmenter.run", work) >= (int)sizeof(installer_path))
         fail("temporary path is too long");
 
-    const char *const api_argv[] = {
-        "/usr/bin/wget", "--quiet", "--https-only", "--secure-protocol=TLSv1_2",
-        "--output-document", json_path, RELEASE_API, NULL
-    };
-    required(api_argv);
+    const char *release_dir = getenv("INFILTRATOROS_RELEASE_DIR");
+    if (release_dir && *release_dir) {
+        char source[PATH_LEN];
+        if (snprintf(source, sizeof(source), "%s/Defragmenter.json", release_dir) >=
+            (int)sizeof(source)) fail("signed native release metadata path too long");
+        const char *const copy_argv[] = {
+            "/usr/bin/cp", "--", source, json_path, NULL
+        };
+        required(copy_argv);
+    } else {
+        /* Standalone installer invocation retains its own release discovery.
+         * Managed InfiltratorOS installs always use the signed snapshot. */
+        const char *const api_argv[] = {
+            "/usr/bin/wget", "--quiet", "--https-only", "--secure-protocol=TLSv1_2",
+            "--output-document", json_path, RELEASE_API, NULL
+        };
+        required(api_argv);
+    }
 
     char *json = read_file(json_path);
     if (!json) fail("cannot read latest Defragmenter release metadata");
