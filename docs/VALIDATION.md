@@ -1,5 +1,7 @@
 # Validation
 
+**Unimplemented final gate:** [one `.so` per filesystem for firmware, kernel and applications](FILESYSTEM_SO_RUNTIME_CONTRACT.md). Existing installed shared objects and separately tested platform drivers do not prove the kernel can mount or BOOT can read a volume through the same `.so`. Require a real UEFI load test, kernel VFS bridge read/write and early-root qualification before a completion claim.
+
 ## Local contracts
 
 Run `sh tests/check.sh` on Linux. Optimised builds with NDEBUG exercise the production process and status modules using disposable fixtures. Checks remain active in release builds.

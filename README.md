@@ -1,5 +1,7 @@
 # InfiltratorOS
 
+**Final filesystem architecture:** [one trusted `.so` per filesystem, consumed by BOOT, the kernel and applications](docs/FILESYSTEM_SO_RUNTIME_CONTRACT.md). Per-format `.ko`/`.efi` artifacts remain transitional Linux/UEFI mechanisms; they are not intended to be three permanent products. BOOT/kernel universal loading is not yet delivered.
+
 **InfiltratorOS product family:** [InfiltratorOS](https://github.com/Infiltrator-Projects/InfiltratorOS) · [System Monitor](https://github.com/Infiltrator-Projects/System-Monitor) · [Calculator](https://github.com/Infiltrator-Projects/Calculator) · [Files](https://github.com/Infiltrator-Projects/Files) · [Defragmenter](https://github.com/Infiltrator-Projects/Defragmenter). Independently installable components, one [product-family and UI contract](docs/PRODUCT-FAMILY.md).
 
 The operating-system integration project for Infiltrator Projects. The current deliverable is an amd64 Debian/Linux Mint package containing the approved Plymouth theme and native provisioning for System Monitor, Calculator, Files and Defragmenter.
@@ -23,7 +25,7 @@ use short names within the operating system:
 This repository currently supplies branding and native application provisioning;
 it does not yet implement the planned Setup installer.
 
-The shared [Bootable Filesystem Integration Contract](https://github.com/Infiltrator-Projects/Filesystems/blob/main/docs/BOOTABLE_FILESYSTEM_CONTRACT.md) defines the long-term goal: Setup installs Boot plus the selected filesystem's UEFI reader, boot payload, runtime modules and early-boot support, while preserving independent filesystem choices. The first AmigaDOS milestone uses an OFS disk **only to store a test Linux kernel**, not as an already-qualified operating-system root.
+The shared [Bootable Filesystem Integration Contract](https://github.com/Infiltrator-Projects/Filesystems/blob/main/docs/BOOTABLE_FILESYSTEM_CONTRACT.md) defines the transitional boot path. The [authoritative end state](docs/FILESYSTEM_SO_RUNTIME_CONTRACT.md) is that Setup installs the selected single filesystem `.so`, while generic BOOT/kernel loaders and early-boot support consume that same implementation, preserving independent filesystem choices. The first AmigaDOS milestone uses an OFS disk **only to store a test Linux kernel**, not as an already-qualified operating-system root.
 
 The source package version is recorded in [`VERSION`](VERSION).
 

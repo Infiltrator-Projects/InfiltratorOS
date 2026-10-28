@@ -1,5 +1,7 @@
 # Native filesystem skeleton
 
+**Filesystem driver target:** one `.so` per format under `/System/Filesystems`, shared by BOOT, kernel, Filesystems and apps via generic adapters. See [the OS runtime contract](FILESYSTEM_SO_RUNTIME_CONTRACT.md). The legacy `.ko`/per-format `.efi` deployment below is an **interim description**, not the final filesystem installation design.
+
 InfiltratorOS defines a small, human-readable native filesystem model alongside the conventional Debian/Linux hierarchy during the transition period. The Linux base may continue to use `/bin`, `/usr`, `/etc`, `/var` and other compatibility paths, but new Infiltrator executables do not extend the old `/usr/bin` application namespace.
 
 The native skeleton is:
@@ -54,7 +56,7 @@ No native Infiltrator application is mirrored into `/usr/bin` merely for compati
 
 The current native namespace reserves `/System/Kernel/Images` and `/System/Kernel/Modules` as a future OS-owned layout. During the intermediate Linux stage, kernel and initramfs images may remain in `/boot` and Linux `.ko` filesystem modules remain in their qualified Linux module paths; no premature migration is implied.
 
-The intended future Setup installer will select an on-disk format based on qualified capabilities, install Boot's corresponding read-only `.efi` reader, put the kernel and initramfs on a filesystem Boot can read, and install the corresponding operating-system-side filesystem modules. The boot-image filesystem and the runtime root filesystem may differ. A future native InfiltratorOS kernel may use a non-Linux module ABI, but the same separation remains.
+The intended Setup installer will select an on-disk format based on qualified capabilities, install its **single authoritative `.so`** and supply the verified exact same module to BOOT's generic loader and the kernel's generic filesystem bridge, along with the required early-boot infrastructure. Until those loaders work, Setup may temporarily use existing separately qualified `.efi` readers and Linux `.ko` providers. The boot-image filesystem and the runtime root filesystem may differ. A future native InfiltratorOS kernel may use a non-Linux module ABI, but the same separation remains.
 
 Filesystem limitations must be represented honestly: Setup may adapt the layout to avoid missing symbolic links when safe, but it cannot treat duplicated files as hard links or claim unsupported namespace, permission, mapping or durability semantics. A format that can hold a boot image does not automatically qualify as a system root. For the detailed, phased cross-project contract, see [Bootable Filesystem Integration Contract](https://github.com/Infiltrator-Projects/Filesystems/blob/main/docs/BOOTABLE_FILESYSTEM_CONTRACT.md).
 

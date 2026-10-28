@@ -1,5 +1,7 @@
 # Architecture
 
+**Final filesystem destination:** [one independently installed `.so` per filesystem](FILESYSTEM_SO_RUNTIME_CONTRACT.md), consumed by BOOT, kernel and applications through generic loaders. Existing Linux/EFI adapters mentioned here are **transitional runtime machinery**, not separate permanent per-format products.
+
 ## Ownership
 
 `scripts/build-deb.sh` owns package membership and reads the root VERSION. It accepts only a numeric semantic version before constructing staging paths, requires the supported amd64 host, verifies the approved artwork, and uses SOURCE_DATE_EPOCH for deterministic Debian archives.
@@ -30,7 +32,7 @@ The [InfiltratorOS source-first principle](PHILOSOPHY.md#source-first-hardware-n
 
 A native installation resolves an immutable, integrity-checked component release, uses its published source installer or other qualified source-build entry point, detects and records the actual target architecture and available compiler capabilities, then builds and verifies its component. Native CPU tuning, `-O3`, LTO and measured two-pass PGO are applied only where the particular provider's verified build supports them. Unsupported optimisation stages must be reported as unsupported or not applied; a nominal optimisation flag or package name is insufficient proof. Installed binaries, build records, package ownership, ABI and capability identities are checked under each component's contract.
 
-Separately compiled modules are a deliberate feature, not a consolidation backlog. The 31 calendar and 23 clock providers are independent, released capabilities; their feature completion is distinct from the per-machine compilation performed during deployment. Their providers need not be edited or re-released solely because a new machine builds them. The same ownership boundary applies to individually managed filesystem engines, while their application-facing `.so`, Linux kernel `.ko` and UEFI `.efi` adapters have different build, runtime and qualification requirements.
+Separately compiled modules are a deliberate feature, not a consolidation backlog. The 31 calendar and 23 clock providers are independent, released capabilities; their feature completion is distinct from the per-machine compilation performed during deployment. Their providers need not be edited or re-released solely because a new machine builds them. The same ownership boundary applies to individually managed filesystem engines. Their **final distributed driver is the one `.so`**; transitional Linux kernel `.ko` and UEFI `.efi` implementations have different present-day runtimes and must be qualified without turning them into three permanent filesystem products.
 
 Generic Debian packages remain useful for bootstrap, repository distribution, compatibility and recovery; they do not by themselves satisfy a declared local-native installation. The present Debian/Mint and Linux kernel base is transitional and is not claimed to be wholly rebuilt from source by today's InfiltratorOS package. The future system-wide source-build goal must be distinguished from the native application and provider builds implemented now. Installation duration is an accepted, intentional trade-off, but unnecessary rebuilds, duplicate source authorities and unnecessary build machinery are not design objectives.
 
