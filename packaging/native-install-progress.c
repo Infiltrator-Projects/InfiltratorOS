@@ -86,7 +86,7 @@ static void close_clicked(GtkButton *button, gpointer data)
 
 int main(int argc, char **argv)
 {
-#ifdef INSTALL_TEMPORAL_RESOURCES
+#if defined(INSTALL_TEMPORAL_RESOURCES) || defined(INSTALL_FILESYSTEM_RESOURCES)
     if (argc != 3 || strlen(argv[2]) >= sizeof(((Ui *)0)->product_name)) return EXIT_FAILURE;
 #else
     if (argc != 2) return EXIT_FAILURE;
@@ -124,7 +124,7 @@ int main(int argc, char **argv)
     Ui ui;
     memset(&ui, 0, sizeof(ui));
     g_strlcpy(ui.status_path, argv[1], sizeof(ui.status_path));
-#ifdef INSTALL_TEMPORAL_RESOURCES
+#if defined(INSTALL_TEMPORAL_RESOURCES) || defined(INSTALL_FILESYSTEM_RESOURCES)
     g_strlcpy(ui.product_name, argv[2], sizeof(ui.product_name));
 #else
     g_strlcpy(ui.product_name, INSTALL_NAME, sizeof(ui.product_name));

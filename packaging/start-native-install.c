@@ -19,7 +19,7 @@
 
 #define ENV_LIMIT 65536U
 #define TEXT_LIMIT 4096U
-#ifdef INSTALL_TEMPORAL_RESOURCES
+#if defined(INSTALL_TEMPORAL_RESOURCES) || defined(INSTALL_FILESYSTEM_RESOURCES)
 static char provider_slug[128];
 #endif
 static char run_status[TEXT_LIMIT];
@@ -218,7 +218,7 @@ static void resolve_temporary_runtime(void)
 static void spawn_progress_ui(DesktopSession *session)
 {
     if (!session->found) return;
-    #ifdef INSTALL_TEMPORAL_RESOURCES
+    #if defined(INSTALL_TEMPORAL_RESOURCES) || defined(INSTALL_FILESYSTEM_RESOURCES)
     char *const arguments[] = { runtime_progress, run_status, provider_slug, NULL };
 #else
     char *const arguments[] = { runtime_progress, (char *)status_file(), NULL };
@@ -241,10 +241,11 @@ static void report_start_failure(int error)
 int main(int argc, char **argv)
 {
     if (geteuid() != 0) die("must run as root");
-#ifdef INSTALL_TEMPORAL_RESOURCES
+#if defined(INSTALL_TEMPORAL_RESOURCES) || defined(INSTALL_FILESYSTEM_RESOURCES)
     if (argc != 2 || strlen(argv[1]) >= sizeof(provider_slug) ||
         (strncmp(argv[1], "calendar-", 9) != 0 &&
-         strncmp(argv[1], "clock-", 6) != 0))
+         strncmp(argv[1], "clock-", 6) != 0 &&
+         strncmp(argv[1], "filesystem-fat", 14) != 0))
         die("expected one calendar or clock provider slug");
     for (const char *p = argv[1]; *p; ++p)
         if (!(islower((unsigned char)*p) || isdigit((unsigned char)*p) || *p == '-'))
@@ -262,7 +263,7 @@ int main(int argc, char **argv)
         die("status directory path is too long");
     if (mkdir(directory, 0755) != 0 && errno != EEXIST)
         die("cannot create per-run status directory");
-#ifdef INSTALL_TEMPORAL_RESOURCES
+#if defined(INSTALL_TEMPORAL_RESOURCES) || defined(INSTALL_FILESYSTEM_RESOURCES)
     const char *slug = provider_slug;
 #else
     const char *slug = INSTALL_SLUG;
@@ -274,7 +275,7 @@ int main(int argc, char **argv)
         die("run status or log path is too long");
     write_initial_status();
     DesktopSession session = find_desktop_session();
-#ifdef INSTALL_TEMPORAL_RESOURCES
+#if defined(INSTALL_TEMPORAL_RESOURCES) || defined(INSTALL_FILESYSTEM_RESOURCES)
     char *const arguments[] = { runtime_worker, provider_slug, NULL };
 #else
     char *const arguments[] = { runtime_worker, NULL };
