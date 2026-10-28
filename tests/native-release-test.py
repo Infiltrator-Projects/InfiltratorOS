@@ -34,7 +34,7 @@ def sample():
 
 
 class NativeSnapshotTest(unittest.TestCase):
-    def test_one_download_writes_sixty-one_checksums_and_local_releases(self):
+    def test_one_download_writes_sixty_one_checksums_and_local_releases(self):
         data = sample()
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
