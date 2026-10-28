@@ -112,6 +112,19 @@ install -m 0755 "$ROOT/packaging/ensure-native-fonts.sh" \
 install -m 0755 "$ROOT/packaging/ensure-native-icons.sh" \
     "$PKGROOT/System/Commands/InfiltratorOS/ensure-native-icons"
 install -m 0644 "$FONT_MANIFEST" "$RESOURCE_MANIFEST_DIR/fonts.sha256"
+# Bundle the repository's public signing key at OS build time.  Never trust
+# a key downloaded alongside the manifest on the installed computer.
+NATIVE_KEY="$RESOURCE_MANIFEST_DIR/repository-key.gpg"
+if [ -n "${INFILTRATOROS_REPOSITORY_KEY_SOURCE:-}" ]; then
+    install -m 0644 "$INFILTRATOROS_REPOSITORY_KEY_SOURCE" "$NATIVE_KEY"
+else
+    curl --fail --location --silent --show-error --retry 3 --max-time 30 \
+      https://infiltrator-projects.github.io/Infiltrator-Repository/repository-key.gpg \
+      -o "$NATIVE_KEY"
+    chmod 0644 "$NATIVE_KEY"
+fi
+test -s "$NATIVE_KEY"
+gpg --batch --show-keys "$NATIVE_KEY" >/dev/null
 while IFS= read -r entry; do
     font_file=${entry#*  }
     install -m 0644 "$ROOT/assets/fonts/$font_file" "$FONT_DIR/$font_file"
@@ -186,6 +199,7 @@ PY
         -o "$RUNTIME_BUILD/$product-progress" $(pkg-config --libs gtk+-3.0)
 done
 
+install -m 0755 "$ROOT/packaging/prepare-native-releases.py" "$RUNTIME_BUILD/prepare-native-releases"
 test "$(file -b --mime-type "$THEME_DIR/infiltratoros.png")" = image/png
 test ! -e "$PKGROOT/usr/lib/infiltratoros"
 test -x "$PKGROOT/System/Commands/InfiltratorOS/activate-program-icons"
