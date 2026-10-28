@@ -117,9 +117,7 @@ done < "$stage/filesystems.list"
         done < "$stage/providers.list"
         while IFS= read -r filesystem; do
             status="$status_root/$filesystem-install.status"
-            [ -f "$status" ] && grep -Eq '^state=(complete|failed)
-    }
- "$status" || return 1
+            [ -f "$status" ] && grep -Eq '^state=(complete|failed)$' "$status" || return 1
         done < "$stage/filesystems.list"
         return 0
     }
