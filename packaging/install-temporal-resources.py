@@ -10,6 +10,7 @@ import json
 import os
 from pathlib import Path
 import re
+import stat
 import subprocess
 import sys
 import tempfile
@@ -166,6 +167,53 @@ def verify_installation(entry, version, root=Path("/"), query=True):
     getattr(module, "infiltratr_temporal_" + entry["kind"] + "_provider_v1")
 
 
+def native_installed(entry, version, release):
+    """Accept a cached native provider only after checking its real installed ABI."""
+    revision = release.get("target_commitish")
+    if not isinstance(revision, str) or not re.fullmatch(r"[0-9a-f]{40}", revision):
+        print("Native cache unavailable: release commit is not pinned.", flush=True)
+        return False
+    library = Path(entry["resource"])
+    record = Path("/System/Resources/Documentation") / entry["repository"] / "BUILD-INFO"
+    try:
+        for path in (Path("/System"), Path("/System/Resources"), library.parent,
+                     record.parent, library, record):
+            metadata = path.lstat()
+            if (stat.S_ISLNK(metadata.st_mode) or metadata.st_uid != 0 or
+                    metadata.st_mode & 0o022):
+                raise ValueError("Installed native resource is not trusted: " + str(path))
+        if not stat.S_ISREG(library.stat().st_mode) or not stat.S_ISREG(record.stat().st_mode):
+            raise ValueError("Installed native resource or record is not a regular file")
+        for path in (library, record):
+            owner = subprocess.check_output(["/usr/bin/dpkg-query", "-S", str(path)],
+                                            text=True)
+            if not owner.startswith(entry["package"] + ":"):
+                raise ValueError("Installed native file has unexpected package ownership")
+        verify_installation(entry, version)
+        metadata = dict(line.split(": ", 1) for line in record.read_text().splitlines()
+                        if ": " in line)
+        if metadata.get("Source revision") != revision:
+            raise ValueError("Installed native source differs from published release")
+        return True
+    except (OSError, ValueError, UnicodeError, subprocess.SubprocessError) as error:
+        print("Native cache miss for " + entry["repository"] + ": " + str(error), flush=True)
+        return False
+
+
+def ensure_dependencies(entry):
+    ready = STATUS_DIR / "dependencies-ready"
+    if ready.exists():
+        return
+    write_status("running", 5, "Preparing native build dependencies", entry["name"])
+    # The Mint apt frontend may still own the dpkg lock; never bypass it.
+    required(["/usr/bin/apt-get", "-o", "DPkg::Lock::Timeout=-1", "check"])
+    required(["/usr/bin/apt-get", "-o", "DPkg::Lock::Timeout=-1", "update"])
+    required(["/usr/bin/apt-get", "-o", "DPkg::Lock::Timeout=-1", "install",
+              "-y", "--no-install-recommends", "build-essential", "binutils",
+              "pkg-config", "libglib2.0-dev", "libicu-dev", "python3"])
+    ready.touch(mode=0o644)
+
+
 def install_entry(entry):
     release_dir = os.environ.get("INFILTRATOROS_RELEASE_DIR")
     if release_dir:
@@ -176,12 +224,20 @@ def install_entry(entry):
             data = response.read(4 * 1024 * 1024 + 1)
     if len(data) > 4 * 1024 * 1024:
         raise ValueError("Release metadata is too large")
-    version, url, digest, size = release_installer(entry, json.loads(data))
+    release = json.loads(data)
+    version, url, digest, size = release_installer(entry, release)
+    if native_installed(entry, version, release):
+        print("Already installed and verified: " + entry["repository"], flush=True)
+        return True
+    ensure_dependencies(entry)
+    write_status("running", 10, "Optimising " + entry["name"],
+                 "Running its independent checksum-verified native installer.")
     with tempfile.TemporaryDirectory(dir=STATUS_DIR, prefix="temporal-resource-") as temporary:
         installer = Path(temporary) / "provider.run"
         download_installer(url, installer, digest, size)
         required([installer, "--profile", "aggressive", "--system-package-mode"])
         verify_installation(entry, version)
+    return False
 
 
 def main():
@@ -222,23 +278,13 @@ def main():
             fcntl.flock(global_lock, fcntl.LOCK_EX)
             os.environ["DEBIAN_FRONTEND"] = "noninteractive"
             os.environ["TMPDIR"] = str(STATUS_DIR)
-            ready = STATUS_DIR / "dependencies-ready"
-            if not ready.exists():
-                write_status("running", 5, "Preparing native build dependencies", entry["name"])
-                # The graphical aptk transaction can retain the dpkg frontend
-                # lock beyond five minutes while its parent finishes package setup.
-                # apt-get waits for that owner; never remove or bypass APT locks.
-                required(["/usr/bin/apt-get", "-o", "DPkg::Lock::Timeout=-1", "check"])
-                required(["/usr/bin/apt-get", "-o", "DPkg::Lock::Timeout=-1", "update"])
-                required(["/usr/bin/apt-get", "-o", "DPkg::Lock::Timeout=-1", "install", "-y", "--no-install-recommends",
-                          "build-essential", "binutils", "pkg-config", "libglib2.0-dev", "libicu-dev", "python3"])
-                ready.touch(mode=0o644)
-            write_status("running", 10, "Optimising " + entry["name"],
-                         "Running its independent checksum-verified native installer.")
-            install_entry(entry)
+            write_status("running", 5, "Checking installed native build", entry["name"])
+            reused = install_entry(entry)
             print("Verified native installation: " + entry["repository"], flush=True)
-    write_status("complete", 100, entry["name"] + " installed",
-                 "This provider has been built, installed and verified independently.")
+    write_status("complete", 100,
+                 entry["name"] + (" already installed" if reused else " installed"),
+                 ("Existing current native build verified; no compilation required."
+                  if reused else "This provider has been built, installed and verified independently."))
 
 
 if __name__ == "__main__":

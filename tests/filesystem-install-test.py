@@ -59,6 +59,35 @@ class InstallerTests(unittest.TestCase):
             with self.subTest(bad=bad), self.assertRaises((ValueError, TypeError)):
                 worker.release_installer(self.entry, bad)
 
+    def test_current_native_fat_skips_download_and_build(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / (self.entry["repository"] + ".json")).write_text(json.dumps(self.release))
+            with patch.dict(worker.os.environ, {"INFILTRATOROS_RELEASE_DIR": str(root)}), \\
+                 patch.object(worker, "native_installed", return_value=True), \\
+                 patch.object(worker, "ensure_dependencies", side_effect=AssertionError("unnecessary apt")), \\
+                 patch.object(worker, "download", side_effect=AssertionError("unnecessary download")):
+                self.assertTrue(worker.install(self.entry))
+
+    def test_stale_native_fat_rebuilds(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / (self.entry["repository"] + ".json")).write_text(json.dumps(self.release))
+            with patch.dict(worker.os.environ, {"INFILTRATOROS_RELEASE_DIR": str(root)}), \\
+                 patch.object(worker, "STATUS_DIR", root), \\
+                 patch.object(worker, "STATUS_PATH", root / "test.status"), \\
+                 patch.object(worker, "native_installed", return_value=False), \\
+                 patch.object(worker, "ensure_dependencies") as dependencies, \\
+                 patch.object(worker, "download") as download, \\
+                 patch.object(worker, "run") as compile_install, \\
+                 patch.object(worker, "verify") as verify:
+                self.assertFalse(worker.install(self.entry))
+                dependencies.assert_called_once()
+                download.assert_called_once()
+                compile_install.assert_called_once()
+                verify.assert_called_once()
+
+
     def test_separate_per_run_terminal_records(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

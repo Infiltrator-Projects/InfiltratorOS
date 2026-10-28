@@ -148,6 +148,38 @@ def verify(entry, version, root=Path("/"), query=True):
     if "(NEEDED)" in subprocess.check_output(["/usr/bin/readelf", "-d", str(module)], text=True):
         raise ValueError("Unexpected ELF runtime dependency")
 
+def native_installed(entry, version):
+    """Verify an existing native FAT package without executing its driver."""
+    try:
+        verify(entry, version)
+        info = Path("/System/Resources/Documentation") / entry["repository"] / "BUILD-INFO"
+        for path in (Path("/System/Resources"), info.parent, info):
+            metadata = path.lstat()
+            if metadata.st_uid != 0 or metadata.st_mode & 0o022 or path.is_symlink():
+                raise ValueError("Untrusted filesystem build record: " + str(path))
+        if not stat.S_ISREG(info.stat().st_mode):
+            raise ValueError("Filesystem build record is not a regular file")
+        owner = subprocess.check_output(["/usr/bin/dpkg-query", "-S", str(info)], text=True)
+        if not owner.startswith(entry["package"] + ":"):
+            raise ValueError("Filesystem build record belongs to another package")
+        return True
+    except (OSError, ValueError, subprocess.SubprocessError) as error:
+        print("Native cache miss for " + entry["repository"] + ": " + str(error), flush=True)
+        return False
+
+
+def ensure_dependencies(entry):
+    ready = STATUS_DIR / "filesystem-dependencies-ready"
+    if ready.exists():
+        return
+    status("running", 5, "Preparing filesystem build prerequisites", entry["name"])
+    run(["/usr/bin/apt-get", "-o", "DPkg::Lock::Timeout=-1", "check"])
+    run(["/usr/bin/apt-get", "-o", "DPkg::Lock::Timeout=-1", "update"])
+    run(["/usr/bin/apt-get", "-o", "DPkg::Lock::Timeout=-1", "install",
+         "-y", "--no-install-recommends", "build-essential", "binutils", "python3"])
+    ready.touch(mode=0o644)
+
+
 def install(entry):
     release_dir = os.environ.get("INFILTRATOROS_RELEASE_DIR")
     if release_dir:
@@ -159,11 +191,18 @@ def install(entry):
     if len(payload) > 4*1024*1024:
         raise ValueError("Oversized GitHub release metadata")
     version, location, digest, length = release_installer(entry, json.loads(payload))
+    if native_installed(entry, version):
+        print("Already installed and verified: " + entry["repository"], flush=True)
+        return True
+    ensure_dependencies(entry)
+    status("running", 12, "Compiling " + entry["name"],
+           "Using its independent checksum-verified source installer")
     with tempfile.TemporaryDirectory(dir=STATUS_DIR, prefix="filesystem-native-") as folder:
         installer = Path(folder) / "filesystem.run"
         download(location, installer, digest, length)
         run([installer, "--profile", "aggressive", "--system-package-mode"])
         verify(entry, version)
+    return False
 
 def main():
     entries = catalogue()
@@ -198,16 +237,12 @@ def main():
             fcntl.flock(global_lock, fcntl.LOCK_EX)
             os.environ["DEBIAN_FRONTEND"] = "noninteractive"
             os.environ["TMPDIR"] = str(STATUS_DIR)
-            ready = STATUS_DIR / "filesystem-dependencies-ready"
-            if not ready.exists():
-                status("running", 5, "Preparing filesystem build prerequisites", entry["name"])
-                run(["/usr/bin/apt-get", "-o", "DPkg::Lock::Timeout=-1", "check"])
-                run(["/usr/bin/apt-get", "-o", "DPkg::Lock::Timeout=-1", "update"])
-                run(["/usr/bin/apt-get", "-o", "DPkg::Lock::Timeout=-1", "install", "-y", "--no-install-recommends", "build-essential", "binutils", "python3"])
-                ready.touch(mode=0o644)
-            status("running", 12, "Compiling " + entry["name"], "Using its independent checksum-verified source installer")
-            install(entry)
-    status("complete", 100, entry["name"] + " installed", "Independent FAT module and ABI verified")
+            status("running", 5, "Checking installed native filesystem", entry["name"])
+            reused = install(entry)
+    status("complete", 100,
+           entry["name"] + (" already installed" if reused else " installed"),
+           ("Existing current FAT module and ABI verified; no compilation required"
+            if reused else "Independent FAT module and ABI verified"))
 
 if __name__ == "__main__":
     try:

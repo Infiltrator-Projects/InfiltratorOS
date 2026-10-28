@@ -81,6 +81,35 @@ class InstallationContract(unittest.TestCase):
                         worker.main()
                     self.assertEqual(len(output.getvalue().splitlines()), 54)
 
+    def test_unchanged_native_release_skips_download_and_rebuild(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / (self.entry["repository"] + ".json")).write_text(json.dumps(self.release))
+            with patch.dict(worker.os.environ, {"INFILTRATOROS_RELEASE_DIR": str(root)}), \\
+                 patch.object(worker, "native_installed", return_value=True), \\
+                 patch.object(worker, "ensure_dependencies", side_effect=AssertionError("unnecessary apt")), \\
+                 patch.object(worker, "download_installer", side_effect=AssertionError("unnecessary download")):
+                self.assertTrue(worker.install_entry(self.entry))
+
+    def test_stale_native_release_uses_original_build_path(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / (self.entry["repository"] + ".json")).write_text(json.dumps(self.release))
+            with patch.dict(worker.os.environ, {"INFILTRATOROS_RELEASE_DIR": str(root)}), \\
+                 patch.object(worker, "STATUS_DIR", root), \\
+                 patch.object(worker, "STATUS_PATH", root / "test.status"), \\
+                 patch.object(worker, "native_installed", return_value=False), \\
+                 patch.object(worker, "ensure_dependencies") as dependencies, \\
+                 patch.object(worker, "download_installer") as download, \\
+                 patch.object(worker, "required") as compile_install, \\
+                 patch.object(worker, "verify_installation") as verify:
+                self.assertFalse(worker.install_entry(self.entry))
+                dependencies.assert_called_once()
+                download.assert_called_once()
+                compile_install.assert_called_once()
+                verify.assert_called_once()
+
+
     def test_failed_provider_does_not_mark_other_provider_complete(self):
         entry = worker.catalogue()[0]
         with tempfile.TemporaryDirectory() as temporary:
