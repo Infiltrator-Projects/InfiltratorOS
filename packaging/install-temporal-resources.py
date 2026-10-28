@@ -18,8 +18,9 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-STATUS_DIR = Path("/Temporary/InfiltratorOS")
-STATUS_PATH = STATUS_DIR / "temporal-resources-install.status"
+STATUS_ROOT = Path("/Temporary/InfiltratorOS")
+STATUS_DIR = STATUS_ROOT
+STATUS_PATH = None  # Set per provider and per installation run in main().
 CATALOGUE = []  # @EMBED_TEMPORAL_CATALOGUE@
 
 
@@ -180,44 +181,64 @@ def install_entry(entry):
 
 
 def main():
+    # Each published provider is installed by its own process, status record
+    # and graphical progress window. Shared source code is not a combined job.
+    entries = catalogue()
+    if sys.argv[1:] == ["--list"]:
+        for entry in entries:
+            print(entry["repository"].lower())
+        return
+    if len(sys.argv) != 2:
+        raise ValueError("Usage: install-temporal-resources PROVIDER_SLUG")
+    slug = sys.argv[1]
+    entry = next((item for item in entries if item["repository"].lower() == slug), None)
+    if entry is None:
+        raise ValueError("Provider is not in the signed calendar/clock catalogue")
     if os.geteuid() != 0:
         raise RuntimeError("The InfiltratorOS provisioning worker requires root")
-    entries = catalogue()
+    global STATUS_DIR, STATUS_PATH
+    runtime = os.environ.get("INFILTRATOROS_INSTALL_RUNTIME")
+    if runtime:
+        directory = Path(runtime)
+        if directory.name.startswith("native-worker.") is False or directory.parent != STATUS_ROOT:
+            raise ValueError("Invalid InfiltratorOS installation instance")
+        STATUS_DIR = directory / "status"
+    else:
+        STATUS_DIR = STATUS_ROOT
+    STATUS_PATH = STATUS_DIR / (slug + "-install.status")
+    STATUS_ROOT.mkdir(mode=0o755, parents=True, exist_ok=True)
     STATUS_DIR.mkdir(mode=0o755, parents=True, exist_ok=True)
-    with (STATUS_DIR / "temporal-resources.lock").open("a") as own:
-        try:
-            fcntl.flock(own, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError:
-            print("Calendar and clock installation is already running.")
-            return
-        with (STATUS_DIR / "native-install.lock").open("a") as global_lock:
-            write_status("queued", 2, "Waiting for another native installation", "Calendars and clocks will start when the current native build finishes.")
+    with (STATUS_ROOT / (slug + ".lock")).open("a") as own:
+        # A second OS installation must wait for the previous invocation of
+        # this provider; it must never silently report the first run's status.
+        fcntl.flock(own, fcntl.LOCK_EX)
+        with (STATUS_ROOT / "native-install.lock").open("a") as global_lock:
+            write_status("queued", 2, "Waiting for another native installation",
+                         entry["name"] + " will start when the current native build finishes.")
             fcntl.flock(global_lock, fcntl.LOCK_EX)
             os.environ["DEBIAN_FRONTEND"] = "noninteractive"
             os.environ["TMPDIR"] = str(STATUS_DIR)
-            write_status("running", 5, "Preparing calendar and clock installation", "Waiting for the package transaction to finish.")
-            required(["/usr/bin/apt-get", "-o", "DPkg::Lock::Timeout=300", "check"])
-            required(["/usr/bin/apt-get", "-o", "DPkg::Lock::Timeout=300", "update"])
-            required(["/usr/bin/apt-get", "-o", "DPkg::Lock::Timeout=300", "install", "-y", "--no-install-recommends",
-                      "build-essential", "binutils", "pkg-config", "libglib2.0-dev", "libicu-dev", "python3"])
-            failures = []
-            for index, entry in enumerate(entries):
-                write_status("running", 8 + index * 90 // len(entries), f"Optimising {entry['name']}", f"Resource {index + 1} of {len(entries)} is being built for this computer.")
-                try:
-                    install_entry(entry)
-                    print("Verified native installation: " + entry["repository"], flush=True)
-                except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as error:
-                    failures.append(entry["repository"])
-                    print(entry["repository"] + " FAILED: " + str(error), file=sys.stderr, flush=True)
-            if failures:
-                raise RuntimeError(f"{len(failures)} resource installations failed: " + ", ".join(failures))
-    write_status("complete", 100, "Calendars and clocks installed", "All 31 calendars and 23 clocks are installed and optimised for this computer.")
+            ready = STATUS_DIR / "dependencies-ready"
+            if not ready.exists():
+                write_status("running", 5, "Preparing native build dependencies", entry["name"])
+                required(["/usr/bin/apt-get", "-o", "DPkg::Lock::Timeout=300", "check"])
+                required(["/usr/bin/apt-get", "-o", "DPkg::Lock::Timeout=300", "update"])
+                required(["/usr/bin/apt-get", "-o", "DPkg::Lock::Timeout=300", "install", "-y", "--no-install-recommends",
+                          "build-essential", "binutils", "pkg-config", "libglib2.0-dev", "libicu-dev", "python3"])
+                ready.touch(mode=0o644)
+            write_status("running", 10, "Optimising " + entry["name"],
+                         "Running its independent checksum-verified native installer.")
+            install_entry(entry)
+            print("Verified native installation: " + entry["repository"], flush=True)
+    write_status("complete", 100, entry["name"] + " installed",
+                 "This provider has been built, installed and verified independently.")
 
 
 if __name__ == "__main__":
     try:
         main()
     except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as error:
-        write_status("failed", 100, "Calendar and clock installation failed", error)
+        if STATUS_PATH is not None:
+            write_status("failed", 100, "Calendar or clock installation failed", error)
         print(str(error), file=sys.stderr)
         raise SystemExit(1)
