@@ -149,9 +149,13 @@ def verify(entry, version, root=Path("/"), query=True):
         raise ValueError("Unexpected ELF runtime dependency")
 
 def install(entry):
-    url = f"https://api.github.com/repos/Infiltrator-Projects/{entry['repository']}/releases/latest"
-    with open_url(url) as response:
-        payload = response.read(4*1024*1024+1)
+    release_dir = os.environ.get("INFILTRATOROS_RELEASE_DIR")
+    if release_dir:
+        payload = (Path(release_dir) / (entry["repository"] + ".json")).read_bytes()
+    else:
+        url = f"https://api.github.com/repos/Infiltrator-Projects/{entry['repository']}/releases/latest"
+        with open_url(url) as response:
+            payload = response.read(4*1024*1024+1)
     if len(payload) > 4*1024*1024:
         raise ValueError("Oversized GitHub release metadata")
     version, location, digest, length = release_installer(entry, json.loads(payload))
