@@ -18,7 +18,7 @@ unpack_native_workers() {
     printf '%s  %s\n' "$BUNDLE_SHA256" "$bundle" | sha256sum -c - >/dev/null || return 1
     tar -xzf "$bundle" -C "$stage" --no-same-owner --no-same-permissions || return 1
     rm -f -- "$bundle" || return 1
-    for product in system-monitor calculator files defragmenter temporal-resources; do
+    for product in system-monitor calculator files defragmenter temporal-resources filesystem-resources; do
         test -x "$stage/start-$product-install" || return 1
         test -x "$stage/install-$product" || return 1
         test -x "$stage/$product-progress" || return 1
@@ -33,7 +33,7 @@ if [ "${1:-}" = "--verify-installer-bundle" ]; then
         echo 'Invalid embedded InfiltratorOS native installer bundle.' >&2
         exit 1
     fi
-    test "$(find "$inspect" -maxdepth 1 -type f | wc -l)" -eq 15
+    test "$(find "$inspect" -maxdepth 1 -type f | wc -l)" -eq 18
     exit 0
 fi
 
@@ -84,7 +84,16 @@ if [ "$(wc -l < "$stage/providers.list")" -ne 54 ]; then
     exit 1
 fi
 
-# Four independent applications and 54 independent provider processes.
+if ! "$stage/install-filesystem-resources" --list > "$stage/filesystems.list"; then
+    echo 'Cannot enumerate independent FAT12/FAT16 installers.' >&2
+    exit 1
+fi
+if [ "$(wc -l < "$stage/filesystems.list")" -ne 2 ]; then
+    echo 'Expected precisely two independent FAT filesystem installers.' >&2
+    exit 1
+fi
+
+# Four applications, 54 calendar/clock providers and 2 independent FAT processes.
 # Each invocation gets its own progress window and checksum-verified .run.
 for product in system-monitor calculator files defragmenter; do
     progress_mode=none
@@ -100,10 +109,15 @@ while IFS= read -r provider; do
         echo "Failed to launch $provider installer; see $stage/status." >&2
     fi
 done < "$stage/providers.list"
+while IFS= read -r filesystem; do
+    if ! INFILTRATOROS_PROGRESS_MODE=none INFILTRATOROS_INSTALL_RUNTIME="$stage" "$stage/start-filesystem-resources-install" "$filesystem"; then
+        echo "Failed to launch $filesystem installer; see $stage/status." >&2
+    fi
+done < "$stage/filesystems.list"
 
 # The monitor must only inspect statuses for this exact installation. A
 # subsequent package upgrade has another stage and cannot overwrite these.
-# The subshell inherits FD 9 and holds provision.lock until all 58 jobs
+# The subshell inherits FD 9 and holds provision.lock until all 60 jobs
 # reach a terminal state (or the existing 24-hour diagnostic timeout). This
 # prevents a second apt reinstall from launching a duplicate native run.
 # All statuses are terminal before this run's binaries can be removed.
@@ -119,6 +133,10 @@ done < "$stage/providers.list"
             status="$status_root/$provider-install.status"
             [ -f "$status" ] && grep -Eq '^state=(complete|failed)$' "$status" || return 1
         done < "$stage/providers.list"
+        while IFS= read -r filesystem; do
+            status="$status_root/$filesystem-install.status"
+            [ -f "$status" ] && grep -Eq '^state=(complete|failed)$' "$status" || return 1
+        done < "$stage/filesystems.list"
         return 0
     }
     all_complete() {
@@ -128,12 +146,15 @@ done < "$stage/providers.list"
         while IFS= read -r provider; do
             grep -Fxq 'state=complete' "$status_root/$provider-install.status" || return 1
         done < "$stage/providers.list"
+        while IFS= read -r filesystem; do
+            grep -Fxq 'state=complete' "$status_root/$filesystem-install.status" || return 1
+        done < "$stage/filesystems.list"
         return 0
     }
     elapsed=0
     while [ "$elapsed" -lt 86400 ]; do
         if all_terminal; then
-            # All 58 progress windows have time to read the final state.
+            # The single aggregate progress window can observe the final state.
             sleep 20
             if all_terminal; then
                 if all_complete; then
