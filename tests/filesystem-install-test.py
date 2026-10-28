@@ -60,6 +60,24 @@ class InstallerTests(unittest.TestCase):
             with self.subTest(bad=bad), self.assertRaises((ValueError, TypeError)):
                 worker.release_installer(self.entry, bad)
 
+    def test_native_fat_012_requires_real_pgo_build_record(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            module = root / self.entry["resource"].lstrip("/")
+            module.parent.mkdir(parents=True)
+            module.write_bytes(b"test data")
+            info = root / "System/Resources/Documentation" / self.entry["repository"] / "BUILD-INFO"
+            info.parent.mkdir(parents=True)
+            info.write_text(
+                "Version: 0.1.2\n"
+                f"Module: {self.entry['resource']}\n"
+                f"Package: {self.entry['package']}\n"
+                "Profile: aggressive\n"
+                "C flags: -O3 -march=native -mtune=native -flto=auto\n"
+                "SHA256: invalid\n")
+            with self.assertRaisesRegex(ValueError, "requires measured two-pass PGO"):
+                worker.verify(self.entry, "0.1.2", root=root, query=False)
+
     def test_current_native_fat_skips_download_and_build(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

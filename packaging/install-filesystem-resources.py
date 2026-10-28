@@ -125,6 +125,10 @@ def verify(entry, version, root=Path("/"), query=True):
     flags = data.get("C flags", "")
     if "-O3" not in flags or "-march=native" not in flags or "-flto" not in flags:
         raise ValueError("Module not compiled with the advertised native flags")
+    if tuple(map(int, version.split("."))) >= (0, 1, 2):
+        if (data.get("LTO") != "enabled" or
+                data.get("PGO") != "trained two-pass profile (V1 and V3/V4 fixtures)"):
+            raise ValueError("FAT 0.1.2+ requires measured two-pass PGO and LTO")
     if hashlib.sha256(module.read_bytes()).hexdigest() != data.get("SHA256"):
         raise ValueError("Installed module differs from its build record")
     if query:
