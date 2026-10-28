@@ -44,6 +44,17 @@ fi
 
 mkdir -p "$STATUS_ROOT"
 chmod 0755 "$STATUS_ROOT"
+# Hold a run-wide lock across the detached monitor lifetime. A reinstall
+# during active native compilation must not spawn 58 duplicate jobs.
+if ! command -v flock >/dev/null 2>&1; then
+    echo 'InfiltratorOS requires util-linux flock to coordinate native setup.' >&2
+    exit 1
+fi
+exec 9>"$STATUS_ROOT/provision.lock"
+if ! flock -n 9; then
+    echo 'InfiltratorOS native provisioning is already active; not launching a duplicate run.'
+    exit 0
+fi
 TMPDIR="$STATUS_ROOT"
 export TMPDIR
 
@@ -76,18 +87,25 @@ fi
 # Four independent applications and 54 independent provider processes.
 # Each invocation gets its own progress window and checksum-verified .run.
 for product in system-monitor calculator files defragmenter; do
-    if ! INFILTRATOROS_INSTALL_RUNTIME="$stage" "$stage/start-$product-install"; then
+    progress_mode=none
+    if [ "$product" = system-monitor ]; then
+        progress_mode=aggregate
+    fi
+    if ! INFILTRATOROS_PROGRESS_MODE="$progress_mode" INFILTRATOROS_INSTALL_RUNTIME="$stage" "$stage/start-$product-install"; then
         echo "Failed to launch $product installer; see $stage/status." >&2
     fi
 done
 while IFS= read -r provider; do
-    if ! INFILTRATOROS_INSTALL_RUNTIME="$stage" "$stage/start-temporal-resources-install" "$provider"; then
+    if ! INFILTRATOROS_PROGRESS_MODE=none INFILTRATOROS_INSTALL_RUNTIME="$stage" "$stage/start-temporal-resources-install" "$provider"; then
         echo "Failed to launch $provider installer; see $stage/status." >&2
     fi
 done < "$stage/providers.list"
 
 # The monitor must only inspect statuses for this exact installation. A
 # subsequent package upgrade has another stage and cannot overwrite these.
+# The subshell inherits FD 9 and holds provision.lock until all 58 jobs
+# reach a terminal state (or the existing 24-hour diagnostic timeout). This
+# prevents a second apt reinstall from launching a duplicate native run.
 # All statuses are terminal before this run's binaries can be removed.
 (
     trap '' HUP INT TERM

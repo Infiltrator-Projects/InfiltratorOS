@@ -346,7 +346,7 @@ static void purge_package(const char *package, const char *description)
     if (!installed(package)) return;
     printf("Removing %s package: %s\n", description, package);
     const char *const argv[] = {
-        "/usr/bin/apt-get", "-o", "DPkg::Lock::Timeout=300",
+        "/usr/bin/apt-get", "-o", "DPkg::Lock::Timeout=-1",
         "purge", "-y", package, NULL
     };
     required(argv);
@@ -419,8 +419,11 @@ int main(void)
     if (setenv("DEBIAN_FRONTEND", "noninteractive", 1) != 0)
         fail("cannot set noninteractive package environment");
 
+    /* aptk/DPKG may hold the frontend lock while the parent OS transaction
+     * finishes. Waiting without a short arbitrary timeout is required here;
+     * the installation monitor separately tracks native job lifetime. */
     const char *const wait_argv[] = {
-        "/usr/bin/apt-get", "-o", "DPkg::Lock::Timeout=300", "check", NULL
+        "/usr/bin/apt-get", "-o", "DPkg::Lock::Timeout=-1", "check", NULL
     };
     required(wait_argv);
 

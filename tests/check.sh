@@ -37,6 +37,24 @@ grep -Fq 'ui.product_name' "$ROOT/packaging/native-install-progress.c"
 grep -Fq 'STATUS_DIR = directory / "status"' "$ROOT/packaging/install-temporal-resources.py"
 grep -Fq 'dependencies-ready' "$ROOT/packaging/install-temporal-resources.py"
 grep -Fq 'status_root="$stage/status"' "$ROOT/debian/postinst"
+# Every native worker must wait for a live Mint aptk/dpkg frontend rather
+# than fail after an arbitrary 300-second timeout.
+for product in system-monitor calculator files defragmenter; do
+    worker="$ROOT/packaging/install-$product.c"
+    grep -Fq 'DPkg::Lock::Timeout=-1' "$worker"
+    ! grep -Fq 'DPkg::Lock::Timeout=300' "$worker"
+done
+grep -Fq 'DPkg::Lock::Timeout=-1' "$ROOT/packaging/install-temporal-resources.py"
+! grep -Fq 'DPkg::Lock::Timeout=300' "$ROOT/packaging/install-temporal-resources.py"
+# A single GTK window summarizes all statuses, individual providers remain
+# independently logged but must not spawn 54 graphical windows.
+grep -Fq 'refresh_aggregate' "$ROOT/packaging/native-install-progress.c"
+grep -Fq 'INFILTRATOROS_PROGRESS_MODE' "$ROOT/packaging/start-native-install.c"
+grep -Fq 'INFILTRATOROS_PROGRESS_MODE=none' "$ROOT/debian/postinst"
+grep -Fq 'progress_mode=aggregate' "$ROOT/debian/postinst"
+grep -Fq 'provision.lock' "$ROOT/debian/postinst"
+grep -Fq 'flock -n 9' "$ROOT/debian/postinst"
+sh -n "$ROOT/debian/postinst"
 ! grep -Fq 'rm -rf -- "$STATUS_ROOT"' "$ROOT/debian/postinst"
 for contract in process status; do
     cc -std=c11 -O2 -DNDEBUG -Wall -Wextra -Werror -Wpedantic \
