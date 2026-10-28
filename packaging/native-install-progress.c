@@ -15,6 +15,7 @@ typedef struct {
     GtkWidget *bar;
     GtkWidget *close_button;
     char status_path[4096];
+    char product_name[128];
     guint close_timer_id;
 } Ui;
 
@@ -52,19 +53,24 @@ static gboolean refresh_status(gpointer data)
     if (status.detail[0]) gtk_label_set_text(GTK_LABEL(ui->detail), status.detail);
 
     if (strcmp(status.state, "complete") == 0) {
-        gtk_label_set_text(GTK_LABEL(ui->title), INSTALL_NAME " is ready");
+        char title[256];
+        snprintf(title, sizeof(title), "%s is ready", ui->product_name);
+        gtk_label_set_text(GTK_LABEL(ui->title), title);
         gtk_progress_bar_set_fraction(GTK_PROGRESS_BAR(ui->bar), 1.0);
         gtk_widget_show(ui->close_button);
         if (ui->close_timer_id == 0U)
             ui->close_timer_id = g_timeout_add_seconds(8U, close_after_success, ui);
     } else if (strcmp(status.state, "failed") == 0) {
         cancel_success_close(ui);
-        gtk_label_set_text(GTK_LABEL(ui->title), INSTALL_NAME " installation failed");
+        char title[256];
+        snprintf(title, sizeof(title), "%s installation failed", ui->product_name);
+        gtk_label_set_text(GTK_LABEL(ui->title), title);
         gtk_widget_show(ui->close_button);
     } else {
         cancel_success_close(ui);
-        gtk_label_set_text(GTK_LABEL(ui->title),
-                           "Optimising " INSTALL_NAME " for this computer");
+        char title[256];
+        snprintf(title, sizeof(title), "Optimising %s for this computer", ui->product_name);
+        gtk_label_set_text(GTK_LABEL(ui->title), title);
         gtk_widget_hide(ui->close_button);
     }
     return G_SOURCE_CONTINUE;
@@ -80,7 +86,12 @@ static void close_clicked(GtkButton *button, gpointer data)
 
 int main(int argc, char **argv)
 {
-    if (argc != 2 || strlen(argv[1]) >= sizeof(((Ui *)0)->status_path)) return EXIT_FAILURE;
+#ifdef INSTALL_TEMPORAL_RESOURCES
+    if (argc != 3 || strlen(argv[2]) >= sizeof(((Ui *)0)->product_name)) return EXIT_FAILURE;
+#else
+    if (argc != 2) return EXIT_FAILURE;
+#endif
+    if (strlen(argv[1]) >= sizeof(((Ui *)0)->status_path)) return EXIT_FAILURE;
     gtk_init(&argc, &argv);
 
     /* Product typography, resolved by Fontconfig from the verified shared
@@ -113,6 +124,11 @@ int main(int argc, char **argv)
     Ui ui;
     memset(&ui, 0, sizeof(ui));
     g_strlcpy(ui.status_path, argv[1], sizeof(ui.status_path));
+#ifdef INSTALL_TEMPORAL_RESOURCES
+    g_strlcpy(ui.product_name, argv[2], sizeof(ui.product_name));
+#else
+    g_strlcpy(ui.product_name, INSTALL_NAME, sizeof(ui.product_name));
+#endif
 
     ui.window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
     gtk_window_set_title(GTK_WINDOW(ui.window), "InfiltratorOS");
@@ -125,7 +141,9 @@ int main(int argc, char **argv)
 
     ui.title = gtk_label_new(NULL);
     gtk_widget_set_name(ui.title, "installer-title");
-    gtk_label_set_text(GTK_LABEL(ui.title), "Optimising " INSTALL_NAME " for this computer");
+    char initial_title[256];
+    snprintf(initial_title, sizeof(initial_title), "Optimising %s for this computer", ui.product_name);
+    gtk_label_set_text(GTK_LABEL(ui.title), initial_title);
     gtk_widget_set_halign(ui.title, GTK_ALIGN_START);
     gtk_box_pack_start(GTK_BOX(box), ui.title, FALSE, FALSE, 0);
 
