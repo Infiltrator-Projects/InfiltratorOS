@@ -90,10 +90,10 @@ A GTK window follows each worker when a graphical session is available. Headless
 
 | Application | Status | Log |
 | --- | --- | --- |
-| System Monitor | `/Temporary/InfiltratorOS/system-monitor-install.status` | `/Temporary/InfiltratorOS/system-monitor-install.log` |
-| Calculator | `/Temporary/InfiltratorOS/calculator-install.status` | `/Temporary/InfiltratorOS/calculator-install.log` |
-| Files | `/Temporary/InfiltratorOS/files-install.status` | `/Temporary/InfiltratorOS/files-install.log` |
-| Defragmenter | `/Temporary/InfiltratorOS/defragmenter-install.status` | `/Temporary/InfiltratorOS/defragmenter-install.log` |
+| System Monitor | `/Temporary/InfiltratorOS/native-worker.<run>/status/system-monitor-install.status` | `/Temporary/InfiltratorOS/native-worker.<run>/status/system-monitor-install.log` |
+| Calculator | `/Temporary/InfiltratorOS/native-worker.<run>/status/calculator-install.status` | `/Temporary/InfiltratorOS/native-worker.<run>/status/calculator-install.log` |
+| Files | `/Temporary/InfiltratorOS/native-worker.<run>/status/files-install.status` | `/Temporary/InfiltratorOS/native-worker.<run>/status/files-install.log` |
+| Defragmenter | `/Temporary/InfiltratorOS/native-worker.<run>/status/defragmenter-install.status` | `/Temporary/InfiltratorOS/native-worker.<run>/status/defragmenter-install.log` |
 | Calendars and clocks (54 modules) | `/Temporary/InfiltratorOS/native-worker.<run>/status/<provider>-install.status` | `/Temporary/InfiltratorOS/native-worker.<run>/status/<provider>-install.log` |
 
 Application versions are resolved at installation time. The OS package does not maintain a second application release catalogue.
