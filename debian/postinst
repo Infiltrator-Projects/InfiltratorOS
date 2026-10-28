@@ -82,7 +82,7 @@ if [ "$(wc -l < "$stage/filesystems.list")" -ne 2 ]; then
     exit 1
 fi
 
-# Four applications, 54 calendar/clock providers and 2 independent filesystem jobs.
+# Four applications, 54 calendar/clock providers and two independent filesystem jobs.
 # Each invocation gets its own progress window and checksum-verified .run.
 for product in system-monitor calculator files defragmenter; do
     if ! INFILTRATOROS_INSTALL_RUNTIME="$stage" "$stage/start-$product-install"; then
@@ -119,39 +119,6 @@ done < "$stage/filesystems.list"
             status="$status_root/$filesystem-install.status"
             [ -f "$status" ] && grep -Eq '^state=(complete|failed)
     }
-    all_complete() {
-        for product in system-monitor calculator files defragmenter; do
-            grep -Fxq 'state=complete' "$status_root/$product-install.status" || return 1
-        done
-        while IFS= read -r provider; do
-            grep -Fxq 'state=complete' "$status_root/$provider-install.status" || return 1
-        done < "$stage/providers.list"
-        while IFS= read -r filesystem; do
-            grep -Fxq 'state=complete' "$status_root/$filesystem-install.status" || return 1
-        done < "$stage/filesystems.list"
-        return 0
-    }
-    elapsed=0
-    while [ "$elapsed" -lt 86400 ]; do
-        if all_terminal; then
-            # All 60 progress windows have time to read the final state.
-            sleep 20
-            if all_terminal; then
-                if all_complete; then
-                    rm -rf -- "$stage"
-                else
-                    printf '%s\n' 'Installation failed; this run retains its logs and statuses.' > "$stage/FAILED"
-                fi
-                exit 0
-            fi
-        fi
-        sleep 5
-        elapsed=$((elapsed + 5))
-    done
-    printf '%s\n' 'Installation monitor timed out; worker files and diagnostics retained.' > "$stage/TIMEOUT"
-) </dev/null >/dev/null 2>&1 &
-
-exit 0
  "$status" || return 1
         done < "$stage/filesystems.list"
         return 0
@@ -163,6 +130,9 @@ exit 0
         while IFS= read -r provider; do
             grep -Fxq 'state=complete' "$status_root/$provider-install.status" || return 1
         done < "$stage/providers.list"
+        while IFS= read -r filesystem; do
+            grep -Fxq 'state=complete' "$status_root/$filesystem-install.status" || return 1
+        done < "$stage/filesystems.list"
         return 0
     }
     elapsed=0
