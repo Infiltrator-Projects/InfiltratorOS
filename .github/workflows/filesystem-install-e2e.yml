@@ -20,7 +20,7 @@ jobs:
           set -euo pipefail
           python3 tests/filesystem-install-test.py
           sh scripts/build-deb.sh
-      - name: Install actual public FAT12 and FAT16 releases using sealed worker
+      - name: Install three independently published FAT modules through the sealed worker
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: sudo --preserve-env=GITHUB_TOKEN,GITHUB_ACTIONS python3 tests/filesystem-bundle-e2e.py dist/*.deb
