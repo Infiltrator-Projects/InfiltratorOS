@@ -31,5 +31,10 @@ Description: InfiltratorOS branding and native application integration
  and installed as its own Debian package in the system resource folders.
  Removing a consumer does not remove these independent implementations.
  .
+ Two independent FAT filesystem jobs install FAT12.so and FAT16.so using the
+ respective checksum-verified native RUN packages. Each module is separately
+ owned and verified under /System/Filesystems; neither job installs a kernel
+ or UEFI driver.
+ .
  Heavy native application builds are serialised so they do not compete
  for package locks or CPU.

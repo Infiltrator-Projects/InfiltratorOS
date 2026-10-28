@@ -4,6 +4,7 @@ ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
 sh -n "$ROOT/packaging/ensure-native-icons.sh"
 python3 "$ROOT/tests/calendar-switch-test.py"
 python3 "$ROOT/tests/temporal-install-test.py"
+python3 "$ROOT/tests/filesystem-install-test.py"
 sh "$ROOT/tests/native-icons.sh"
 
 # InfiltratorOS-owned install state must live under the native /Temporary.

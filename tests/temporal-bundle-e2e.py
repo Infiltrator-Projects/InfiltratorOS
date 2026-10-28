@@ -17,7 +17,7 @@ if os.geteuid() != 0 or os.environ.get("GITHUB_ACTIONS") != "true":
 package = Path(sys.argv[1]).resolve()
 ROOT = Path(__file__).resolve().parents[1]
 entries = json.loads((ROOT / "packaging/temporal-resources.json").read_text())
-products = ("system-monitor", "calculator", "files", "defragmenter", "temporal-resources")
+products = ("system-monitor", "calculator", "files", "defragmenter", "temporal-resources", "filesystem-resources")
 expected = {name for product in products for name in ("install-" + product, "start-" + product + "-install", product + "-progress")}
 native = Path("/Temporary/InfiltratorOS")
 native.mkdir(parents=True, exist_ok=True)
