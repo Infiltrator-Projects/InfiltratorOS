@@ -19,6 +19,13 @@
 
 #define ENV_LIMIT 65536U
 #define TEXT_LIMIT 4096U
+#ifdef INSTALL_TEMPORAL_RESOURCES
+static char provider_slug[128];
+#endif
+static char run_status[TEXT_LIMIT];
+static char run_log[TEXT_LIMIT];
+static const char *status_file(void) { return run_status; }
+static const char *log_file(void) { return run_log; }
 
 typedef struct {
     uid_t uid;
@@ -47,13 +54,13 @@ static void ensure_status_dir(void)
 
 static void write_initial_status(void)
 {
-    FILE *file = fopen(STATUS_PATH, "w");
+    FILE *file = fopen(status_file(), "w");
     if (!file) die("cannot create installation status");
     fputs("state=queued\nprogress=1\nstage=Preparing " INSTALL_NAME " optimisation\n"
           "detail=The installation will continue after the package manager releases its lock.\n",
           file);
     if (fclose(file) != 0) die("cannot write installation status");
-    (void)chmod(STATUS_PATH, 0644);
+    (void)chmod(status_file(), 0644);
 }
 
 static bool numeric_name(const char *text)
@@ -168,7 +175,7 @@ static int prepare_worker(void *context)
 {
     (void)context;
     if (setenv("TMPDIR", STATUS_DIR, 1) != 0) return -1;
-    return installer_redirect_io(LOG_PATH);
+    return installer_redirect_io(log_file());
 }
 
 static int prepare_progress(void *context)
@@ -211,7 +218,11 @@ static void resolve_temporary_runtime(void)
 static void spawn_progress_ui(DesktopSession *session)
 {
     if (!session->found) return;
-    char *const arguments[] = { runtime_progress, STATUS_PATH, NULL };
+    #ifdef INSTALL_TEMPORAL_RESOURCES
+    char *const arguments[] = { runtime_progress, run_status, provider_slug, NULL };
+#else
+    char *const arguments[] = { runtime_progress, (char *)status_file(), NULL };
+#endif
     if (installer_spawn_detached(runtime_progress, arguments, prepare_progress, session) != 0)
         fprintf(stderr, INSTALL_NAME " progress window: %s\n", strerror(errno));
 }
@@ -227,14 +238,47 @@ static void report_start_failure(int error)
     fprintf(stderr, INSTALL_NAME " installer could not start: %s\n", strerror(error));
 }
 
-int main(void)
+int main(int argc, char **argv)
 {
     if (geteuid() != 0) die("must run as root");
+#ifdef INSTALL_TEMPORAL_RESOURCES
+    if (argc != 2 || strlen(argv[1]) >= sizeof(provider_slug) ||
+        (strncmp(argv[1], "calendar-", 9) != 0 &&
+         strncmp(argv[1], "clock-", 6) != 0))
+        die("expected one calendar or clock provider slug");
+    for (const char *p = argv[1]; *p; ++p)
+        if (!(islower((unsigned char)*p) || isdigit((unsigned char)*p) || *p == '-'))
+            die("unsafe temporal provider slug");
+    snprintf(provider_slug, sizeof(provider_slug), "%s", argv[1]);
+#else
+    (void)argv;
+    if (argc != 1) die("unexpected installer arguments");
+#endif
     resolve_temporary_runtime();
     ensure_status_dir();
+    char directory[TEXT_LIMIT];
+    const char *runtime = getenv("INFILTRATOROS_INSTALL_RUNTIME");
+    if (snprintf(directory, sizeof(directory), "%s/status", runtime) >= (int)sizeof(directory))
+        die("status directory path is too long");
+    if (mkdir(directory, 0755) != 0 && errno != EEXIST)
+        die("cannot create per-run status directory");
+#ifdef INSTALL_TEMPORAL_RESOURCES
+    const char *slug = provider_slug;
+#else
+    const char *slug = INSTALL_SLUG;
+#endif
+    if (snprintf(run_status, sizeof(run_status), "%s/%s-install.status", directory,
+                 slug) >= (int)sizeof(run_status) ||
+        snprintf(run_log, sizeof(run_log), "%s/%s-install.log", directory,
+                 slug) >= (int)sizeof(run_log))
+        die("run status or log path is too long");
     write_initial_status();
     DesktopSession session = find_desktop_session();
+#ifdef INSTALL_TEMPORAL_RESOURCES
+    char *const arguments[] = { runtime_worker, provider_slug, NULL };
+#else
     char *const arguments[] = { runtime_worker, NULL };
+#endif
     if (installer_spawn_detached(runtime_worker, arguments, prepare_worker, NULL) != 0) {
         report_start_failure(errno);
         spawn_progress_ui(&session);

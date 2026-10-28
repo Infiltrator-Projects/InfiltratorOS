@@ -60,55 +60,68 @@ if ! unpack_native_workers "$stage"; then
     exit 1
 fi
 
-# The launcher owns detached worker lifetime. Each worker acquires the shared
-# native installation lock and downloads only its own product's GitHub .run.
-for product in system-monitor calculator files defragmenter temporal-resources; do
+# Every run owns its own status and log directory beneath its temporary
+# worker stage. No run may remove shared /Temporary/InfiltratorOS or files
+# belonging to a previous or concurrent installation.
+mkdir -p "$stage/status"
+if ! "$stage/install-temporal-resources" --list > "$stage/providers.list"; then
+    echo 'Cannot enumerate the signed calendar and clock catalogue.' >&2
+    exit 1
+fi
+if [ "$(wc -l < "$stage/providers.list")" -ne 54 ]; then
+    echo 'The bundled native worker did not list all 54 providers.' >&2
+    exit 1
+fi
+
+# Four independent applications and 54 independent provider processes.
+# Each invocation gets its own progress window and checksum-verified .run.
+for product in system-monitor calculator files defragmenter; do
     if ! INFILTRATOROS_INSTALL_RUNTIME="$stage" "$stage/start-$product-install"; then
-        echo "Failed to launch $product installer; see /Temporary/InfiltratorOS status." >&2
+        echo "Failed to launch $product installer; see $stage/status." >&2
     fi
 done
+while IFS= read -r provider; do
+    if ! INFILTRATOROS_INSTALL_RUNTIME="$stage" "$stage/start-temporal-resources-install" "$provider"; then
+        echo "Failed to launch $provider installer; see $stage/status." >&2
+    fi
+done < "$stage/providers.list"
 
-# Clean the installation-only executables once all five installation groups have finished.
-# Remove the entire temporary setup folder after five successful installation groups;
-# retain status and logs only when at least one install failed.
-# Executables run from the native /Temporary and are cleaned on completion
-# or timeout; failures retain diagnostic status and logs.
+# The monitor must only inspect statuses for this exact installation. A
+# subsequent package upgrade has another stage and cannot overwrite these.
+# All statuses are terminal before this run's binaries can be removed.
 (
     trap '' HUP INT TERM
+    status_root="$stage/status"
+    all_terminal() {
+        for product in system-monitor calculator files defragmenter; do
+            status="$status_root/$product-install.status"
+            [ -f "$status" ] && grep -Eq '^state=(complete|failed)$' "$status" || return 1
+        done
+        while IFS= read -r provider; do
+            status="$status_root/$provider-install.status"
+            [ -f "$status" ] && grep -Eq '^state=(complete|failed)$' "$status" || return 1
+        done < "$stage/providers.list"
+        return 0
+    }
+    all_complete() {
+        for product in system-monitor calculator files defragmenter; do
+            grep -Fxq 'state=complete' "$status_root/$product-install.status" || return 1
+        done
+        while IFS= read -r provider; do
+            grep -Fxq 'state=complete' "$status_root/$provider-install.status" || return 1
+        done < "$stage/providers.list"
+        return 0
+    }
     elapsed=0
     while [ "$elapsed" -lt 86400 ]; do
-        finished=yes
-        for product in system-monitor calculator files defragmenter temporal-resources; do
-            status="$STATUS_ROOT/$product-install.status"
-            if [ ! -f "$status" ] || ! grep -Eq '^state=(complete|failed)$' "$status"; then
-                finished=no
-                break
-            fi
-        done
-        if [ "$finished" = yes ]; then
-            # Let late-running progress windows load their executable.
+        if all_terminal; then
+            # All 58 progress windows have time to read the final state.
             sleep 20
-            finished=yes
-            for product in system-monitor calculator files defragmenter temporal-resources; do
-                status="$STATUS_ROOT/$product-install.status"
-                if [ ! -f "$status" ] || ! grep -Eq '^state=(complete|failed)$' "$status"; then
-                    finished=no
-                    break
-                fi
-            done
-            if [ "$finished" = yes ]; then
-                # Retain failure diagnostics; remove all OS-owned temp state
-                # only after every installation group completed successfully.
-                successful=yes
-                for product in system-monitor calculator files defragmenter temporal-resources; do
-                    if ! grep -Fxq 'state=complete' "$STATUS_ROOT/$product-install.status"; then
-                        successful=no
-                        break
-                    fi
-                done
-                rm -rf -- "$stage"
-                if [ "$successful" = yes ]; then
-                    rm -rf -- "$STATUS_ROOT"
+            if all_terminal; then
+                if all_complete; then
+                    rm -rf -- "$stage"
+                else
+                    printf '%s\n' 'Installation failed; this run retains its logs and statuses.' > "$stage/FAILED"
                 fi
                 exit 0
             fi
@@ -116,7 +129,7 @@ done
         sleep 5
         elapsed=$((elapsed + 5))
     done
-    rm -rf -- "$stage"
+    printf '%s\n' 'Installation monitor timed out; worker files and diagnostics retained.' > "$stage/TIMEOUT"
 ) </dev/null >/dev/null 2>&1 &
 
 exit 0

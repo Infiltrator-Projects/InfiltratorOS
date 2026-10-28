@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run the exact packaged worker and upgrade all 54 providers on a CI host."""
+"""Run the exact package worker separately for every provider on a CI host."""
 import base64
 import hashlib
 import io
@@ -44,9 +44,15 @@ with tempfile.TemporaryDirectory(prefix="native-worker.", dir=native) as tempora
         module.write_text("legacy ownership fixture\n")
     subprocess.run(["dpkg-deb", "--root-owner-group", "--build", legacy, work / "legacy.deb"], check=True)
     subprocess.run(["dpkg", "--install", work / "legacy.deb"], check=True)
-    subprocess.run([work / "workers/install-temporal-resources"], check=True)
-    status = (native / "temporal-resources-install.status").read_text()
-    assert "state=complete\n" in status
+    # The exact bundled Python worker is invoked independently for all 54
+    # providers, with one status file per provider in this CI installation.
+    env = dict(os.environ, INFILTRATOROS_INSTALL_RUNTIME=str(work))
+    for entry in entries:
+        slug = entry["repository"].lower()
+        subprocess.run([work / "workers/install-temporal-resources", slug], check=True, env=env)
+        status = (work / "status" / (slug + "-install.status")).read_text()
+        assert "state=complete\n" in status
+    assert len(list((work / "status").glob("*-install.status"))) == 54
     for entry in entries:
         installed = subprocess.check_output(["dpkg-query", "-W", "-f=${Status}", entry["package"]], text=True)
         assert installed == "install ok installed", entry["package"]
@@ -54,4 +60,4 @@ with tempfile.TemporaryDirectory(prefix="native-worker.", dir=native) as tempora
         assert ownership == entry["package"] + ": " + entry["resource"], ownership
     assert len(list(Path("/System/Resources/Calendars").glob("*.so"))) == 31
     assert len(list(Path("/System/Resources/Clocks").glob("*.so"))) == 23
-print("Exact InfiltratorOS bundle: 54 published RUNs built aggressively, installed, verified and transferred from legacy ownership")
+print("Exact InfiltratorOS bundle: 54 separate published RUN invocations built aggressively, installed, verified and transferred from legacy ownership")
