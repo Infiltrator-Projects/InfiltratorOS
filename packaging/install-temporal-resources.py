@@ -167,9 +167,13 @@ def verify_installation(entry, version, root=Path("/"), query=True):
 
 
 def install_entry(entry):
-    api = f"https://api.github.com/repos/Infiltrator-Projects/{entry['repository']}/releases/latest"
-    with open_url(api) as response:
-        data = response.read(4 * 1024 * 1024 + 1)
+    release_dir = os.environ.get("INFILTRATOROS_RELEASE_DIR")
+    if release_dir:
+        data = (Path(release_dir) / (entry["repository"] + ".json")).read_bytes()
+    else:
+        api = f"https://api.github.com/repos/Infiltrator-Projects/{entry['repository']}/releases/latest"
+        with open_url(api) as response:
+            data = response.read(4 * 1024 * 1024 + 1)
     if len(data) > 4 * 1024 * 1024:
         raise ValueError("Release metadata is too large")
     version, url, digest, size = release_installer(entry, json.loads(data))
