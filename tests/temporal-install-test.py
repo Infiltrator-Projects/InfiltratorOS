@@ -50,21 +50,54 @@ class InstallationContract(unittest.TestCase):
             with self.subTest(release=release), self.assertRaises((ValueError, TypeError)):
                 worker.release_installer(self.entry, release)
 
-    def test_failed_provider_does_not_skip_remaining_modules(self):
+    def test_each_provider_and_each_install_run_has_independent_status(self):
         entries = worker.catalogue()
-        attempted, statuses = [], []
-        def install(entry):
-            attempted.append(entry["repository"])
-            if len(attempted) == 2:
-                raise RuntimeError("training failed")
-        with tempfile.TemporaryDirectory() as temporary, patch.object(worker, "STATUS_DIR", Path(temporary)), \
-                patch.object(worker, "write_status", side_effect=lambda *x: statuses.append(x)), \
-                patch.object(worker, "required"), patch.object(worker, "install_entry", side_effect=install), \
-                patch.object(worker.os, "geteuid", return_value=0), patch.dict(worker.os.environ):
-            with self.assertRaisesRegex(RuntimeError, "1 resource installations failed"):
-                worker.main()
-        self.assertEqual(attempted, [x["repository"] for x in entries])
-        self.assertFalse(any(x[0] == "complete" for x in statuses))
+        first, second = entries[:2]
+        attempted = []
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            with patch.object(worker, "STATUS_ROOT", root), patch.object(worker, "STATUS_DIR", root), \
+                 patch.object(worker, "STATUS_PATH", None), patch.object(worker, "required"), \
+                 patch.object(worker, "install_entry", side_effect=lambda entry: attempted.append(entry["repository"])), \
+                 patch.object(worker.os, "geteuid", return_value=0):
+                for index, entry in enumerate((first, second)):
+                    runtime = root / f"native-worker.run{index}"
+                    runtime.mkdir()
+                    with patch.dict(worker.os.environ, {"INFILTRATOROS_INSTALL_RUNTIME": str(runtime)}), \
+                         patch.object(worker.sys, "argv", ["installer", entry["repository"].lower()]):
+                        worker.main()
+                    status = runtime / "status" / (entry["repository"].lower() + "-install.status")
+                    self.assertIn("state=complete\\n", status.read_text())
+                    self.assertEqual(len(list((runtime / "status").glob("*-install.status"))), 1)
+                self.assertEqual(attempted, [first["repository"], second["repository"]])
+                with patch.object(worker.sys, "argv", ["installer", "unknown-provider"]):
+                    with self.assertRaisesRegex(ValueError, "signed calendar/clock"):
+                        worker.main()
+                with patch.object(worker.sys, "argv", ["installer", "--list"]):
+                    from contextlib import redirect_stdout
+                    import io
+                    output = io.StringIO()
+                    with redirect_stdout(output):
+                        worker.main()
+                    self.assertEqual(len(output.getvalue().splitlines()), 54)
+
+    def test_failed_provider_does_not_mark_other_provider_complete(self):
+        entry = worker.catalogue()[0]
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            runtime = root / "native-worker.failed"
+            runtime.mkdir()
+            with patch.object(worker, "STATUS_ROOT", root), patch.object(worker, "STATUS_DIR", root), \
+                 patch.object(worker, "STATUS_PATH", None), patch.object(worker, "required"), \
+                 patch.object(worker, "install_entry", side_effect=RuntimeError("training failed")), \
+                 patch.object(worker.os, "geteuid", return_value=0), \
+                 patch.dict(worker.os.environ, {"INFILTRATOROS_INSTALL_RUNTIME": str(runtime)}), \
+                 patch.object(worker.sys, "argv", ["installer", entry["repository"].lower()]):
+                with self.assertRaisesRegex(RuntimeError, "training failed"):
+                    worker.main()
+                status = runtime / "status" / (entry["repository"].lower() + "-install.status")
+                self.assertIn("state=running\\n", status.read_text())
+                self.assertFalse(any("state=complete" in x.read_text() for x in (runtime / "status").glob("*-install.status")))
 
 
 if __name__ == "__main__":
