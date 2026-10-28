@@ -8,6 +8,19 @@ Process fixtures cover missing executables, failed setup, successful exec, an ex
 
 Defragmenter's integration worker is compiled with warnings-as-errors and checked for its published-release checksum validation, native -O3/LTO compiler policy, native package identity, Test Media and launcher contract. Built-package qualification requires the fourth worker, launcher and progress binary. Actual native build quality and integration on physical Linux/Mint hardware remain distinct from a hosted package-construction test.
 
+## Source-first and local optimisation evidence
+
+The [source-first native-build contract](PHILOSOPHY.md#source-first-hardware-native-execution) is qualified per component and per supported installation path. Provider repositories remain responsible for their compiler and runtime tests; the InfiltratorOS integration tests verify that their declared results were obtained and installed. Evidence for each native build should distinguish:
+
+1. **Source identity:** exact release revision, verified source/installer bytes, toolchain and dependency identities, with no unnoticed substitution of a generic precompiled binary.
+2. **Target identity:** actual target CPU architecture and supported features, recorded compiler choices and the absence of unsupported instruction assumptions.
+3. **Optimisation evidence:** applied `-O3`, CPU tuning and LTO where claimed, plus recorded PGO training workload, profile use and final trained build when PGO is claimed. Untrained, unsupported, failed or skipped PGO must not be described as completed.
+4. **Installed identity:** verified installed artifact hashes, package ownership, expected paths, ABI versions, provider identity and declared capabilities.
+5. **Behaviour and performance:** parity with the qualified functional and failure-path tests. If a performance gain is claimed, compare against an appropriate baseline with a documented workload; optimisation flags alone do not prove a gain.
+6. **Failure and recovery:** interrupted downloads, source-build failures, incompatible hardware, unsupported compiler features, failed verification and recovery without accepting a partially qualified native installation.
+
+These are system-wide acceptance criteria, not an assertion that the existing automated CI exercises every condition on physical hardware. Individual component records and the integration tests below identify the evidence currently available. A generic package can be a valid documented bootstrap or compatibility path, but must be identified separately from a successful locally optimised build.
+
 ## Package and release qualification
 
 GitHub Actions builds all installed C programs with warnings as errors, builds the DEB twice and compares bytes, inspects control metadata and maintainer-script syntax, extracts the payload, verifies installed executable membership, and compares the installed PNG with approved source artwork. Source archive and commit identity accompany SHA-256 sealed artifacts.
