@@ -20,13 +20,31 @@
 #define APP_LOCK_PATH STATUS_DIR "/files.lock"
 #define GLOBAL_LOCK_PATH STATUS_DIR "/native-install.lock"
 
+/* Status belongs to this particular OS installation; global locks and build
+ * scratch remain shared under /Temporary so concurrent instances serialize. */
+static const char *run_status_path(void)
+{
+    const char *runtime = getenv("INFILTRATOROS_INSTALL_RUNTIME");
+    static char scoped[PATH_LEN];
+    if (!runtime || !*runtime) return STATUS_PATH;
+    if (strncmp(runtime, STATUS_DIR "/native-worker.", sizeof(STATUS_DIR "/native-worker.") - 1) != 0)
+        return NULL;
+    const char *suffix = runtime + sizeof(STATUS_DIR "/native-worker.") - 1;
+    if (!*suffix || strchr(suffix, '/') != NULL) return NULL;
+    if (snprintf(scoped, sizeof(scoped), "%s/status/files-install.status", runtime) >= (int)sizeof(scoped))
+        return NULL;
+    return scoped;
+}
+
+
 static void write_status(const char *state, int progress,
                          const char *stage, const char *detail)
 {
     (void)mkdir(STATUS_DIR, 0755);
     char temporary[PATH_LEN];
-    if (snprintf(temporary, sizeof(temporary), STATUS_PATH ".%ld.tmp",
-                 (long)getpid()) >= (int)sizeof(temporary))
+    const char *destination = run_status_path();
+    if (!destination || snprintf(temporary, sizeof(temporary), "%s.%ld.tmp",
+                 destination, (long)getpid()) >= (int)sizeof(temporary))
         return;
     FILE *file = fopen(temporary, "w");
     if (!file) return;
@@ -35,7 +53,7 @@ static void write_status(const char *state, int progress,
             stage ? stage : "", detail ? detail : "");
     if (fclose(file) == 0) {
         (void)chmod(temporary, 0644);
-        (void)rename(temporary, STATUS_PATH);
+        (void)rename(temporary, destination);
     } else {
         (void)unlink(temporary);
     }
