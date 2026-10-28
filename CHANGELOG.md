@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.0.37 — Independently installed FAT12 and FAT16 shared-object modules
+
+- Add two independently published format packages under `/System/Filesystems` with their own .deb, source-embedded native .run, GitHub source ZIP and copy-preserving repository ownership.
+- Provision 60 independent jobs while preserving the 1.0.36 **single aggregate GTK progress window**, duplicate-run prevention, run-wide flock and unlimited APT lock waits.
+- Verify release SHA256, package ownership/version, native BUILD-INFO, module identity, V1/V3/V4 and Defragmenter ABI contracts.
+- End-to-end test actual FAT12/FAT16 downloads and installation from the checksum-sealed OS bundle on ephemeral CI hosts.
+- Do not ship or claim kernel or UEFI driver qualification in the initial .so-only packages.
+
+
 ## 1.0.36 — Mint aptk lock handling and one installation window
 
 - Respect a live Mint `aptk`/dpkg package-manager transaction: native System Monitor, Calculator, Files, Defragmenter and temporal provider workers wait for the frontend lock instead of giving up after five minutes. Never remove dpkg locks.

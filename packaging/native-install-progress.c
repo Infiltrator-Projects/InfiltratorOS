@@ -37,12 +37,12 @@ static gboolean close_after_success(gpointer data)
     return G_SOURCE_REMOVE;
 }
 
-/* One progress window follows the complete 58-component installation run.
+/* One progress window follows the complete 60-component installation run.
  * Individual native workers keep independent status/log files and the existing
  * global build lock; no additional GUI processes are spawned for providers. */
 static gboolean refresh_aggregate(Ui *ui)
 {
-    enum { TOTAL_JOBS = 58 };
+    enum { TOTAL_JOBS = 60 };
     DIR *directory = opendir(ui->status_path);
     if (directory == NULL) {
         gtk_progress_bar_pulse(GTK_PROGRESS_BAR(ui->bar));
@@ -162,7 +162,7 @@ static void close_clicked(GtkButton *button, gpointer data)
 int main(int argc, char **argv)
 {
     const gboolean aggregate = argc == 3 && strcmp(argv[1], "--aggregate") == 0;
-#ifdef INSTALL_TEMPORAL_RESOURCES
+#if defined(INSTALL_TEMPORAL_RESOURCES) || defined(INSTALL_FILESYSTEM_RESOURCES)
     if (!aggregate && (argc != 3 ||
         strlen(argv[2]) >= sizeof(((Ui *)0)->product_name))) return EXIT_FAILURE;
 #else
@@ -203,7 +203,7 @@ int main(int argc, char **argv)
     memset(&ui, 0, sizeof(ui));
     ui.aggregate = aggregate;
     g_strlcpy(ui.status_path, argv[aggregate ? 2 : 1], sizeof(ui.status_path));
-#ifdef INSTALL_TEMPORAL_RESOURCES
+#if defined(INSTALL_TEMPORAL_RESOURCES) || defined(INSTALL_FILESYSTEM_RESOURCES)
     g_strlcpy(ui.product_name, aggregate ? "InfiltratorOS" : argv[2],
               sizeof(ui.product_name));
 #else
