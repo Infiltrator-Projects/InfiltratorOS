@@ -51,7 +51,7 @@ with tempfile.TemporaryDirectory(prefix="native-worker.", dir=native) as tempora
         slug = entry["repository"].lower()
         subprocess.run([work / "workers/install-temporal-resources", slug], check=True, env=env)
         status = (work / "status" / (slug + "-install.status")).read_text()
-        assert "state=complete\\n" in status
+        assert "state=complete\n" in status
     assert len(list((work / "status").glob("*-install.status"))) == 54
     for entry in entries:
         installed = subprocess.check_output(["dpkg-query", "-W", "-f=${Status}", entry["package"]], text=True)
