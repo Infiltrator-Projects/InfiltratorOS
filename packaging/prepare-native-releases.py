@@ -1,6 +1,6 @@
 #!/usr/bin/python3 -u
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Fetch and verify one signed release snapshot before starting native workers."""
+"""Fetch and validate one HTTPS release snapshot before starting native workers."""
 from __future__ import annotations
 
 import argparse
@@ -8,14 +8,12 @@ import json
 import os
 from pathlib import Path
 import re
-import subprocess
 import tempfile
 import time
 import urllib.error
 import urllib.request
 
 URL = "https://infiltrator-projects.github.io/Infiltrator-Repository/catalogue/native-installers.json"
-KEY = Path("/System/Resources/Documentation/InfiltratorOS/repository-key.gpg")
 MAX_BYTES = 3 * 1024 * 1024
 DIGEST = re.compile(r"sha256:[0-9a-f]{64}$")
 VERSION = re.compile(r"v[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?$")
@@ -90,11 +88,9 @@ def verify_snapshot(data: bytes, expected: set[str]) -> dict[str, dict]:
     return releases
 
 
-def prepare(directory: Path, providers: Path, filesystems: Path, key: Path = KEY) -> int:
+def prepare(directory: Path, providers: Path, filesystems: Path) -> int:
     if os.geteuid() != 0:
         raise RuntimeError("Native snapshot verification requires root")
-    if not key.is_file() or key.is_symlink():
-        raise RuntimeError("InfiltratorOS trusted repository signing key is missing")
     expected = expected_repositories(providers, filesystems)
     if directory.exists():
         raise ValueError("Refusing to overwrite an existing release snapshot")
@@ -102,13 +98,9 @@ def prepare(directory: Path, providers: Path, filesystems: Path, key: Path = KEY
     with tempfile.TemporaryDirectory(prefix="signed-native-", dir=directory.parent) as work:
         stage = Path(work)
         data = download(URL)
-        signature = download(URL + ".asc")
-        manifest_path = stage / "native-installers.json"
-        signature_path = stage / "native-installers.json.asc"
-        manifest_path.write_bytes(data)
-        signature_path.write_bytes(signature)
-        subprocess.run(["/usr/bin/gpgv", "--keyring", str(key), str(signature_path),
-                        str(manifest_path)], check=True)
+        # TLS authenticates GitHub Pages. Each published asset retains its
+        # GitHub SHA-256 digest and its exact owner/repository/tag URL.
+        # Do not fetch 60 separate releases/latest API responses on clients.
         releases = verify_snapshot(data, expected)
         for repository, release in releases.items():
             path = directory / (repository + ".json")
@@ -124,7 +116,7 @@ def main() -> None:
     parser.add_argument("providers", type=Path)
     parser.add_argument("filesystems", type=Path)
     args = parser.parse_args()
-    print(f"Verifying one signed release snapshot for {prepare(args.output, args.providers, args.filesystems)} independent installations", flush=True)
+    print(f"Validated one HTTPS release snapshot for {prepare(args.output, args.providers, args.filesystems)} independent installations", flush=True)
 
 
 if __name__ == "__main__":
