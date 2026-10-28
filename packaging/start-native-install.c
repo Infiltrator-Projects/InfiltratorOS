@@ -218,6 +218,23 @@ static void resolve_temporary_runtime(void)
 static void spawn_progress_ui(DesktopSession *session)
 {
     if (!session->found) return;
+    const char *progress_mode = getenv("INFILTRATOROS_PROGRESS_MODE");
+    if (progress_mode != NULL && strcmp(progress_mode, "none") == 0) return;
+    if (progress_mode != NULL && strcmp(progress_mode, "aggregate") == 0) {
+#ifdef INSTALL_SYSTEM_MONITOR
+        char directory[TEXT_LIMIT];
+        const char *runtime = getenv("INFILTRATOROS_INSTALL_RUNTIME");
+        if (runtime == NULL ||
+            snprintf(directory, sizeof(directory), "%s/status", runtime) >= (int)sizeof(directory)) {
+            fprintf(stderr, "InfiltratorOS aggregate status path is invalid\n");
+            return;
+        }
+        char *const arguments[] = {runtime_progress, "--aggregate", directory, NULL};
+        if (installer_spawn_detached(runtime_progress, arguments, prepare_progress, session) != 0)
+            fprintf(stderr, "InfiltratorOS aggregate progress window: %s\n", strerror(errno));
+#endif
+        return;
+    }
     #ifdef INSTALL_TEMPORAL_RESOURCES
     char *const arguments[] = { runtime_progress, run_status, provider_slug, NULL };
 #else
