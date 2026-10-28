@@ -1,6 +1,6 @@
 #!/usr/bin/python3 -u
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Install and verify independently published FAT12/FAT16 native .so packages."""
+"""Install and verify independently published FAT12/FAT16/FAT32 native .so packages."""
 import fcntl
 import hashlib
 import json
@@ -23,9 +23,9 @@ CATALOGUE = []  # @EMBED_FILESYSTEM_CATALOGUE@
 
 def catalogue():
     entries = CATALOGUE or json.loads((Path(__file__).parent / "filesystem-resources.json").read_text())
-    expected = {"fat12", "fat16"}
-    if len(entries) != 2 or {x["id"] for x in entries} != expected:
-        raise ValueError("Exactly FAT12 and FAT16 must be specified")
+    expected = {"fat12", "fat16", "fat32"}
+    if len(entries) != 3 or {x["id"] for x in entries} != expected:
+        raise ValueError("Exactly FAT12, FAT16 and FAT32 must be specified")
     for item in entries:
         width = item["id"][3:]
         if item != {"id": "fat" + width, "name": "FAT" + width,
@@ -82,8 +82,14 @@ def release_installer(entry, release):
     run_name = f"{entry['repository'].lower()}-{version}-native-installer.run"
     deb_name = f"{entry['package']}_{version}_amd64.deb"
     assets = release.get("assets")
-    if not isinstance(assets, list) or len(assets) != 2 or {x.get("name") for x in assets if isinstance(x, dict)} != {run_name, deb_name}:
-        raise ValueError("Expected exactly independent native RUN and generic DEB; GitHub generates source ZIP")
+    expected = {run_name, deb_name}
+    bits = entry["id"][3:]
+    milestone = (0, 1, 2) if bits == "32" else (0, 1, 3)
+    if tuple(map(int, version.split("."))) >= milestone:
+        expected.update({f"FAT{bits}.efi", f"fat{bits}-linux-6.12.107.ko"})
+    if (not isinstance(assets, list) or len(assets) != len(expected) or
+            {x.get("name") for x in assets if isinstance(x, dict)} != expected):
+        raise ValueError("Filesystem release is missing required native driver assets")
     asset = next(x for x in assets if x["name"] == run_name)
     url = f"https://github.com/Infiltrator-Projects/{entry['repository']}/releases/download/{tag}/{run_name}"
     digest = asset.get("digest", "")
@@ -139,10 +145,12 @@ def verify(entry, version, root=Path("/"), query=True):
         if not owner.startswith(entry["package"] + ":"):
             raise ValueError("Filesystem module owned by wrong package")
     readelf = subprocess.check_output(["/usr/bin/readelf", "-Ws", str(module)], text=True)
-    for symbol in ("infiltrator_filesystem_module_v1",
-                   "infiltrator_filesystem_module_v3",
-                   "infiltrator_filesystem_module_v4",
-                   "infiltrator_filesystem_defrag_v1"):
+    symbols = ["infiltrator_filesystem_module_v1",
+               "infiltrator_filesystem_module_v3",
+               "infiltrator_filesystem_module_v4"]
+    if entry["id"] in {"fat12", "fat16"}:
+        symbols.append("infiltrator_filesystem_defrag_v1")
+    for symbol in symbols:
         if symbol not in readelf:
             raise ValueError("Missing filesystem or defragmentation ABI")
     identity = subprocess.check_output(["/usr/bin/readelf", "-p", ".ifsmeta", str(module)], text=True)
@@ -215,7 +223,7 @@ def main():
             print(entry["repository"].lower())
         return
     if len(sys.argv) != 2:
-        raise ValueError("Usage: install-filesystem-resources filesystem-fat12|filesystem-fat16")
+        raise ValueError("Usage: install-filesystem-resources filesystem-fat12|filesystem-fat16|filesystem-fat32")
     slug = sys.argv[1]
     entry = next((item for item in entries if item["repository"].lower() == slug), None)
     if entry is None:

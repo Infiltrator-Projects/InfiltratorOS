@@ -41,10 +41,10 @@ def download(url: str) -> bytes:
 def expected_repositories(providers: Path, filesystems: Path) -> set[str]:
     temporal = providers.read_text().splitlines()
     fs = filesystems.read_text().splitlines()
-    if len(temporal) != 54 or len(fs) != 2:
+    if len(temporal) != 54 or len(fs) != 3:
         raise ValueError("Native resource catalogue is incomplete")
     slugs = temporal + fs
-    if len(set(slugs)) != 56 or any(not re.fullmatch(r"(?:calendar|clock|filesystem)-[a-z0-9-]+", item) for item in slugs):
+    if len(set(slugs)) != 57 or any(not re.fullmatch(r"(?:calendar|clock|filesystem)-[a-z0-9-]+", item) for item in slugs):
         raise ValueError("Duplicate or unsafe native resource identifier")
     names = {"System-Monitor", "Calculator", "Files", "Defragmenter"}
     names.update("".join(part.capitalize() for part in slug.split("-")[:1]) + "-" + "-".join(slug.split("-")[1:]) for slug in slugs)
@@ -58,8 +58,8 @@ def verify_snapshot(data: bytes, expected: set[str]) -> dict[str, dict]:
     if not isinstance(snapshot, dict) or snapshot.get("schema") != 1:
         raise ValueError("Unsupported native release snapshot")
     releases = snapshot.get("releases")
-    if not isinstance(releases, dict) or len(releases) != 60:
-        raise ValueError("Native release snapshot must contain exactly 60 entries")
+    if not isinstance(releases, dict) or len(releases) != 61:
+        raise ValueError("Native release snapshot must contain exactly 61 entries")
     if {name.lower() for name in releases} != expected:
         raise ValueError("Snapshot does not match the embedded native provider list")
     for repository, release in releases.items():

@@ -12,5 +12,12 @@
     "repository": "Filesystem-FAT16",
     "package": "infiltrator-filesystem-fat16",
     "resource": "/System/Filesystems/FAT16.so"
+  },
+  {
+    "id": "fat32",
+    "name": "FAT32",
+    "repository": "Filesystem-FAT32",
+    "package": "infiltrator-filesystem-fat32",
+    "resource": "/System/Filesystems/FAT32.so"
   }
 ]
