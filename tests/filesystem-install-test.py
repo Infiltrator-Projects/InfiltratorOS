@@ -63,9 +63,9 @@ class InstallerTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             (root / (self.entry["repository"] + ".json")).write_text(json.dumps(self.release))
-            with patch.dict(worker.os.environ, {"INFILTRATOROS_RELEASE_DIR": str(root)}), \\
-                 patch.object(worker, "native_installed", return_value=True), \\
-                 patch.object(worker, "ensure_dependencies", side_effect=AssertionError("unnecessary apt")), \\
+            with patch.dict(worker.os.environ, {"INFILTRATOROS_RELEASE_DIR": str(root)}), \
+                 patch.object(worker, "native_installed", return_value=True), \
+                 patch.object(worker, "ensure_dependencies", side_effect=AssertionError("unnecessary apt")), \
                  patch.object(worker, "download", side_effect=AssertionError("unnecessary download")):
                 self.assertTrue(worker.install(self.entry))
 
@@ -73,13 +73,13 @@ class InstallerTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             (root / (self.entry["repository"] + ".json")).write_text(json.dumps(self.release))
-            with patch.dict(worker.os.environ, {"INFILTRATOROS_RELEASE_DIR": str(root)}), \\
-                 patch.object(worker, "STATUS_DIR", root), \\
-                 patch.object(worker, "STATUS_PATH", root / "test.status"), \\
-                 patch.object(worker, "native_installed", return_value=False), \\
-                 patch.object(worker, "ensure_dependencies") as dependencies, \\
-                 patch.object(worker, "download") as download, \\
-                 patch.object(worker, "run") as compile_install, \\
+            with patch.dict(worker.os.environ, {"INFILTRATOROS_RELEASE_DIR": str(root)}), \
+                 patch.object(worker, "STATUS_DIR", root), \
+                 patch.object(worker, "STATUS_PATH", root / "test.status"), \
+                 patch.object(worker, "native_installed", return_value=False), \
+                 patch.object(worker, "ensure_dependencies") as dependencies, \
+                 patch.object(worker, "download") as download, \
+                 patch.object(worker, "run") as compile_install, \
                  patch.object(worker, "verify") as verify:
                 self.assertFalse(worker.install(self.entry))
                 dependencies.assert_called_once()
