@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Contract tests for the independently packaged FAT12/FAT16 installers."""
+"""Contract tests for three independently packaged FAT installers."""
 import copy
 import importlib.util
 import json
@@ -33,9 +33,9 @@ class InstallerTests(unittest.TestCase):
         }
 
     def test_signed_distinct_catalogue(self):
-        self.assertEqual({item["id"] for item in self.entries}, {"fat12", "fat16"})
+        self.assertEqual({item["id"] for item in self.entries}, {"fat12", "fat16", "fat32"})
         self.assertEqual({item["resource"] for item in self.entries},
-                         {"/System/Filesystems/FAT12.so", "/System/Filesystems/FAT16.so"})
+                         {"/System/Filesystems/FAT12.so", "/System/Filesystems/FAT16.so", "/System/Filesystems/FAT32.so"})
 
     def test_two_assets_and_github_native_zip(self):
         version, url, digest, size = worker.release_installer(self.entry, self.release)
@@ -43,6 +43,24 @@ class InstallerTests(unittest.TestCase):
         self.assertEqual(digest, "a"*64)
         self.assertEqual(size, 100)
         self.assertTrue(url.endswith("-native-installer.run"))
+
+    def test_new_triple_driver_releases_require_efi_and_kernel_assets(self):
+        for entry in self.entries:
+            version = "0.1.2" if entry["id"] == "fat32" else "0.1.3"
+            release = copy.deepcopy(self.release)
+            release["tag_name"] = "v" + version
+            for asset in release["assets"]:
+                asset["name"] = asset["name"].replace("0.1.0", version)
+                asset["browser_download_url"] = asset["browser_download_url"].replace("0.1.0", version)
+            with self.assertRaisesRegex(ValueError, "missing required native driver"):
+                worker.release_installer(entry, release)
+            prefix = (f"https://github.com/Infiltrator-Projects/{entry['repository']}"
+                      f"/releases/download/v{version}/")
+            for name in (f"FAT{entry['id'][3:]}.efi",
+                         f"fat{entry['id'][3:]}-linux-6.12.107.ko"):
+                release["assets"].append({"name": name, "browser_download_url": prefix + name,
+                                          "digest": "sha256:" + "c"*64, "size": 300})
+            self.assertEqual(worker.release_installer(entry, release)[0], version)
 
     def test_reject_corrupt_release(self):
         changes = [
@@ -123,7 +141,7 @@ class InstallerTests(unittest.TestCase):
                         worker.main()
                     record = stage / "status" / (entry["repository"].lower() + "-install.status")
                     self.assertIn("state=complete\n", record.read_text())
-                self.assertEqual(calls, ["fat12", "fat16"])
+                self.assertEqual(calls, ["fat12", "fat16", "fat32"])
                 with patch.object(worker.sys, "argv", ["installer", "other"]):
                     with self.assertRaisesRegex(ValueError, "signed filesystem"):
                         worker.main()

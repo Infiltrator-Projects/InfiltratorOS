@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Real FAT12/FAT16 installation via the immutable InfiltratorOS worker bundle."""
+"""Real FAT12/FAT16/FAT32 installation via the immutable OS worker bundle."""
 import base64
 import hashlib
 import io
@@ -17,7 +17,7 @@ if os.geteuid() != 0 or os.environ.get("GITHUB_ACTIONS") != "true":
 package = Path(sys.argv[1]).resolve()
 root = Path(__file__).resolve().parents[1]
 entries = json.loads((root / "packaging/filesystem-resources.json").read_text())
-assert [x["id"] for x in entries] == ["fat12", "fat16"]
+assert [x["id"] for x in entries] == ["fat12", "fat16", "fat32"]
 native = Path("/Temporary/InfiltratorOS")
 native.mkdir(mode=0o755, parents=True, exist_ok=True)
 with tempfile.TemporaryDirectory(prefix="native-worker.", dir=native) as temporary:
@@ -50,6 +50,6 @@ with tempfile.TemporaryDirectory(prefix="native-worker.", dir=native) as tempora
         version = subprocess.check_output(["dpkg-query", "-W", "-f=${Version}",
                                            entry["package"]], text=True)
         assert version.endswith("+native1"), version
-    assert len(list((stage / "status").glob("*-install.status"))) == 2
-    assert {p.name for p in Path("/System/Filesystems").glob("FAT*.so")} == {"FAT12.so", "FAT16.so"}
-print("FAT12/FAT16 installed by exact InfiltratorOS worker bundle, independently owned and verified")
+    assert len(list((stage / "status").glob("*-install.status"))) == 3
+    assert {p.name for p in Path("/System/Filesystems").glob("FAT*.so")} == {"FAT12.so", "FAT16.so", "FAT32.so"}
+print("FAT12/FAT16/FAT32 installed by exact InfiltratorOS worker bundle, independently owned and verified")
