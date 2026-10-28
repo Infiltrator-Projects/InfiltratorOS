@@ -123,8 +123,12 @@ jobs:
           grep -Fq 'export TMPDIR' "$RUNNER_TEMP/control/postinst"
           grep -Fq '/Temporary/InfiltratorOS/native-worker.' "$GITHUB_WORKSPACE/packaging/start-native-install.c"
           ! grep -Eq '^WORKER_PARENT=|^STATUS_ROOT=/run|/var/lib/infiltratoros-native-worker|/run/infiltratoros' "$RUNNER_TEMP/control/postinst"
-          # Native temp is cleared when every installation group succeeds; failures retain diagnostics.
-          grep -Fq 'rm -rf -- "$STATUS_ROOT"' "$RUNNER_TEMP/control/postinst"
+          # An installation must never delete another run's temporary files.
+          grep -Fq 'status_root="$stage/status"' "$RUNNER_TEMP/control/postinst"
+          grep -Fq 'all_terminal()' "$RUNNER_TEMP/control/postinst"
+          grep -Fq 'all_complete()' "$RUNNER_TEMP/control/postinst"
+          grep -Fq 'done < "$stage/providers.list"' "$RUNNER_TEMP/control/postinst"
+          ! grep -Fq 'rm -rf -- "$STATUS_ROOT"' "$RUNNER_TEMP/control/postinst"
           # A missing/mismatched digest must terminate guarded extraction.
           cp "$RUNNER_TEMP/control/postinst" "$RUNNER_TEMP/tampered-postinst"
           sed -i -E "s/^BUNDLE_SHA256=.*/BUNDLE_SHA256='0000000000000000000000000000000000000000000000000000000000000000'/" "$RUNNER_TEMP/tampered-postinst"
@@ -141,7 +145,7 @@ jobs:
           git archive --format=zip --prefix="infiltratoros-$version/" HEAD > "dist/infiltratoros-$version-source.zip"
           printf '%s\n' "$GITHUB_SHA" > dist/SOURCE_COMMIT
           (cd dist && sha256sum *.deb *.zip SOURCE_COMMIT > SHA256SUMS.txt)
-      - name: Install every published calendar and clock through the exact OS worker
+      - name: Install all 54 providers independently through the exact packaged worker
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: sudo --preserve-env=GITHUB_TOKEN,GITHUB_ACTIONS python3 tests/temporal-bundle-e2e.py dist/*.deb
