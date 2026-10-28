@@ -16,6 +16,8 @@ for product in system-monitor calculator files defragmenter; do
     grep -Fq '#define STATUS_DIR "/Temporary/InfiltratorOS"' "$worker"
     grep -Fq '#define APP_LOCK_PATH STATUS_DIR "/' "$worker"
     grep -Fq '#define GLOBAL_LOCK_PATH STATUS_DIR "/native-install.lock"' "$worker"
+    grep -Fq 'static const char *run_status_path(void)' "$worker"
+    grep -Fq 'INFILTRATOROS_INSTALL_RUNTIME' "$worker"
     grep -Fq "STATUS_DIR \"/$product-XXXXXX\"" "$worker"
     if grep -Eq '"/(run/infiltratoros|run/lock/infiltratoros|tmp/)' "$worker"; then
         echo "Native $product worker still writes to Linux temporary storage" >&2
@@ -27,6 +29,15 @@ trap 'rm -rf "$WORK"' EXIT HUP INT TERM
 cc -std=c11 -O2 -Wall -Wextra -Werror -Wpedantic -DINSTALL_TEMPORAL_RESOURCES \
     "$ROOT/packaging/start-native-install.c" "$ROOT/packaging/installer-process.c" \
     -o "$WORK/start-temporal-resources-install"
+# Distinct per-provider launchers must not be able to use a fixed shared status.
+grep -Fq 'provider_slug' "$ROOT/packaging/start-native-install.c"
+grep -Fq 'run_status' "$ROOT/packaging/start-native-install.c"
+grep -Fq 'provider_slug, NULL' "$ROOT/packaging/start-native-install.c"
+grep -Fq 'ui.product_name' "$ROOT/packaging/native-install-progress.c"
+grep -Fq 'STATUS_DIR = directory / "status"' "$ROOT/packaging/install-temporal-resources.py"
+grep -Fq 'dependencies-ready' "$ROOT/packaging/install-temporal-resources.py"
+grep -Fq 'status_root="$stage/status"' "$ROOT/debian/postinst"
+! grep -Fq 'rm -rf -- "$STATUS_ROOT"' "$ROOT/debian/postinst"
 for contract in process status; do
     cc -std=c11 -O2 -DNDEBUG -Wall -Wextra -Werror -Wpedantic \
         "$ROOT/tests/installer-$contract-test.c" "$ROOT/packaging/installer-$contract.c" \
