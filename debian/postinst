@@ -94,10 +94,7 @@ if [ "$(wc -l < "$stage/filesystems.list")" -ne 2 ]; then
     exit 1
 fi
 
-# Fetch one signed 60-component release snapshot, verify it against the
-# repository key pinned in this OS package, then provide independent workers
-# with local API-compatible metadata. Never fall back to unauthenticated API
-# discovery for any part of this managed installation.
+# Fetch one 60-component release snapshot over authenticated HTTPS and\n# provide independent workers with locally validated release metadata.\n# Never issue 60 separate REST API lookups during managed installation.
 if ! "$stage/prepare-native-releases" "$stage/release-json" "$stage/providers.list" "$stage/filesystems.list" \
         > "$stage/native-release-preparation.log" 2>&1; then
     cat "$stage/native-release-preparation.log" >&2
