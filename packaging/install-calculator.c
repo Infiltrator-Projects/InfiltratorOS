@@ -390,10 +390,12 @@ int main(void)
 
     int app_lock_fd = open(APP_LOCK_PATH, O_RDWR | O_CREAT | O_CLOEXEC, 0644);
     if (app_lock_fd < 0) fail("cannot create Calculator installation lock");
-    if (flock(app_lock_fd, LOCK_EX | LOCK_NB) != 0) {
-        puts("A Calculator native installation is already running.");
+    /* A second invocation is a separate requested installation. Queue it;
+     * never return success leaving that run's status permanently queued. */
+    while (flock(app_lock_fd, LOCK_EX) != 0) {
+        if (errno == EINTR) continue;
         close(app_lock_fd);
-        return EXIT_SUCCESS;
+        fail("cannot wait for the previous calculator installation");
     }
 
     int global_lock_fd = open(GLOBAL_LOCK_PATH, O_RDWR | O_CREAT | O_CLOEXEC, 0644);
