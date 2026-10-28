@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.0.36 — Independently published FAT12 and FAT16 filesystem modules
+
+- Install FAT12.so and FAT16.so from their own independent GitHub repositories, each with a format-owned Debian package, native source installer and GitHub-generated source archive.
+- Keep two isolated filesystem installer processes and progress windows alongside the four application and 54 temporal workers; track all 60 statuses and preserve failed-run logs.
+- Verify GitHub release assets using size and SHA-256, enforce the exact package version and module ownership, validate local -O3 CPU-native LTO build metadata, module hash, FAT-width identity and filesystem/defragmentation ABIs.
+- Preserve the central Filesystems manager and existing Defragmenter .so lookup. Do not install unqualified kernel .ko or UEFI .efi drivers.
+- Extend exact embedded-bundle qualification to install and verify both published FAT modules on an ephemeral CI host.
+
+
 ## 1.0.35 — Independent temporal installers and run-safe cleanup
 
 - Launch 31 calendar and 23 clock native installers as 54 independent processes
