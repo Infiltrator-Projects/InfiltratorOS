@@ -88,8 +88,8 @@ static gboolean refresh_aggregate(Ui *ui)
              finished, TOTAL_JOBS);
     snprintf(detail, sizeof(detail),
              "%d complete, %d failed, %d running, %d queued. "
-             "Failed jobs retain individual diagnostics in %s.",
-             complete, failed, running, queued, ui->status_path);
+             "Per-job diagnostics are retained in /Temporary/InfiltratorOS.",
+             complete, failed, running, queued);
     gtk_label_set_text(GTK_LABEL(ui->stage), stage);
     gtk_label_set_text(GTK_LABEL(ui->detail), detail);
     if (finished == TOTAL_JOBS) {
