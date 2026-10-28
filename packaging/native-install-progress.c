@@ -1,6 +1,7 @@
 #include <gtk/gtk.h>
 #include "installer-profile.h"
 #include "installer-status.h"
+#include <dirent.h>
 #include <errno.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -16,6 +17,7 @@ typedef struct {
     GtkWidget *close_button;
     char status_path[4096];
     char product_name[128];
+    gboolean aggregate;
     guint close_timer_id;
 } Ui;
 
@@ -35,9 +37,82 @@ static gboolean close_after_success(gpointer data)
     return G_SOURCE_REMOVE;
 }
 
+/* One progress window follows the complete 58-component installation run.
+ * Individual native workers keep independent status/log files and the existing
+ * global build lock; no additional GUI processes are spawned for providers. */
+static gboolean refresh_aggregate(Ui *ui)
+{
+    enum { TOTAL_JOBS = 58 };
+    DIR *directory = opendir(ui->status_path);
+    if (directory == NULL) {
+        gtk_progress_bar_pulse(GTK_PROGRESS_BAR(ui->bar));
+        return G_SOURCE_CONTINUE;
+    }
+    int complete = 0, failed = 0, queued = 0, running = 0;
+    double fraction = 0.0;
+    struct dirent *entry;
+    while ((entry = readdir(directory)) != NULL) {
+        const char *name = entry->d_name;
+        const size_t length = strlen(name);
+        const char suffix[] = "-install.status";
+        const size_t suffix_length = sizeof(suffix) - 1U;
+        if (length <= suffix_length ||
+            strcmp(name + length - suffix_length, suffix) != 0) continue;
+        char path[4096];
+        if (snprintf(path, sizeof(path), "%s/%s", ui->status_path, name) >= (int)sizeof(path))
+            continue;
+        InstallerStatus job;
+        if (!installer_status_read(path, &job)) continue;
+        if (strcmp(job.state, "complete") == 0) {
+            ++complete;
+            fraction += 1.0;
+        } else if (strcmp(job.state, "failed") == 0) {
+            ++failed;
+            fraction += 1.0;
+        } else if (strcmp(job.state, "running") == 0) {
+            ++running;
+            if (job.progress >= 0 && job.progress <= 100)
+                fraction += (double)job.progress / 100.0;
+        } else {
+            ++queued;
+        }
+    }
+    closedir(directory);
+    if (fraction < 0.0) fraction = 0.0;
+    if (fraction > TOTAL_JOBS) fraction = TOTAL_JOBS;
+    gtk_progress_bar_set_fraction(GTK_PROGRESS_BAR(ui->bar),
+                                  fraction / (double)TOTAL_JOBS);
+    char stage[256], detail[512];
+    const int finished = complete + failed;
+    snprintf(stage, sizeof(stage), "%d of %d installations finished",
+             finished, TOTAL_JOBS);
+    snprintf(detail, sizeof(detail),
+             "%d complete, %d failed, %d running, %d queued. "
+             "Failed jobs retain individual diagnostics in %s.",
+             complete, failed, running, queued, ui->status_path);
+    gtk_label_set_text(GTK_LABEL(ui->stage), stage);
+    gtk_label_set_text(GTK_LABEL(ui->detail), detail);
+    if (finished == TOTAL_JOBS) {
+        gtk_label_set_text(GTK_LABEL(ui->title), failed ?
+            "InfiltratorOS installation finished with failures" :
+            "InfiltratorOS native installation is complete");
+        gtk_widget_show(ui->close_button);
+        if (!failed && ui->close_timer_id == 0U)
+            ui->close_timer_id = g_timeout_add_seconds(8U, close_after_success, ui);
+    } else {
+        cancel_success_close(ui);
+        gtk_label_set_text(GTK_LABEL(ui->title),
+            failed ? "InfiltratorOS installation needs attention" :
+                     "Installing InfiltratorOS native components");
+        gtk_widget_hide(ui->close_button);
+    }
+    return G_SOURCE_CONTINUE;
+}
+
 static gboolean refresh_status(gpointer data)
 {
     Ui *ui = data;
+    if (ui->aggregate) return refresh_aggregate(ui);
     InstallerStatus status;
     if (!installer_status_read(ui->status_path, &status)) {
         gtk_progress_bar_pulse(GTK_PROGRESS_BAR(ui->bar));
@@ -86,12 +161,15 @@ static void close_clicked(GtkButton *button, gpointer data)
 
 int main(int argc, char **argv)
 {
+    const gboolean aggregate = argc == 3 && strcmp(argv[1], "--aggregate") == 0;
 #ifdef INSTALL_TEMPORAL_RESOURCES
-    if (argc != 3 || strlen(argv[2]) >= sizeof(((Ui *)0)->product_name)) return EXIT_FAILURE;
+    if (!aggregate && (argc != 3 ||
+        strlen(argv[2]) >= sizeof(((Ui *)0)->product_name))) return EXIT_FAILURE;
 #else
-    if (argc != 2) return EXIT_FAILURE;
+    if (!aggregate && argc != 2) return EXIT_FAILURE;
 #endif
-    if (strlen(argv[1]) >= sizeof(((Ui *)0)->status_path)) return EXIT_FAILURE;
+    if (strlen(argv[aggregate ? 2 : 1]) >= sizeof(((Ui *)0)->status_path))
+        return EXIT_FAILURE;
     gtk_init(&argc, &argv);
 
     /* Product typography, resolved by Fontconfig from the verified shared
@@ -123,11 +201,14 @@ int main(int argc, char **argv)
 
     Ui ui;
     memset(&ui, 0, sizeof(ui));
-    g_strlcpy(ui.status_path, argv[1], sizeof(ui.status_path));
+    ui.aggregate = aggregate;
+    g_strlcpy(ui.status_path, argv[aggregate ? 2 : 1], sizeof(ui.status_path));
 #ifdef INSTALL_TEMPORAL_RESOURCES
-    g_strlcpy(ui.product_name, argv[2], sizeof(ui.product_name));
+    g_strlcpy(ui.product_name, aggregate ? "InfiltratorOS" : argv[2],
+              sizeof(ui.product_name));
 #else
-    g_strlcpy(ui.product_name, INSTALL_NAME, sizeof(ui.product_name));
+    g_strlcpy(ui.product_name, aggregate ? "InfiltratorOS" : INSTALL_NAME,
+              sizeof(ui.product_name));
 #endif
 
     ui.window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
