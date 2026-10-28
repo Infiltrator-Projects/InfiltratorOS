@@ -21,25 +21,11 @@
 #define TEXT_LIMIT 4096U
 #ifdef INSTALL_TEMPORAL_RESOURCES
 static char provider_slug[128];
-static char provider_status[TEXT_LIMIT];
-static char provider_log[TEXT_LIMIT];
 #endif
-static const char *status_file(void)
-{
-#ifdef INSTALL_TEMPORAL_RESOURCES
-    return provider_status;
-#else
-    return STATUS_PATH;
-#endif
-}
-static const char *log_file(void)
-{
-#ifdef INSTALL_TEMPORAL_RESOURCES
-    return provider_log;
-#else
-    return LOG_PATH;
-#endif
-}
+static char run_status[TEXT_LIMIT];
+static char run_log[TEXT_LIMIT];
+static const char *status_file(void) { return run_status; }
+static const char *log_file(void) { return run_log; }
 
 typedef struct {
     uid_t uid;
@@ -233,7 +219,7 @@ static void spawn_progress_ui(DesktopSession *session)
 {
     if (!session->found) return;
     #ifdef INSTALL_TEMPORAL_RESOURCES
-    char *const arguments[] = { runtime_progress, provider_status, provider_slug, NULL };
+    char *const arguments[] = { runtime_progress, run_status, provider_slug, NULL };
 #else
     char *const arguments[] = { runtime_progress, (char *)status_file(), NULL };
 #endif
@@ -270,19 +256,22 @@ int main(int argc, char **argv)
 #endif
     resolve_temporary_runtime();
     ensure_status_dir();
-#ifdef INSTALL_TEMPORAL_RESOURCES
     char directory[TEXT_LIMIT];
     const char *runtime = getenv("INFILTRATOROS_INSTALL_RUNTIME");
     if (snprintf(directory, sizeof(directory), "%s/status", runtime) >= (int)sizeof(directory))
         die("status directory path is too long");
     if (mkdir(directory, 0755) != 0 && errno != EEXIST)
         die("cannot create per-run status directory");
-    if (snprintf(provider_status, sizeof(provider_status), "%s/%s-install.status", directory,
-                 provider_slug) >= (int)sizeof(provider_status) ||
-        snprintf(provider_log, sizeof(provider_log), "%s/%s-install.log", directory,
-                 provider_slug) >= (int)sizeof(provider_log))
-        die("provider status or log path is too long");
+#ifdef INSTALL_TEMPORAL_RESOURCES
+    const char *slug = provider_slug;
+#else
+    const char *slug = INSTALL_SLUG;
 #endif
+    if (snprintf(run_status, sizeof(run_status), "%s/%s-install.status", directory,
+                 slug) >= (int)sizeof(run_status) ||
+        snprintf(run_log, sizeof(run_log), "%s/%s-install.log", directory,
+                 slug) >= (int)sizeof(run_log))
+        die("run status or log path is too long");
     write_initial_status();
     DesktopSession session = find_desktop_session();
 #ifdef INSTALL_TEMPORAL_RESOURCES
