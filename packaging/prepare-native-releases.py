@@ -106,6 +106,13 @@ def prepare(directory: Path, providers: Path, filesystems: Path) -> int:
             path = directory / (repository + ".json")
             path.write_text(json.dumps(release, separators=(",", ":")) + "\n")
             path.chmod(0o644)
+            runs = [asset for asset in release["assets"]
+                    if asset["name"].endswith(("-native-installer.run", "-local-folder.run"))]
+            if len(runs) != 1:
+                raise ValueError(repository + ": expected one native RUN asset")
+            check = directory / (repository + ".sha256")
+            check.write_text(runs[0]["digest"][7:] + " " + runs[0]["name"] + "\n")
+            check.chmod(0o644)
     directory.chmod(0o755)
     return len(releases)
 
