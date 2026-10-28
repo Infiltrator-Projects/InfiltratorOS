@@ -221,9 +221,12 @@ def main():
             ready = STATUS_DIR / "dependencies-ready"
             if not ready.exists():
                 write_status("running", 5, "Preparing native build dependencies", entry["name"])
-                required(["/usr/bin/apt-get", "-o", "DPkg::Lock::Timeout=300", "check"])
-                required(["/usr/bin/apt-get", "-o", "DPkg::Lock::Timeout=300", "update"])
-                required(["/usr/bin/apt-get", "-o", "DPkg::Lock::Timeout=300", "install", "-y", "--no-install-recommends",
+                # The graphical aptk transaction can retain the dpkg frontend
+                # lock beyond five minutes while its parent finishes package setup.
+                # apt-get waits for that owner; never remove or bypass APT locks.
+                required(["/usr/bin/apt-get", "-o", "DPkg::Lock::Timeout=-1", "check"])
+                required(["/usr/bin/apt-get", "-o", "DPkg::Lock::Timeout=-1", "update"])
+                required(["/usr/bin/apt-get", "-o", "DPkg::Lock::Timeout=-1", "install", "-y", "--no-install-recommends",
                           "build-essential", "binutils", "pkg-config", "libglib2.0-dev", "libicu-dev", "python3"])
                 ready.touch(mode=0o644)
             write_status("running", 10, "Optimising " + entry["name"],
