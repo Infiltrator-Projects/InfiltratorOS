@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.0.36 — Mint aptk lock handling and one installation window
+
+- Respect a live Mint `aptk`/dpkg package-manager transaction: native System Monitor, Calculator, Files, Defragmenter and temporal provider workers wait for the frontend lock instead of giving up after five minutes. Never remove dpkg locks.
+- Replace the 58 overlapping progress dialogs with one aggregated InfiltratorOS progress window. Keep all 58 independent status and diagnostic files, and preserve the global native-build serialisation lock.
+- Prevent repeated OS reinstall attempts from launching another simultaneous 58-job batch. A run-wide provision lock remains held by the detached status monitor until the batch completes or reaches its diagnostic timeout.
+- Require util-linux for the `flock` coordination tool and add packaging regression checks.
+- This does not change the application-owned Files PGO training pipeline, fixed independently in Files 0.1.76.
+
+
 ## 1.0.35 — Independent temporal installers and run-safe cleanup
 
 - Launch 31 calendar and 23 clock native installers as 54 independent processes
