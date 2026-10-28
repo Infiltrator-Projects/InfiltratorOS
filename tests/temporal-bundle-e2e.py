@@ -19,6 +19,7 @@ ROOT = Path(__file__).resolve().parents[1]
 entries = json.loads((ROOT / "packaging/temporal-resources.json").read_text())
 products = ("system-monitor", "calculator", "files", "defragmenter", "temporal-resources", "filesystem-resources")
 expected = {name for product in products for name in ("install-" + product, "start-" + product + "-install", product + "-progress")}
+expected.add("prepare-native-releases")
 native = Path("/Temporary/InfiltratorOS")
 native.mkdir(parents=True, exist_ok=True)
 with tempfile.TemporaryDirectory(prefix="native-worker.", dir=native) as temporary:

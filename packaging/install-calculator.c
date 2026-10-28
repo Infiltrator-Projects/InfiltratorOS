@@ -11,6 +11,7 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
+#include "verify-native-download.h"
 
 #define RELEASE_API "https://api.github.com/repos/Infiltrator-Projects/Calculator/releases/latest"
 #define RELEASE_PREFIX "https://github.com/Infiltrator-Projects/Calculator/releases/download/"
@@ -443,11 +444,24 @@ int main(void)
         fail("temporary Calculator path is too long");
     }
 
-    const char *const api_argv[] = {
-        "/usr/bin/wget", "--quiet", "--https-only", "--secure-protocol=TLSv1_2",
-        "--output-document", json_path, RELEASE_API, NULL
-    };
-    required(api_argv);
+    const char *release_dir = getenv("INFILTRATOROS_RELEASE_DIR");
+    if (release_dir && *release_dir) {
+        char source[PATH_LEN];
+        if (snprintf(source, sizeof(source), "%s/Calculator.json", release_dir) >=
+            (int)sizeof(source)) fail("signed native release metadata path too long");
+        const char *const copy_argv[] = {
+            "/usr/bin/cp", "--", source, json_path, NULL
+        };
+        required(copy_argv);
+    } else {
+        /* Standalone installer invocation retains its own release discovery.
+         * Managed InfiltratorOS installs always use the signed snapshot. */
+        const char *const api_argv[] = {
+            "/usr/bin/wget", "--quiet", "--https-only", "--secure-protocol=TLSv1_2",
+            "--output-document", json_path, RELEASE_API, NULL
+        };
+        required(api_argv);
+    }
 
     char *json = read_file(json_path);
     if (!json) {
@@ -473,6 +487,9 @@ int main(void)
         "--output-document", installer_path, url, NULL
     };
     required(download_argv);
+    if (release_dir && *release_dir &&
+        !verify_native_download(release_dir, "Calculator", url, installer_path))
+        fail("native installer does not match the published SHA-256 digest");
     if (chmod(installer_path, 0700) != 0) {
         cleanup_work(work);
         fail("cannot mark Calculator native installer executable");

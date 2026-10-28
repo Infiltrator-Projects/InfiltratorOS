@@ -186,6 +186,7 @@ PY
         -o "$RUNTIME_BUILD/$product-progress" $(pkg-config --libs gtk+-3.0)
 done
 
+install -m 0755 "$ROOT/packaging/prepare-native-releases.py" "$RUNTIME_BUILD/prepare-native-releases"
 test "$(file -b --mime-type "$THEME_DIR/infiltratoros.png")" = image/png
 test ! -e "$PKGROOT/usr/lib/infiltratoros"
 test -x "$PKGROOT/System/Commands/InfiltratorOS/activate-program-icons"

@@ -31,9 +31,9 @@ with tempfile.TemporaryDirectory(prefix="native-worker.", dir=native) as tempora
     assert hashlib.sha256(blob).hexdigest() == expected
     with tarfile.open(fileobj=io.BytesIO(blob), mode="r:gz") as archive:
         names = {i.name.removeprefix("./") for i in archive if i.isfile()}
-        assert len(names) == 18
+        assert len(names) == 19
         assert {"install-filesystem-resources", "start-filesystem-resources-install",
-                "filesystem-resources-progress"} <= names
+                "filesystem-resources-progress", "prepare-native-releases"} <= names
         archive.extractall(stage / "workers", filter="data")
     env = dict(os.environ, INFILTRATOROS_INSTALL_RUNTIME=str(stage))
     for entry in entries:

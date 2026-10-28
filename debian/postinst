@@ -23,6 +23,7 @@ unpack_native_workers() {
         test -x "$stage/install-$product" || return 1
         test -x "$stage/$product-progress" || return 1
     done
+    test -x "$stage/prepare-native-releases" || return 1
 }
 
 # CI inspection never mutates the installed system or launches applications.
@@ -33,7 +34,7 @@ if [ "${1:-}" = "--verify-installer-bundle" ]; then
         echo 'Invalid embedded InfiltratorOS native installer bundle.' >&2
         exit 1
     fi
-    test "$(find "$inspect" -maxdepth 1 -type f | wc -l)" -eq 18
+    test "$(find "$inspect" -maxdepth 1 -type f | wc -l)" -eq 19
     exit 0
 fi
 
@@ -92,6 +93,15 @@ if [ "$(wc -l < "$stage/filesystems.list")" -ne 2 ]; then
     echo 'Expected precisely two independent FAT filesystem installers.' >&2
     exit 1
 fi
+
+# Fetch one 60-component release snapshot over authenticated HTTPS and\n# provide independent workers with locally validated release metadata.\n# Never issue 60 separate REST API lookups during managed installation.
+if ! "$stage/prepare-native-releases" "$stage/release-json" "$stage/providers.list" "$stage/filesystems.list" \
+        > "$stage/native-release-preparation.log" 2>&1; then
+    cat "$stage/native-release-preparation.log" >&2
+    echo 'Native release metadata preparation failed; no workers were launched.' >&2
+    exit 1
+fi
+export INFILTRATOROS_RELEASE_DIR="$stage/release-json"
 
 # Four applications, 54 calendar/clock providers and 2 independent FAT processes.
 # Each invocation gets its own progress window and checksum-verified .run.
