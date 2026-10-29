@@ -93,6 +93,8 @@ def release_installer(entry, release):
     milestone = (0, 1, 2) if bits == "32" else (0, 1, 3)
     if entry["id"] == "ofs":
         expected.update({"OFS.so", "SHA256SUMS"})
+        if tuple(map(int, version.split("."))) >= (0, 1, 1):
+            expected.add("ofs-linux-6.12.107.ko")
     elif tuple(map(int, version.split("."))) >= milestone:
         expected.update({f"FAT{bits}.efi", f"fat{bits}-linux-6.12.107.ko"})
     if (not isinstance(assets, list) or len(assets) != len(expected) or
@@ -164,7 +166,8 @@ def verify(entry, version, root=Path("/"), query=True):
         symbols.append("infiltrator_filesystem_defrag_v1")
     if entry["id"] == "ofs":
         symbols = ["infiltrator_filesystem_module_v1", "infiltrator_filesystem_module_v2",
-                   "infiltrator_filesystem_module_v3", "infiltrator_filesystem_boot_v1"]
+                   "infiltrator_filesystem_module_v3", "infiltrator_filesystem_boot_v1",
+                   "infiltrator_filesystem_defrag_v2"]
     for symbol in symbols:
         if symbol not in readelf:
             raise ValueError("Missing filesystem or defragmentation ABI")

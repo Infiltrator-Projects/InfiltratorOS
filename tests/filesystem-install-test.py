@@ -74,7 +74,8 @@ class InstallerTests(unittest.TestCase):
         prefix = (f"https://github.com/Infiltrator-Projects/{entry['repository']}"
                   f"/releases/download/v{version}/")
         names = [f"filesystem-ofs-{version}-native-installer.run",
-                 f"infiltrator-filesystem-ofs_{version}_amd64.deb", "OFS.so", "SHA256SUMS"]
+                 f"infiltrator-filesystem-ofs_{version}_amd64.deb", "OFS.so", "SHA256SUMS",
+                 "ofs-linux-6.12.107.ko"]
         release = {"tag_name": "v" + version, "assets": [
             {"name": name, "browser_download_url": prefix + name,
              "digest": "sha256:" + "c" * 64, "size": 100} for name in names]}
