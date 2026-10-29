@@ -308,7 +308,53 @@ static bool file_has_exact_line(const char *path, const char *expected)
     return found;
 }
 
-static const char *installed_contract_error(void)
+/* Calculator 0.2.63+ keeps only its user manual in its documentation
+ * directory.  A successful verified native .run invocation is the build
+ * qualification boundary; this post-install check confirms that its exact
+ * released Debian package is the one actually installed. */
+static bool installed_package_version_matches(const char *status_path,
+                                               const char *package,
+                                               const char *expected_version)
+{
+    FILE *file = fopen(status_path, "r");
+    if (!file) return false;
+
+    char *line = NULL;
+    size_t capacity = 0U;
+    bool matching_package = false;
+    bool installed_status = false;
+    bool matching_version = false;
+    bool result = false;
+
+    while (getline(&line, &capacity, file) >= 0) {
+        size_t length = strlen(line);
+        while (length > 0U &&
+               (line[length - 1U] == '\n' || line[length - 1U] == '\r'))
+            line[--length] = '\0';
+
+        if (length == 0U) {
+            if (matching_package && installed_status && matching_version) {
+                result = true;
+                break;
+            }
+            matching_package = installed_status = matching_version = false;
+            continue;
+        }
+        if (strncmp(line, "Package: ", 9U) == 0)
+            matching_package = strcmp(line + 9U, package) == 0;
+        else if (strcmp(line, "Status: install ok installed") == 0)
+            installed_status = true;
+        else if (strncmp(line, "Version: ", 9U) == 0)
+            matching_version = strcmp(line + 9U, expected_version) == 0;
+    }
+    if (!result && matching_package && installed_status && matching_version)
+        result = true;
+    free(line);
+    (void)fclose(file);
+    return result;
+}
+
+static const char *installed_contract_error(const char *expected_version)
 {
     const char desktop[] = "/usr/share/applications/net.ssmith.calculator.desktop";
 
@@ -316,8 +362,10 @@ static const char *installed_contract_error(void)
         return "the canonical Calculator package is not installed";
     if (!executable_file("/Programs/calculator"))
         return "the Calculator package is installed but /Programs/calculator is missing or not executable";
-    if (!regular_file("/System/Resources/Documentation/Calculator/BUILD-INFO"))
-        return "Calculator native build metadata is missing after installation";
+    if (!installed_package_version_matches("/var/lib/dpkg/status", "calculator", expected_version))
+        return "installed Calculator package version differs from the verified native release";
+    if (!regular_file("/System/Resources/Documentation/Calculator/Calculator-Manual.pdf"))
+        return "Calculator user manual is missing after installation";
     if (!regular_file(desktop))
         return "Calculator desktop launcher is missing after installation";
     if (!file_has_exact_line(desktop, "Type=Application") ||
@@ -512,7 +560,7 @@ int main(void)
 
     write_status("running", 88, "Verifying the native Calculator",
                  "Confirming the package, /Programs executable, launcher, icon, metadata and native font resources are all installed correctly.");
-    const char *contract_error = installed_contract_error();
+    const char *contract_error = installed_contract_error(version);
     if (contract_error) {
         cleanup_work(work);
         fail(contract_error);

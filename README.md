@@ -94,7 +94,7 @@ Defragmenter is additive: its provisioning worker downloads the product-owned pu
 
 System Monitor and Calculator retain replacement policy: competing distribution applications are removed only after the corresponding Infiltrator replacement passes verification. Files is intentionally different at this stage: it is installed alongside the existing file manager, its launcher targets `/Programs/files`, and InfiltratorOS does not change the desktop's current default file-manager association.
 
-Calculator verification includes its canonical package, `/Programs/calculator`, BUILD-INFO, visible desktop launcher and icon, AppStream metadata and native PATH bridge. Shared MB Corpo resources are verified through the native font cache rather than by requiring Calculator-owned duplicate font files.
+Calculator verification requires its exact released package version, `/Programs/calculator`, the one installed PDF user manual, visible desktop launcher and icon, AppStream metadata and native PATH bridge. The checksum-verified Calculator native installer must complete successfully and owns the two-pass PGO/LTO and CPU-native build qualification; an obsolete persistent `BUILD-INFO` document is not required. Shared MB Corpo resources are verified through the native font cache rather than by requiring Calculator-owned duplicate font files.
 
 Files verification requires the canonical `files` package, `/Programs/files`, an aggressive two-pass PGO BUILD-INFO record, no obsolete `/usr/bin/files` executable, and a desktop launcher whose Exec target is `/Programs/files`.
 

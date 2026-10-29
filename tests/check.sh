@@ -81,6 +81,17 @@ cc -std=c11 -O2 -DNDEBUG -Wall -Wextra -Werror -Wpedantic \
     "$calculator_worker" -o "$WORK/install-calculator"
 grep -Fq '"--system-package-mode"' "$calculator_worker"
 grep -Fq '"/Programs/calculator"' "$calculator_worker"
+# Calculator >=0.2.63 deliberately ships one PDF manual and no BUILD-INFO.
+# Preserve native source installer success and exact dpkg release qualification.
+grep -Fq 'installed_package_version_matches' "$calculator_worker"
+grep -Fq 'Calculator/Calculator-Manual.pdf' "$calculator_worker"
+if grep -Fq 'Calculator/BUILD-INFO' "$calculator_worker"; then
+    echo "Calculator worker must not require the retired installed build report." >&2
+    exit 1
+fi
+cc -std=c11 -O2 -DNDEBUG -Wall -Wextra -Werror -Wpedantic \
+    "$ROOT/tests/calculator-contract-test.c" -o "$WORK/calculator-contract-test"
+"$WORK/calculator-contract-test"
 grep -Fq 'net.ssmith.calculator.desktop' "$calculator_worker"
 grep -Fq 'usr/share/icons/hicolor/scalable/apps/calculator.svg' "$calculator_worker"
 grep -Fq '"/System/Resources/Fonts/mb_corpo_a_title_cond_regular.ttf"' "$calculator_worker"

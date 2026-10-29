@@ -23,6 +23,20 @@ The [source-first native-build contract](PHILOSOPHY.md#source-first-hardware-nat
 
 These are system-wide acceptance criteria, not an assertion that the existing automated CI exercises every condition on physical hardware. Individual component records and the integration tests below identify the evidence currently available. A generic package can be a valid documented bootstrap or compatibility path, but must be identified separately from a successful locally optimised build.
 
+## Calculator native installation contract (1.0.41)
+
+Calculator 0.2.63 removed the installed build-provenance report; 0.2.64
+delivers only the user manual PDF in its native documentation directory.
+InfiltratorOS must not recreate or require that retired file. Its Calculator
+worker verifies the published native installer checksum, requires successful
+completion of Calculator's source-build/PGO/LTO/test/install pipeline, and
+then confirms the exact selected Debian package version, executable, single
+PDF manual, menu/icon/AppStream entries, PATH bridge and shared fonts.
+The exact-version check is exercised with independent dpkg status fixtures.
+Successful execution is installer-owned build evidence, not a separately
+validated persistent build report. The package's actual CPU/PGO profile
+remains Calculator's responsibility to qualify.
+
 ## Package and release qualification
 
 GitHub Actions builds all installed C programs with warnings as errors, builds the DEB twice and compares bytes, inspects control metadata and maintainer-script syntax, extracts the payload, verifies installed executable membership, and compares the installed PNG with approved source artwork. Source archive and commit identity accompany SHA-256 sealed artifacts.
