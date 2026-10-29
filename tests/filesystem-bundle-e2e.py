@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Real FAT12/FAT16/FAT32 installation via the immutable OS worker bundle."""
+"""Real FAT12/FAT16/FAT32/OFS installation via the immutable OS worker bundle."""
 import base64
 import hashlib
 import io
@@ -17,7 +17,7 @@ if os.geteuid() != 0 or os.environ.get("GITHUB_ACTIONS") != "true":
 package = Path(sys.argv[1]).resolve()
 root = Path(__file__).resolve().parents[1]
 entries = json.loads((root / "packaging/filesystem-resources.json").read_text())
-assert [x["id"] for x in entries] == ["fat12", "fat16", "fat32"]
+assert [x["id"] for x in entries] == ["fat12", "fat16", "fat32", "ofs"]
 native = Path("/Temporary/InfiltratorOS")
 native.mkdir(mode=0o755, parents=True, exist_ok=True)
 with tempfile.TemporaryDirectory(prefix="native-worker.", dir=native) as temporary:
@@ -25,9 +25,9 @@ with tempfile.TemporaryDirectory(prefix="native-worker.", dir=native) as tempora
     subprocess.run(["dpkg-deb", "--control", package, stage / "control"], check=True)
     script = (stage / "control/postinst").read_text()
     # Protect the real Debian post-installation entry point from silently
-    # retaining its historical two-FAT limit while the Python workers know three.
-    assert '$(wc -l < "$stage/filesystems.list")" -ne 3' in script
-    assert "all 61 jobs" in script
+    # retaining its historical FAT-only limit while the Python workers know four.
+    assert '$(wc -l < "$stage/filesystems.list")" -ne 4' in script
+    assert "all 62 jobs" in script
     assert "filesystem-fat32" in (root / "packaging/install-filesystem-resources.py").read_text()
     expected = re.search(r"^BUNDLE_SHA256='([0-9a-f]{64})'$", script, re.MULTILINE).group(1)
     payload = script.split("\n__INFILTRATOROS_NATIVE_BUNDLE_BEGIN__\n", 1)[1].split(
@@ -55,6 +55,8 @@ with tempfile.TemporaryDirectory(prefix="native-worker.", dir=native) as tempora
         version = subprocess.check_output(["dpkg-query", "-W", "-f=${Version}",
                                            entry["package"]], text=True)
         assert version.endswith("+native1"), version
-    assert len(list((stage / "status").glob("*-install.status"))) == 3
+    assert len(list((stage / "status").glob("*-install.status"))) == 4
     assert {p.name for p in Path("/System/Filesystems").glob("FAT*.so")} == {"FAT12.so", "FAT16.so", "FAT32.so"}
-print("FAT12/FAT16/FAT32 installed by exact InfiltratorOS worker bundle, independently owned and verified")
+print("FAT12/FAT16/FAT32/OFS installed by exact InfiltratorOS worker bundle, independently owned and verified")
+
+assert Path("/System/Filesystems/OFS.so").is_file()

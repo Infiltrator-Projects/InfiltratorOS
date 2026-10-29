@@ -1,3 +1,10 @@
+## 1.0.43 — 30 October 2026
+
+- Provision the independent OFS.so source package as the fourth filesystem
+  job, with native PGO/LTO, package ownership/hash and Boot ABI verification.
+- Consume the 62-component v2 snapshot while the publisher retains the
+  earlier 61-component endpoint for existing OS releases.
+
 # Changelog
 
 ## 1.0.42 — Accept the calendar two-file guide and native provenance contract

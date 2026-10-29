@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Contract tests for three independently packaged FAT installers."""
+"""Contract tests for four independently packaged filesystem installers."""
 import copy
 import importlib.util
 import json
@@ -33,9 +33,9 @@ class InstallerTests(unittest.TestCase):
         }
 
     def test_signed_distinct_catalogue(self):
-        self.assertEqual({item["id"] for item in self.entries}, {"fat12", "fat16", "fat32"})
+        self.assertEqual({item["id"] for item in self.entries}, {"fat12", "fat16", "fat32", "ofs"})
         self.assertEqual({item["resource"] for item in self.entries},
-                         {"/System/Filesystems/FAT12.so", "/System/Filesystems/FAT16.so", "/System/Filesystems/FAT32.so"})
+                         {"/System/Filesystems/FAT12.so", "/System/Filesystems/FAT16.so", "/System/Filesystems/FAT32.so", "/System/Filesystems/OFS.so"})
 
     def test_two_assets_and_github_native_zip(self):
         version, url, digest, size = worker.release_installer(self.entry, self.release)
@@ -45,7 +45,7 @@ class InstallerTests(unittest.TestCase):
         self.assertTrue(url.endswith("-native-installer.run"))
 
     def test_new_triple_driver_releases_require_efi_and_kernel_assets(self):
-        for entry in self.entries:
+        for entry in self.entries[:3]:
             version = "0.1.2" if entry["id"] == "fat32" else "0.1.3"
             release = copy.deepcopy(self.release)
             release["tag_name"] = "v" + version
@@ -67,6 +67,23 @@ class InstallerTests(unittest.TestCase):
                 release["assets"].append({"name": name, "browser_download_url": prefix + name,
                                           "digest": "sha256:" + "c"*64, "size": 300})
             self.assertEqual(worker.release_installer(entry, release)[0], version)
+
+    def test_ofs_release_requires_same_so_and_checksums(self):
+        entry = self.entries[3]
+        version = "0.1.1"
+        prefix = (f"https://github.com/Infiltrator-Projects/{entry['repository']}"
+                  f"/releases/download/v{version}/")
+        names = [f"filesystem-ofs-{version}-native-installer.run",
+                 f"infiltrator-filesystem-ofs_{version}_amd64.deb", "OFS.so", "SHA256SUMS"]
+        release = {"tag_name": "v" + version, "assets": [
+            {"name": name, "browser_download_url": prefix + name,
+             "digest": "sha256:" + "c" * 64, "size": 100} for name in names]}
+        self.assertEqual(worker.release_installer(entry, release)[0], version)
+        for missing in names:
+            bad = copy.deepcopy(release)
+            bad["assets"] = [x for x in bad["assets"] if x["name"] != missing]
+            with self.assertRaises(ValueError):
+                worker.release_installer(entry, bad)
 
     def test_reject_corrupt_release(self):
         changes = [
@@ -147,7 +164,7 @@ class InstallerTests(unittest.TestCase):
                         worker.main()
                     record = stage / "status" / (entry["repository"].lower() + "-install.status")
                     self.assertIn("state=complete\n", record.read_text())
-                self.assertEqual(calls, ["fat12", "fat16", "fat32"])
+                self.assertEqual(calls, ["fat12", "fat16", "fat32", "ofs"])
                 with patch.object(worker.sys, "argv", ["installer", "other"]):
                     with self.assertRaisesRegex(ValueError, "signed filesystem"):
                         worker.main()

@@ -13,7 +13,7 @@ import time
 import urllib.error
 import urllib.request
 
-URL = "https://infiltrator-projects.github.io/Infiltrator-Repository/catalogue/native-installers.json"
+URL = "https://infiltrator-projects.github.io/Infiltrator-Repository/catalogue/native-installers-v2.json"
 MAX_BYTES = 3 * 1024 * 1024
 DIGEST = re.compile(r"sha256:[0-9a-f]{64}$")
 VERSION = re.compile(r"v[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?$")
@@ -41,10 +41,10 @@ def download(url: str) -> bytes:
 def expected_repositories(providers: Path, filesystems: Path) -> set[str]:
     temporal = providers.read_text().splitlines()
     fs = filesystems.read_text().splitlines()
-    if len(temporal) != 54 or len(fs) != 3:
+    if len(temporal) != 54 or len(fs) != 4:
         raise ValueError("Native resource catalogue is incomplete")
     slugs = temporal + fs
-    if len(set(slugs)) != 57 or any(not re.fullmatch(r"(?:calendar|clock|filesystem)-[a-z0-9-]+", item) for item in slugs):
+    if len(set(slugs)) != 58 or any(not re.fullmatch(r"(?:calendar|clock|filesystem)-[a-z0-9-]+", item) for item in slugs):
         raise ValueError("Duplicate or unsafe native resource identifier")
     names = {"System-Monitor", "Calculator", "Files", "Defragmenter"}
     names.update("".join(part.capitalize() for part in slug.split("-")[:1]) + "-" + "-".join(slug.split("-")[1:]) for slug in slugs)
@@ -58,8 +58,8 @@ def verify_snapshot(data: bytes, expected: set[str]) -> dict[str, dict]:
     if not isinstance(snapshot, dict) or snapshot.get("schema") != 1:
         raise ValueError("Unsupported native release snapshot")
     releases = snapshot.get("releases")
-    if not isinstance(releases, dict) or len(releases) != 61:
-        raise ValueError("Native release snapshot must contain exactly 61 entries")
+    if not isinstance(releases, dict) or len(releases) != len(expected):
+        raise ValueError("Native release snapshot must contain the complete expected component set")
     if {name.lower() for name in releases} != expected:
         raise ValueError("Snapshot does not match the embedded native provider list")
     for repository, release in releases.items():
@@ -100,7 +100,7 @@ def prepare(directory: Path, providers: Path, filesystems: Path) -> int:
         data = download(URL)
         # TLS authenticates GitHub Pages. Each published asset retains its
         # GitHub SHA-256 digest and its exact owner/repository/tag URL.
-        # Do not fetch 60 separate releases/latest API responses on clients.
+        # Do not fetch separate releases/latest API responses on clients.
         releases = verify_snapshot(data, expected)
         for repository, release in releases.items():
             path = directory / (repository + ".json")

@@ -19,5 +19,12 @@
     "repository": "Filesystem-FAT32",
     "package": "infiltrator-filesystem-fat32",
     "resource": "/System/Filesystems/FAT32.so"
+  },
+  {
+    "id": "ofs",
+    "name": "Amiga Original File System",
+    "repository": "Filesystem-OFS",
+    "package": "infiltrator-filesystem-ofs",
+    "resource": "/System/Filesystems/OFS.so"
   }
 ]

@@ -95,6 +95,16 @@ Nemo's raw executable file icons are per-user GVfs metadata, not an ELF or deskt
 
 `install-temporal-resources.py` is embedded with the exact `temporal-resources.json` catalogue in the verified temporary worker bundle. It holds the same global native installation lock as System Monitor, installs build prerequisites after APT releases its transaction lock, then processes all 54 repositories. Each published release must have exactly its generic DEB, native RUN and source ZIP; the worker verifies the RUN size and GitHub-provided SHA-256 before executing its explicit aggressive system-package mode. Each source installer owns compilation, PGO training, tests and native package creation. The OS then verifies package identity/version, native build record, module hash and provider ABI identity. A failed provider is logged while the remaining providers are attempted, and any failure leaves the group failed with diagnostic logs retained. No provider installer becomes a persistent OS command.
 
-## FAT12 and FAT16 standalone installation within unified provisioning
+## Independent filesystem installation within unified provisioning
 
-The signed three-format catalogue and its embedded `install-filesystem-resources.py` worker are bundled with the existing installer, never installed as permanent commands. Exactly three format jobs (`filesystem-fat12`, `filesystem-fat16`, `filesystem-fat32`) run under the existing run-wide `provision.lock` and global `native-install.lock`, and their progress is represented in the **single** 61-job aggregate GTK window; neither opens a redundant child window. The worker accepts only stable GitHub releases with exact DEB/RUN release assets and additional mandatory EFI/kernel artifacts at later milestones and GitHub SHA-256 digests, compiles and installs the CPU-native package, and verifies root-owned module paths, exact FAT width, V1/V3/V4 exports, plus the Defragmenter ABI for FAT12/FAT16 only, native compiler profile, package identity and SHA-256. The ordinary Filesystems installer remains a separate manager, and kernel/EFI driver installation is outside this .so release contract.
+The four-format catalogue and embedded `install-filesystem-resources.py`
+worker remain temporary components of the existing installer. FAT12, FAT16,
+FAT32 and OFS each run under the existing provision and native-build locks,
+with independent status records in the single 62-job progress window.
+The worker validates each owner's exact asset set, URL and SHA-256, builds its
+native package, and checks package ownership, build records and actual ELF
+interfaces. FAT12/16 retain their Defragmenter ABI. OFS requires V1/V2/V3 and
+Boot V1, with measured PGO/LTO and no runtime imports. The new native snapshot
+URL includes OFS; the old endpoint retains the 61-component contract for old
+immutable OS releases. The Filesystems manager remains independent. Firmware
+and kernel deployment remain host-specific operations outside provisioning.

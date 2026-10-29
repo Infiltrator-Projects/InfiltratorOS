@@ -1,6 +1,6 @@
 #!/usr/bin/python3 -u
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Install and verify independently published FAT12/FAT16/FAT32 native .so packages."""
+"""Install and verify independently published FAT12/FAT16/FAT32/OFS native .so packages."""
 import fcntl
 import hashlib
 import json
@@ -23,10 +23,16 @@ CATALOGUE = []  # @EMBED_FILESYSTEM_CATALOGUE@
 
 def catalogue():
     entries = CATALOGUE or json.loads((Path(__file__).parent / "filesystem-resources.json").read_text())
-    expected = {"fat12", "fat16", "fat32"}
-    if len(entries) != 3 or {x["id"] for x in entries} != expected:
-        raise ValueError("Exactly FAT12, FAT16 and FAT32 must be specified")
+    expected = {"fat12", "fat16", "fat32", "ofs"}
+    if len(entries) != 4 or {x["id"] for x in entries} != expected:
+        raise ValueError("Exactly FAT12, FAT16, FAT32 and OFS must be specified")
     for item in entries:
+        if item["id"] == "ofs":
+            if item != {"id": "ofs", "name": "Amiga Original File System",
+                        "repository": "Filesystem-OFS", "package": "infiltrator-filesystem-ofs",
+                        "resource": "/System/Filesystems/OFS.so"}:
+                raise ValueError("Invalid OFS catalogue identity")
+            continue
         width = item["id"][3:]
         if item != {"id": "fat" + width, "name": "FAT" + width,
                     "repository": "Filesystem-FAT" + width,
@@ -85,7 +91,9 @@ def release_installer(entry, release):
     expected = {run_name, deb_name}
     bits = entry["id"][3:]
     milestone = (0, 1, 2) if bits == "32" else (0, 1, 3)
-    if tuple(map(int, version.split("."))) >= milestone:
+    if entry["id"] == "ofs":
+        expected.update({"OFS.so", "SHA256SUMS"})
+    elif tuple(map(int, version.split("."))) >= milestone:
         expected.update({f"FAT{bits}.efi", f"fat{bits}-linux-6.12.107.ko"})
     if (not isinstance(assets, list) or len(assets) != len(expected) or
             {x.get("name") for x in assets if isinstance(x, dict)} != expected):
@@ -131,7 +139,11 @@ def verify(entry, version, root=Path("/"), query=True):
     flags = data.get("C flags", "")
     if "-O3" not in flags or "-march=native" not in flags or "-flto" not in flags:
         raise ValueError("Module not compiled with the advertised native flags")
-    if tuple(map(int, version.split("."))) >= (0, 1, 2):
+    if entry["id"] == "ofs":
+        if (data.get("LTO") != "enabled" or
+                data.get("PGO") != "trained two-pass profile (OFS V1/V2/V3 boundary and failure fixtures)"):
+            raise ValueError("OFS requires measured two-pass PGO and LTO")
+    elif tuple(map(int, version.split("."))) >= (0, 1, 2):
         if (data.get("LTO") != "enabled" or
                 data.get("PGO") != "trained two-pass profile (V1 and V3/V4 fixtures)"):
             raise ValueError("FAT 0.1.2+ requires measured two-pass PGO and LTO")
@@ -150,18 +162,21 @@ def verify(entry, version, root=Path("/"), query=True):
                "infiltrator_filesystem_module_v4"]
     if entry["id"] in {"fat12", "fat16"}:
         symbols.append("infiltrator_filesystem_defrag_v1")
+    if entry["id"] == "ofs":
+        symbols = ["infiltrator_filesystem_module_v1", "infiltrator_filesystem_module_v2",
+                   "infiltrator_filesystem_module_v3", "infiltrator_filesystem_boot_v1"]
     for symbol in symbols:
         if symbol not in readelf:
             raise ValueError("Missing filesystem or defragmentation ABI")
     identity = subprocess.check_output(["/usr/bin/readelf", "-p", ".ifsmeta", str(module)], text=True)
-    for api in (1, 3, 4):
+    for api in ((1, 2, 3) if entry["id"] == "ofs" else (1, 3, 4)):
         if f"IFS-MODULE:{entry['id']}:{api}" not in identity:
             raise ValueError("Wrong filesystem width or ABI")
     if "(NEEDED)" in subprocess.check_output(["/usr/bin/readelf", "-d", str(module)], text=True):
         raise ValueError("Unexpected ELF runtime dependency")
 
 def native_installed(entry, version):
-    """Verify an existing native FAT package without executing its driver."""
+    """Verify an existing native filesystem package without executing its driver."""
     try:
         verify(entry, version)
         info = Path("/System/Resources/Documentation") / entry["repository"] / "BUILD-INFO"
@@ -223,7 +238,7 @@ def main():
             print(entry["repository"].lower())
         return
     if len(sys.argv) != 2:
-        raise ValueError("Usage: install-filesystem-resources filesystem-fat12|filesystem-fat16|filesystem-fat32")
+        raise ValueError("Usage: install-filesystem-resources filesystem-fat12|filesystem-fat16|filesystem-fat32|filesystem-ofs")
     slug = sys.argv[1]
     entry = next((item for item in entries if item["repository"].lower() == slug), None)
     if entry is None:
@@ -253,8 +268,8 @@ def main():
             reused = install(entry)
     status("complete", 100,
            entry["name"] + (" already installed" if reused else " installed"),
-           ("Existing current FAT module and ABI verified; no compilation required"
-            if reused else "Independent FAT module and ABI verified"))
+           ("Existing current filesystem module and ABI verified; no compilation required"
+            if reused else "Independent filesystem module and ABI verified"))
 
 if __name__ == "__main__":
     try:

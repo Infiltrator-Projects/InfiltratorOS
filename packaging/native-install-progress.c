@@ -37,12 +37,12 @@ static gboolean close_after_success(gpointer data)
     return G_SOURCE_REMOVE;
 }
 
-/* One progress window follows the complete 61-component installation run.
+/* One progress window follows the complete 62-component installation run.
  * Individual native workers keep independent status/log files and the existing
  * global build lock; no additional GUI processes are spawned for providers. */
 static gboolean refresh_aggregate(Ui *ui)
 {
-    enum { TOTAL_JOBS = 61 };
+    enum { TOTAL_JOBS = 62 };
     DIR *directory = opendir(ui->status_path);
     if (directory == NULL) {
         gtk_progress_bar_pulse(GTK_PROGRESS_BAR(ui->bar));

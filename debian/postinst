@@ -86,15 +86,17 @@ if [ "$(wc -l < "$stage/providers.list")" -ne 54 ]; then
 fi
 
 if ! "$stage/install-filesystem-resources" --list > "$stage/filesystems.list"; then
-    echo 'Cannot enumerate independent FAT12/FAT16/FAT32 installers.' >&2
+    echo 'Cannot enumerate independent FAT12/FAT16/FAT32/OFS installers.' >&2
     exit 1
 fi
-if [ "$(wc -l < "$stage/filesystems.list")" -ne 3 ]; then
-    echo 'Expected precisely three independent FAT filesystem installers.' >&2
+if [ "$(wc -l < "$stage/filesystems.list")" -ne 4 ]; then
+    echo 'Expected precisely four independent filesystem installers.' >&2
     exit 1
 fi
 
-# Fetch one 61-component release snapshot over authenticated HTTPS and\n# provide independent workers with locally validated release metadata.\n# Never issue 61 separate REST API lookups during managed installation.
+# Fetch one 62-component release snapshot over authenticated HTTPS and
+# provide independent workers with locally validated release metadata.
+# Never issue 62 separate REST API lookups during managed installation.
 if ! "$stage/prepare-native-releases" "$stage/release-json" "$stage/providers.list" "$stage/filesystems.list" \
         > "$stage/native-release-preparation.log" 2>&1; then
     cat "$stage/native-release-preparation.log" >&2
@@ -103,8 +105,8 @@ if ! "$stage/prepare-native-releases" "$stage/release-json" "$stage/providers.li
 fi
 export INFILTRATOROS_RELEASE_DIR="$stage/release-json"
 
-# Four applications, 54 calendar/clock providers and three independent FAT processes.
-# Each invocation gets its own progress window and checksum-verified .run.
+# Four applications, 54 calendar/clock providers and four independent processes.
+# Each invocation reports to the one aggregate window and verifies its own .run.
 for product in system-monitor calculator files defragmenter; do
     progress_mode=none
     if [ "$product" = system-monitor ]; then
@@ -127,7 +129,7 @@ done < "$stage/filesystems.list"
 
 # The monitor must only inspect statuses for this exact installation. A
 # subsequent package upgrade has another stage and cannot overwrite these.
-# The subshell inherits FD 9 and holds provision.lock until all 61 jobs
+# The subshell inherits FD 9 and holds provision.lock until all 62 jobs
 # reach a terminal state (or the existing 24-hour diagnostic timeout). This
 # prevents a second apt reinstall from launching a duplicate native run.
 # All statuses are terminal before this run's binaries can be removed.

@@ -1,4 +1,4 @@
-name: Qualify independent FAT installation from OS bundle
+name: Qualify independent filesystem installation from OS bundle
 on:
   pull_request:
     branches: [main]
@@ -20,7 +20,7 @@ jobs:
           set -euo pipefail
           python3 tests/filesystem-install-test.py
           sh scripts/build-deb.sh
-      - name: Install three independently published FAT modules through the sealed worker
+      - name: Install four independently published filesystem modules through the sealed worker
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: sudo --preserve-env=GITHUB_TOKEN,GITHUB_ACTIONS python3 tests/filesystem-bundle-e2e.py dist/*.deb
