@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.0.42 — Accept the calendar two-file guide and native provenance contract
+
+- Support illustrated-calendar PDF plus native shared object as the only
+  installed provider content, with source/PGO/LTO/SHA256 provenance in Debian
+  package control metadata.
+- Preserve full verification and cache reuse for existing BUILD-INFO based
+  calendar and clock packages.
+- Add a regression check for two-file metadata and missing manual rejection.
+
+
 ## 1.0.41 — Align Calculator verification with its single-PDF package contract
 
 - Fix the one failed Calculator job in the 61-job native installer: Calculator
