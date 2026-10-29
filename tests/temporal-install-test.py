@@ -33,6 +33,31 @@ class InstallationContract(unittest.TestCase):
         self.assertEqual({x["id"] for x in entries if x["kind"] == "clock"}, set("babylonian-ancient babylonian-hours binary chinese-ke chinese-time decimal hexadecimal indian-ghati internet italian-hours japanese-temporal japanese-temporal-early julian mean-solar modified-julian nuremberg-hours nuremberg-solar roman-temporal sidereal solar standard-12 standard-24 unix".split()))
         self.assertEqual({x["id"] for x in entries if x["kind"] == "calendar"}, set("armenian-traditional bahai buddhist byzantine chinese coptic dangi egyptian-nabonassar ethiopian ethiopic-amete-alem french-republican gregorian hebrew iso-week indian international-fixed islamic islamic-civil islamic-tbla islamic-umalqura japanese julian mayan minguo persian positivist revised-julian roman swedish-historical thai-buddhist-solar world".split()))
 
+    def test_two_file_provenance_uses_dpkg_not_developer_documents(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            docs = root / "System/Resources/Documentation" / self.entry["repository"]
+            docs.mkdir(parents=True)
+            (docs / (self.entry["name"] + ".pdf")).write_bytes(b"%PDF-1.4\nmock")
+            report = ("Package: " + self.entry["package"] + "\n"
+                      "Version: 1.2.3+native1\n"
+                      "X-Infiltrator-Native-Profile: aggressive\n"
+                      "X-Infiltrator-LTO: enabled\n"
+                      "X-Infiltrator-PGO: trained-two-pass\n"
+                      "X-Infiltrator-Cflags: -O3 -march=native -flto\n"
+                      "X-Infiltrator-Source-Revision: " + "a" * 40 + "\n"
+                      "X-Infiltrator-Resource-SHA256: " + "b" * 64 + "\n")
+            with patch.object(worker.subprocess, "check_output", return_value=report):
+                p = worker.installed_provenance(self.entry, root)
+            self.assertEqual(p["Version"], "1.2.3")
+            self.assertEqual(p["PGO"], "trained two-pass profile")
+            self.assertEqual(p["C flags"], "-O3 -march=native -flto")
+            self.assertEqual(p["SHA256"], "b" * 64)
+            self.assertEqual(p["Source revision"], "a" * 40)
+            (docs / (self.entry["name"] + ".pdf")).unlink()
+            with self.assertRaises(ValueError):
+                worker.installed_provenance(self.entry, root)
+
     def test_exact_native_installer(self):
         version, url, digest, size = worker.release_installer(self.entry, self.release)
         self.assertEqual((version, digest, size), ("1.2.3", "a" * 64, 123))

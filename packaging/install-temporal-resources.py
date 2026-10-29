@@ -134,14 +134,48 @@ class Metadata(ctypes.Structure):
                 ("requires_longitude", ctypes.c_bool)]
 
 
+def installed_provenance(entry, root=Path("/"), query=True):
+    """Support both the original BUILD-INFO and the two-file provider package.
+
+    The two-file package stores its native-build attestation in dpkg control
+    fields rather than writing developer records into the native filesystem.
+    """
+    docs = root / "System/Resources/Documentation" / entry["repository"]
+    legacy = docs / "BUILD-INFO"
+    if legacy.is_file():
+        return dict(line.split(": ", 1) for line in legacy.read_text().splitlines()
+                    if ": " in line)
+    guide = docs / (entry["name"] + ".pdf")
+    if not guide.is_file() or not guide.read_bytes()[:5] == b"%PDF-":
+        raise ValueError("Illustrated calendar PDF is missing or invalid")
+    if not query:
+        raise ValueError("Two-file provider package provenance needs dpkg metadata")
+    package_status = subprocess.check_output(
+        ["/usr/bin/dpkg-query", "-s", entry["package"]], text=True)
+    fields = dict(line.split(": ", 1) for line in package_status.splitlines()
+                  if ": " in line)
+    return {
+        "Version": fields.get("Version", "").removesuffix("+native1"),
+        "Package version": fields.get("Version", ""),
+        "Repository": entry["repository"],
+        "Profile": fields.get("X-Infiltrator-Native-Profile", ""),
+        "LTO": fields.get("X-Infiltrator-LTO", ""),
+        "PGO": ("trained two-pass profile" if fields.get("X-Infiltrator-PGO") == "trained-two-pass"
+                else fields.get("X-Infiltrator-PGO", "")),
+        "Resource": entry["resource"],
+        "C flags": fields.get("X-Infiltrator-Cflags", ""),
+        "Source revision": fields.get("X-Infiltrator-Source-Revision", ""),
+        "SHA256": fields.get("X-Infiltrator-Resource-SHA256", ""),
+    }
+
+
 def verify_installation(entry, version, root=Path("/"), query=True):
     if query:
         identity = subprocess.check_output(["/usr/bin/dpkg-query", "-W", "-f=${Status}\n${Version}\n", entry["package"]], text=True)
         if identity.splitlines() != ["install ok installed", version + "+native1"]:
             raise ValueError("Native Debian package was not installed at the selected version")
     library = root / entry["resource"].lstrip("/")
-    info_file = root / "System/Resources/Documentation" / entry["repository"] / "BUILD-INFO"
-    info = dict(line.split(": ", 1) for line in info_file.read_text().splitlines() if ": " in line)
+    info = installed_provenance(entry, root, query)
     expected = {"Version": version, "Package version": version + "+native1", "Repository": entry["repository"],
                 "Profile": "aggressive", "LTO": "enabled", "PGO": "trained two-pass profile", "Resource": entry["resource"]}
     if any(info.get(key) != value for key, value in expected.items()):
@@ -174,25 +208,27 @@ def native_installed(entry, version, release):
         print("Native cache unavailable: release commit is not pinned.", flush=True)
         return False
     library = Path(entry["resource"])
-    record = Path("/System/Resources/Documentation") / entry["repository"] / "BUILD-INFO"
+    docs = Path("/System/Resources/Documentation") / entry["repository"]
+    legacy = docs / "BUILD-INFO"
+    guide = docs / (entry["name"] + ".pdf")
+    record = legacy if legacy.is_file() else guide
     try:
         for path in (Path("/System"), Path("/System/Resources"), library.parent,
-                     record.parent, library, record):
+                     docs, library, record):
             metadata = path.lstat()
             if (stat.S_ISLNK(metadata.st_mode) or metadata.st_uid != 0 or
                     metadata.st_mode & 0o022):
                 raise ValueError("Installed native resource is not trusted: " + str(path))
         if not stat.S_ISREG(library.stat().st_mode) or not stat.S_ISREG(record.stat().st_mode):
-            raise ValueError("Installed native resource or record is not a regular file")
+            raise ValueError("Installed native resource or PDF is not a regular file")
         for path in (library, record):
             owner = subprocess.check_output(["/usr/bin/dpkg-query", "-S", str(path)],
                                             text=True)
             if not owner.startswith(entry["package"] + ":"):
                 raise ValueError("Installed native file has unexpected package ownership")
         verify_installation(entry, version)
-        metadata = dict(line.split(": ", 1) for line in record.read_text().splitlines()
-                        if ": " in line)
-        if metadata.get("Source revision") != revision:
+        provenance = installed_provenance(entry)
+        if provenance.get("Source revision") != revision:
             raise ValueError("Installed native source differs from published release")
         return True
     except (OSError, ValueError, UnicodeError, subprocess.SubprocessError) as error:

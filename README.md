@@ -139,3 +139,10 @@ InfiltratorOS 1.0.37 installs [Filesystem-FAT12](https://github.com/Infiltrator-
 ### Third independently installed FAT module (1.0.40)
 
 The OS now provisions Filesystem-FAT32 alongside FAT12 and FAT16: 61 native installation jobs (four applications, 54 temporal resources, three FAT filesystems). Every selected filesystem is built for the target CPU and verified against its own version, package ownership, PGO record, ELF ABI and SHA-256. FAT32 currently exports V1/V3/V4 filesystem operations but not the FAT12/FAT16 Defragmenter ABI. Some format-specific releases also offer OVMF-qualified EFI drivers and kernel-specific Linux 6.12.107 modules. These are distinct release assets; the native .run only installs the .so. Safe installation of a .ko or .efi requires kernel/firmware-specific qualification and must not be silently performed on a foreign system.
+
+### Two-file calendar package compatibility (1.0.42)
+
+Calendar providers can now ship only their native `.so` and illustrated PDF.
+The OS validates the same source revision, PGO/LTO flags and module SHA-256
+from Debian control metadata rather than requiring a persistent BUILD-INFO
+file. Existing calendar/clock releases with BUILD-INFO remain accepted.
