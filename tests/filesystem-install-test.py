@@ -132,7 +132,7 @@ class InstallerTests(unittest.TestCase):
         # The actual exFAT v0.1.3 aggressive build includes glibc's
         # x86-64 dynamic loader as a DT_NEEDED entry.
         with_loader = allowed + (
-            " 0x0000000000000001 (NEEDED) Shared library: [ld-linux-x86-64.so.2]\\n")
+            " 0x0000000000000001 (NEEDED) Shared library: [ld-linux-x86-64.so.2]\n")
         worker.validate_runtime_dependencies(exfat, with_loader)
         with self.assertRaisesRegex(ValueError, "ELF runtime"):
             worker.validate_runtime_dependencies(fat, with_loader)
