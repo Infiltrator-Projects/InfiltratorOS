@@ -40,6 +40,15 @@ cc -std=c11 -O2 -Wall -Wextra -Werror -Wpedantic \
 cc -std=c11 -O2 -Wall -Wextra -Werror -Wpedantic -DINSTALL_TEMPORAL_RESOURCES \
     "$ROOT/packaging/start-native-install.c" "$ROOT/packaging/installer-process.c" \
     -o "$WORK/start-temporal-resources-install"
+# Test real production slug validation for every filesystem, including OFS.
+for profile in INSTALL_TEMPORAL_RESOURCES INSTALL_FILESYSTEM_RESOURCES; do
+    cc -std=c11 -O2 -Wall -Wextra -Werror -Wpedantic "-D$profile" \
+        "$ROOT/tests/native-provider-slug-test.c" "$ROOT/packaging/installer-process.c" \
+        -o "$WORK/native-provider-slug-test"
+    "$WORK/native-provider-slug-test"
+done
+# Startup errors must write to the current run, not the old shared status.
+grep -Fq 'fopen(status_file(), "w")' "$ROOT/packaging/start-native-install.c"
 # Distinct per-provider launchers must not be able to use a fixed shared status.
 grep -Fq 'provider_slug' "$ROOT/packaging/start-native-install.c"
 grep -Fq 'run_status' "$ROOT/packaging/start-native-install.c"

@@ -7,6 +7,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <sys/resource.h>
 #include <time.h>
 #include <unistd.h>
 
@@ -51,9 +52,14 @@ int main(int argc, char **argv)
     int original = open("/dev/null", O_RDONLY);
     CHECK(original >= 0);
     /* The shared helper must close parent descriptors even above the old cap. */
-    int descriptor = fcntl(original, F_DUPFD, 5000);
+    struct rlimit limits;
+    CHECK(getrlimit(RLIMIT_NOFILE, &limits) == 0);
+    int minimum_fd = 5000;
+    if (limits.rlim_cur != RLIM_INFINITY && limits.rlim_cur <= 5000)
+        minimum_fd = limits.rlim_cur > 32 ? (int)(limits.rlim_cur - 8) : 3;
+    int descriptor = fcntl(original, F_DUPFD, minimum_fd);
     close(original);
-    CHECK(descriptor >= 5000);
+    CHECK(descriptor >= minimum_fd);
     char descriptor_text[32];
     snprintf(descriptor_text, sizeof(descriptor_text), "%d", descriptor);
     char *const marker_arguments[] = { executable, "--marker", marker, descriptor_text, NULL };

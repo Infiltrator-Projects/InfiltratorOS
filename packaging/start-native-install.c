@@ -246,7 +246,7 @@ static void spawn_progress_ui(DesktopSession *session)
 
 static void report_start_failure(int error)
 {
-    FILE *file = fopen(STATUS_PATH, "w");
+    FILE *file = fopen(status_file(), "w");
     if (file) {
         fprintf(file, "state=failed\nprogress=0\nstage=" INSTALL_NAME
                       " installer could not start\ndetail=%s\n", strerror(error));
@@ -255,15 +255,26 @@ static void report_start_failure(int error)
     fprintf(stderr, INSTALL_NAME " installer could not start: %s\n", strerror(error));
 }
 
+#if defined(INSTALL_TEMPORAL_RESOURCES) || defined(INSTALL_FILESYSTEM_RESOURCES)
+/* Validate signed provider types, including the independent OFS installer. */
+static bool valid_provider_slug(const char *slug)
+{
+    if (!slug || !*slug || strlen(slug) >= sizeof(provider_slug)) return false;
+    if (strncmp(slug, "calendar-", 9) == 0) return slug[9] != '\0';
+    if (strncmp(slug, "clock-", 6) == 0) return slug[6] != '\0';
+    return strcmp(slug, "filesystem-fat12") == 0 ||
+           strcmp(slug, "filesystem-fat16") == 0 ||
+           strcmp(slug, "filesystem-fat32") == 0 ||
+           strcmp(slug, "filesystem-ofs") == 0;
+}
+#endif
+
 int main(int argc, char **argv)
 {
     if (geteuid() != 0) die("must run as root");
 #if defined(INSTALL_TEMPORAL_RESOURCES) || defined(INSTALL_FILESYSTEM_RESOURCES)
-    if (argc != 2 || strlen(argv[1]) >= sizeof(provider_slug) ||
-        (strncmp(argv[1], "calendar-", 9) != 0 &&
-         strncmp(argv[1], "clock-", 6) != 0 &&
-         strncmp(argv[1], "filesystem-fat", 14) != 0))
-        die("expected one calendar or clock provider slug");
+    if (argc != 2 || !valid_provider_slug(argv[1]))
+        die("expected one calendar, clock, or filesystem provider slug");
     for (const char *p = argv[1]; *p; ++p)
         if (!(islower((unsigned char)*p) || isdigit((unsigned char)*p) || *p == '-'))
             die("unsafe temporal provider slug");

@@ -1,3 +1,10 @@
+## 1.0.44 — Restore OFS installer completion
+
+- Allow the 62nd installer (`filesystem-ofs`) through the per-job launcher.
+- Write failed-launch status into the current installation run, not a stale path.
+- Compile regression tests for all filesystem slugs and rejected identities.
+- Make the detached-process descriptor test adapt to the host's RLIMIT_NOFILE.
+
 ## 1.0.43 — 30 October 2026
 
 - Provision the independent OFS.so source package as the fourth filesystem
