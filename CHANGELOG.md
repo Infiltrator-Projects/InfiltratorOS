@@ -1,3 +1,9 @@
+## 1.0.46 — Verify filesystem two-file packages and migrate old documentation
+
+- Verify FAT12/FAT16/FAT32/OFS CPU-native shared libraries and illustrated PDFs using Debian source, flags, PGO, ownership and SHA-256 metadata rather than obsolete BUILD-INFO files.
+- Reuse an installed filesystem only when both qualified files are present; clean known unowned obsolete engineering documentation after verification.
+- Regression-test metadata failure and four-format cleanup; seed obsolete documentation in end-to-end filesystem integration tests.
+
 ## 1.0.45 — Clean all 54 calendar and clock documentation installs
 
 - Require the current PDF and Debian-native attestation for all 31 calendars and 23 clocks, never an obsolete BUILD-INFO record.

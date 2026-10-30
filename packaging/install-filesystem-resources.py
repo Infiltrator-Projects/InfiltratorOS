@@ -126,38 +126,54 @@ def download(url, path, digest, length):
     path.chmod(0o700)
 
 def verify(entry, version, root=Path("/"), query=True):
+    """Verify an installed SO + PDF against Debian-native source/build data."""
     if query:
         expression = "-f=" + chr(36) + "{Status}\n" + chr(36) + "{Version}\n"
-        package = subprocess.check_output(["/usr/bin/dpkg-query", "-W", expression, entry["package"]], text=True)
-        if package.splitlines() != ["install ok installed", version + "+native1"]:
-            raise ValueError("Expected native FAT package missing or wrong version")
+        identity = subprocess.check_output(
+            ["/usr/bin/dpkg-query", "-W", expression, entry["package"]], text=True)
+        if identity.splitlines() != ["install ok installed", version + "+native1"]:
+            raise ValueError("Expected native filesystem package missing or wrong version")
     module = root / entry["resource"].lstrip("/")
-    info_path = root / "System/Resources/Documentation" / entry["repository"] / "BUILD-INFO"
-    data = dict(line.split(": ", 1) for line in info_path.read_text().splitlines() if ": " in line)
-    if any(data.get(k) != v for k, v in {
-        "Version": version, "Package": entry["package"],
-        "Module": entry["resource"], "Profile": "aggressive"}.items()):
-        raise ValueError("Installed native filesystem build record mismatch")
-    flags = data.get("C flags", "")
-    if "-O3" not in flags or "-march=native" not in flags or "-flto" not in flags:
+    guide = root / "System/Resources/Documentation" / entry["repository"] / (
+        entry["resource"].rsplit("/", 1)[1].removesuffix(".so") + ".pdf")
+    if guide.is_symlink() or not guide.is_file():
+        raise ValueError("Required filesystem illustrated PDF is missing")
+    with guide.open("rb") as file:
+        if file.read(5) != b"%PDF-":
+            raise ValueError("Invalid filesystem illustrated PDF")
+    report = subprocess.check_output(
+        ["/usr/bin/dpkg-query", "-s", entry["package"]], text=True)
+    data = dict(line.split(": ", 1) for line in report.splitlines() if ": " in line)
+    expected = {
+        "Version": version + "+native1",
+        "X-Infiltrator-Native-Profile": "aggressive",
+        "X-Infiltrator-LTO": "enabled",
+        "X-Infiltrator-PGO": "trained-two-pass",
+    }
+    for key, expected_value in expected.items():
+        if data.get(key) != expected_value:
+            raise ValueError("Native filesystem build metadata mismatch: " + key)
+    flags = data.get("X-Infiltrator-Cflags", "").split()
+    optimisations = [x for x in flags if re.fullmatch(r"-O(?:[0-9]+|s|g|fast)", x)]
+    if not optimisations or optimisations[-1] != "-O3" or "-march=native" not in flags or not any(
+            item == "-flto" or item.startswith("-flto=") for item in flags):
         raise ValueError("Module not compiled with the advertised native flags")
-    if entry["id"] == "ofs":
-        if (data.get("LTO") != "enabled" or
-                data.get("PGO") != "trained two-pass profile (OFS V1/V2/V3 boundary and failure fixtures)"):
-            raise ValueError("OFS requires measured two-pass PGO and LTO")
-    elif tuple(map(int, version.split("."))) >= (0, 1, 2):
-        if (data.get("LTO") != "enabled" or
-                data.get("PGO") != "trained two-pass profile (V1 and V3/V4 fixtures)"):
-            raise ValueError("FAT 0.1.2+ requires measured two-pass PGO and LTO")
-    if hashlib.sha256(module.read_bytes()).hexdigest() != data.get("SHA256"):
-        raise ValueError("Installed module differs from its build record")
+    if not re.fullmatch(r"[0-9a-f]{40}", data.get("X-Infiltrator-Source-Revision", "")):
+        raise ValueError("Missing filesystem source revision in Debian control")
+    if hashlib.sha256(module.read_bytes()).hexdigest() != data.get("X-Infiltrator-Resource-SHA256"):
+        raise ValueError("Installed filesystem SO differs from Debian package hash")
+    if hashlib.sha256(guide.read_bytes()).hexdigest() != data.get("X-Infiltrator-PDF-SHA256"):
+        raise ValueError("Installed filesystem PDF differs from Debian package hash")
     if query:
-        for p in (root / "System", root / "System/Filesystems", module):
-            if p.is_symlink() or p.stat().st_uid != 0 or p.stat().st_mode & 0o022:
-                raise ValueError("Module directory/file ownership is not trusted")
-        owner = subprocess.check_output(["/usr/bin/dpkg-query", "-S", entry["resource"]], text=True)
-        if not owner.startswith(entry["package"] + ":"):
-            raise ValueError("Filesystem module owned by wrong package")
+        for p in (root / "System", root / "System/Filesystems", module,
+                  root / "System/Resources", guide.parent, guide):
+            metadata = p.lstat()
+            if metadata.st_uid != 0 or metadata.st_mode & 0o022 or p.is_symlink():
+                raise ValueError("Untrusted native filesystem path: " + str(p))
+        for path in (module, guide):
+            owner = subprocess.check_output(["/usr/bin/dpkg-query", "-S", str(path)], text=True)
+            if not owner.startswith(entry["package"] + ":"):
+                raise ValueError("Filesystem payload owned by wrong package")
     readelf = subprocess.check_output(["/usr/bin/readelf", "-Ws", str(module)], text=True)
     symbols = ["infiltrator_filesystem_module_v1",
                "infiltrator_filesystem_module_v3",
@@ -179,23 +195,51 @@ def verify(entry, version, root=Path("/"), query=True):
         raise ValueError("Unexpected ELF runtime dependency")
 
 def native_installed(entry, version):
-    """Verify an existing native filesystem package without executing its driver."""
+    """Verify the actual two-file package, without executing the driver."""
     try:
         verify(entry, version)
-        info = Path("/System/Resources/Documentation") / entry["repository"] / "BUILD-INFO"
-        for path in (Path("/System/Resources"), info.parent, info):
-            metadata = path.lstat()
-            if metadata.st_uid != 0 or metadata.st_mode & 0o022 or path.is_symlink():
-                raise ValueError("Untrusted filesystem build record: " + str(path))
-        if not stat.S_ISREG(info.stat().st_mode):
-            raise ValueError("Filesystem build record is not a regular file")
-        owner = subprocess.check_output(["/usr/bin/dpkg-query", "-S", str(info)], text=True)
-        if not owner.startswith(entry["package"] + ":"):
-            raise ValueError("Filesystem build record belongs to another package")
         return True
     except (OSError, ValueError, subprocess.SubprocessError) as error:
         print("Native cache miss for " + entry["repository"] + ": " + str(error), flush=True)
         return False
+
+
+def cleanup_legacy_docs(entry, root=Path("/"), owner_lookup=None):
+    """Remove known old unowned records; leave all foreign/package-owned files."""
+    folder = root / "System/Resources/Documentation" / entry["repository"]
+    manual = folder / (entry["resource"].rsplit("/", 1)[1].removesuffix(".so") + ".pdf")
+    if not manual.is_file() or manual.is_symlink():
+        raise ValueError("Filesystem PDF must exist before any legacy cleanup")
+    with manual.open("rb") as file:
+        if file.read(5) != b"%PDF-":
+            raise ValueError("Invalid filesystem PDF before cleanup")
+    if root == Path("/"):
+        for d in (root / "System", root / "System/Resources",
+                  root / "System/Resources/Documentation", folder):
+            meta = d.lstat()
+            if not stat.S_ISDIR(meta.st_mode) or meta.st_uid != 0 or meta.st_mode & 0o022:
+                raise ValueError("Unsafe filesystem documentation directory")
+    names = {"BUILD-INFO", "README.md", "MIGRATION-PROVENANCE.md", "LICENSE"}
+    removed = 0
+    for item in folder.iterdir():
+        if item.name not in names or item.is_symlink() or not item.is_file():
+            continue
+        if root == Path("/") and item.stat().st_uid != 0:
+            continue
+        if owner_lookup is None:
+            owned = subprocess.run(["/usr/bin/dpkg-query", "-S", str(item)],
+                                   capture_output=True, text=True, check=False)
+            if owned.returncode not in (0, 1) or owned.returncode == 0:
+                print("Preserving package-owned filesystem documentation: " + str(item), flush=True)
+                continue
+        elif owner_lookup(item):
+            continue
+        item.unlink()
+        removed += 1
+    if removed:
+        print("Removed " + str(removed) + " unowned obsolete document(s) for " +
+              entry["repository"], flush=True)
+    return removed
 
 
 def ensure_dependencies(entry):
@@ -222,6 +266,7 @@ def install(entry):
         raise ValueError("Oversized GitHub release metadata")
     version, location, digest, length = release_installer(entry, json.loads(payload))
     if native_installed(entry, version):
+        cleanup_legacy_docs(entry)
         print("Already installed and verified: " + entry["repository"], flush=True)
         return True
     ensure_dependencies(entry)
@@ -232,6 +277,7 @@ def install(entry):
         download(location, installer, digest, length)
         run([installer, "--profile", "aggressive", "--system-package-mode"])
         verify(entry, version)
+        cleanup_legacy_docs(entry)
     return False
 
 def main():

@@ -102,23 +102,40 @@ class InstallerTests(unittest.TestCase):
             with self.subTest(bad=bad), self.assertRaises((ValueError, TypeError)):
                 worker.release_installer(self.entry, bad)
 
-    def test_native_fat_012_requires_real_pgo_build_record(self):
+    def test_native_fat_requires_pdf_and_pgo_in_debian_metadata(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             module = root / self.entry["resource"].lstrip("/")
             module.parent.mkdir(parents=True)
             module.write_bytes(b"test data")
-            info = root / "System/Resources/Documentation" / self.entry["repository"] / "BUILD-INFO"
-            info.parent.mkdir(parents=True)
-            info.write_text(
-                "Version: 0.1.2\n"
-                f"Module: {self.entry['resource']}\n"
-                f"Package: {self.entry['package']}\n"
-                "Profile: aggressive\n"
-                "C flags: -O3 -march=native -mtune=native -flto=auto\n"
-                "SHA256: invalid\n")
-            with self.assertRaisesRegex(ValueError, "requires measured two-pass PGO"):
-                worker.verify(self.entry, "0.1.2", root=root, query=False)
+            guide = root / "System/Resources/Documentation" / self.entry["repository"] / "FAT12.pdf"
+            guide.parent.mkdir(parents=True)
+            info = ("Version: 0.1.2+native1\n"
+                    "X-Infiltrator-Native-Profile: aggressive\n"
+                    "X-Infiltrator-LTO: enabled\n"
+                    "X-Infiltrator-PGO: disabled\n")
+            with patch.object(worker.subprocess, "check_output", return_value=info):
+                with self.assertRaisesRegex(ValueError, "PDF"):
+                    worker.verify(self.entry, "0.1.2", root=root, query=False)
+                guide.write_bytes(b"%PDF-1.4\n")
+                with self.assertRaisesRegex(ValueError, "X-Infiltrator-PGO"):
+                    worker.verify(self.entry, "0.1.2", root=root, query=False)
+
+    def test_safe_cleanup_all_four_filesystems(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            for entry in self.entries:
+                docs = root / "System/Resources/Documentation" / entry["repository"]
+                docs.mkdir(parents=True)
+                name = entry["resource"].rsplit("/", 1)[1].removesuffix(".so") + ".pdf"
+                (docs / name).write_bytes(b"%PDF-1.4\n")
+                for legacy in ("BUILD-INFO", "README.md", "MIGRATION-PROVENANCE.md", "LICENSE"):
+                    (docs / legacy).write_text("obsolete")
+                (docs / "personal.txt").write_text("keep")
+                self.assertEqual(worker.cleanup_legacy_docs(
+                    entry, root=root, owner_lookup=lambda path: path.name == "LICENSE"), 3)
+                self.assertEqual({p.name for p in docs.iterdir()},
+                                 {name, "LICENSE", "personal.txt"})
 
     def test_current_native_fat_skips_download_and_build(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -127,8 +144,10 @@ class InstallerTests(unittest.TestCase):
             with patch.dict(worker.os.environ, {"INFILTRATOROS_RELEASE_DIR": str(root)}), \
                  patch.object(worker, "native_installed", return_value=True), \
                  patch.object(worker, "ensure_dependencies", side_effect=AssertionError("unnecessary apt")), \
-                 patch.object(worker, "download", side_effect=AssertionError("unnecessary download")):
+                 patch.object(worker, "download", side_effect=AssertionError("unnecessary download")), \
+                 patch.object(worker, "cleanup_legacy_docs") as cleanup:
                 self.assertTrue(worker.install(self.entry))
+                cleanup.assert_called_once_with(self.entry)
 
     def test_stale_native_fat_rebuilds(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -141,8 +160,10 @@ class InstallerTests(unittest.TestCase):
                  patch.object(worker, "ensure_dependencies") as dependencies, \
                  patch.object(worker, "download") as download, \
                  patch.object(worker, "run") as compile_install, \
-                 patch.object(worker, "verify") as verify:
+                 patch.object(worker, "verify") as verify, \
+                 patch.object(worker, "cleanup_legacy_docs") as cleanup:
                 self.assertFalse(worker.install(self.entry))
+                cleanup.assert_called_once_with(self.entry)
                 dependencies.assert_called_once()
                 download.assert_called_once()
                 compile_install.assert_called_once()

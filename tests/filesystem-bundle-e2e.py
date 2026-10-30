@@ -40,6 +40,12 @@ with tempfile.TemporaryDirectory(prefix="native-worker.", dir=native) as tempora
         assert {"install-filesystem-resources", "start-filesystem-resources-install",
                 "filesystem-resources-progress", "prepare-native-releases"} <= names
         archive.extractall(stage / "workers", filter="data")
+    # Recreate old unowned documentation to test migration, without touching real media.
+    for entry in entries:
+        folder = Path("/System/Resources/Documentation") / entry["repository"]
+        folder.mkdir(parents=True, exist_ok=True)
+        (folder / "BUILD-INFO").write_text("old build")
+        (folder / "MIGRATION-PROVENANCE.md").write_text("old engineering note")
     env = dict(os.environ, INFILTRATOROS_INSTALL_RUNTIME=str(stage))
     for entry in entries:
         slug = entry["repository"].lower()
@@ -55,6 +61,12 @@ with tempfile.TemporaryDirectory(prefix="native-worker.", dir=native) as tempora
         version = subprocess.check_output(["dpkg-query", "-W", "-f=${Version}",
                                            entry["package"]], text=True)
         assert version.endswith("+native1"), version
+        folder = Path("/System/Resources/Documentation") / entry["repository"]
+        pdf = folder / (module.stem + ".pdf")
+        assert {x.name for x in folder.iterdir()} == {pdf.name}, entry["repository"]
+        assert pdf.read_bytes().startswith(b"%PDF-"), pdf
+        pdf_owner = subprocess.check_output(["dpkg-query", "-S", str(pdf)], text=True).strip()
+        assert pdf_owner == entry["package"] + ": " + str(pdf), pdf_owner
     assert len(list((stage / "status").glob("*-install.status"))) == 4
     assert {p.name for p in Path("/System/Filesystems").glob("FAT*.so")} == {"FAT12.so", "FAT16.so", "FAT32.so"}
 print("FAT12/FAT16/FAT32/OFS installed by exact InfiltratorOS worker bundle, independently owned and verified")
