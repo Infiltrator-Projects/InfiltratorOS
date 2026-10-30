@@ -188,8 +188,10 @@ class InstallationContract(unittest.TestCase):
             with patch.dict(worker.os.environ, {"INFILTRATOROS_RELEASE_DIR": str(root)}), \
                  patch.object(worker, "native_installed", return_value=True), \
                  patch.object(worker, "ensure_dependencies", side_effect=AssertionError("unnecessary apt")), \
-                 patch.object(worker, "download_installer", side_effect=AssertionError("unnecessary download")):
+                 patch.object(worker, "download_installer", side_effect=AssertionError("unnecessary download")), \
+                 patch.object(worker, "clean_legacy_documentation") as cleanup:
                 self.assertTrue(worker.install_entry(self.entry))
+                cleanup.assert_called_once_with(self.entry)
 
     def test_stale_native_release_uses_original_build_path(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -202,8 +204,10 @@ class InstallationContract(unittest.TestCase):
                  patch.object(worker, "ensure_dependencies") as dependencies, \
                  patch.object(worker, "download_installer") as download, \
                  patch.object(worker, "required") as compile_install, \
-                 patch.object(worker, "verify_installation") as verify:
+                 patch.object(worker, "verify_installation") as verify, \
+                 patch.object(worker, "clean_legacy_documentation") as cleanup:
                 self.assertFalse(worker.install_entry(self.entry))
+                cleanup.assert_called_once_with(self.entry)
                 dependencies.assert_called_once()
                 download.assert_called_once()
                 compile_install.assert_called_once()
