@@ -33,6 +33,26 @@ class InstallationContract(unittest.TestCase):
         self.assertEqual({x["id"] for x in entries if x["kind"] == "clock"}, set("babylonian-ancient babylonian-hours binary chinese-ke chinese-time decimal hexadecimal indian-ghati internet italian-hours japanese-temporal japanese-temporal-early julian mean-solar modified-julian nuremberg-hours nuremberg-solar roman-temporal sidereal solar standard-12 standard-24 unix".split()))
         self.assertEqual({x["id"] for x in entries if x["kind"] == "calendar"}, set("armenian-traditional bahai buddhist byzantine chinese coptic dangi egyptian-nabonassar ethiopian ethiopic-amete-alem french-republican gregorian hebrew iso-week indian international-fixed islamic islamic-civil islamic-tbla islamic-umalqura japanese julian mayan minguo persian positivist revised-julian roman swedish-historical thai-buddhist-solar world".split()))
 
+    def test_real_clock_native_flag_order(self):
+        # From the currently published Common clock-tools/build.sh, not a
+        # fabricated ordering that puts -O3 first.
+        published_clock = "-g0 -pipe -flto -DNDEBUG -fPIC -std=c11 -O3 -march=native -mtune=native"
+        self.assertTrue(worker.native_compiler_flags_are_aggressive(published_clock))
+        self.assertTrue(worker.native_compiler_flags_are_aggressive("-O3 -march=native -flto"))
+        self.assertTrue(worker.native_compiler_flags_are_aggressive("-O2 -O3 -march=native -flto"))
+        for flags in (
+            "-g0 -pipe -flto -DNDEBUG -fPIC -std=c11 -O2 -march=native -mtune=native",
+            "-O3 -O2 -march=native -flto",  # Last optimisation wins.
+            "-O3 -Ofast -march=native -flto",
+            "-O3 -Os -march=native -flto",
+            "-O3 -march=x86-64 -flto",  # Generic CPU is not native.
+            "-O3 -march=native -flto=auto",  # Preserve existing exact LTO contract.
+            "-O3evil -march=native -flto",  # Substring spoofing.
+            "-O3 -march=native", "",
+        ):
+            with self.subTest(flags=flags):
+                self.assertFalse(worker.native_compiler_flags_are_aggressive(flags))
+
     def test_two_file_provenance_uses_dpkg_not_developer_documents(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

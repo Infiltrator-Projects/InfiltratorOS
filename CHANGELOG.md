@@ -1,5 +1,7 @@
 ## 1.0.44 — Restore OFS installer completion
 
+- Fix native clock verification for the actual published C flag order; validate flag tokens and the last effective optimisation level without weakening CPU-target or LTO requirements.
+
 - Allow the 62nd installer (`filesystem-ofs`) through the per-job launcher.
 - Write failed-launch status into the current installation run, not a stale path.
 - Compile regression tests for all filesystem slugs and rejected identities.

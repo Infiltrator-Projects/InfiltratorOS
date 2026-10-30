@@ -169,6 +169,19 @@ def installed_provenance(entry, root=Path("/"), query=True):
     }
 
 
+def native_compiler_flags_are_aggressive(flags):
+    """Check actual flag tokens, including the effective final -O level.
+
+    Published Clock-Binary uses -g0 -pipe -flto ... -O3 -march=native.
+    Reject -O2 or -Os overriding -O3; never accept substring spoofing.
+    """
+    tokens = flags.split()
+    optimization = [token for token in tokens
+                    if re.fullmatch(r"-O(?:[0-9]+|g|s|z|fast)", token)]
+    return (bool(optimization) and optimization[-1] == "-O3" and
+            "-march=native" in tokens and "-flto" in tokens)
+
+
 def verify_installation(entry, version, root=Path("/"), query=True):
     if query:
         identity = subprocess.check_output(["/usr/bin/dpkg-query", "-W", "-f=${Status}\n${Version}\n", entry["package"]], text=True)
@@ -181,7 +194,7 @@ def verify_installation(entry, version, root=Path("/"), query=True):
     if any(info.get(key) != value for key, value in expected.items()):
         raise ValueError("Installed native build record does not match this provider and release")
     flags = info.get("C flags", "")
-    if not flags.startswith("-O3 ") or "-march=native" not in flags or "-flto" not in flags:
+    if not native_compiler_flags_are_aggressive(flags):
         raise ValueError("Installed module was not compiled aggressively for this CPU")
     if not re.fullmatch(r"[0-9a-f]{40}", info.get("Source revision", "")):
         raise ValueError("Native build record has no source commit")
