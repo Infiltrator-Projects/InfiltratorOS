@@ -214,7 +214,14 @@ def validate_runtime_dependencies(entry, dynamic_section):
     FAT and OFS remain independently freestanding. Never use ldd or execute
     downloaded module code as part of verification.
     """
-    needed = re.findall(r"\\(NEEDED\\)\\s+Shared library: \\[([^\\]]+)\\]", dynamic_section)
+    needed = []
+    for line in dynamic_section.splitlines():
+        if "(NEEDED)" not in line:
+            continue
+        marker = "Shared library: ["
+        if marker not in line or "]" not in line.split(marker, 1)[1]:
+            raise ValueError("Malformed ELF runtime dependency record")
+        needed.append(line.split(marker, 1)[1].split("]", 1)[0])
     if entry["id"] != "exfat" and needed:
         raise ValueError("Unexpected ELF runtime dependency")
     if entry["id"] == "exfat":
