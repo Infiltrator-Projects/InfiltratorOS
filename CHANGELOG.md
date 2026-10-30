@@ -1,3 +1,10 @@
+## 1.0.45 — Clean all 54 calendar and clock documentation installs
+
+- Require the current PDF and Debian-native attestation for all 31 calendars and 23 clocks, never an obsolete BUILD-INFO record.
+- Clean only known, unowned previous engineering documentation after each native package and ABI check. Preserve unfamiliar, symbolic-link and package-owned content.
+- Require the PDF to exist before treating a provider as a cached successful installation, regardless of stale BUILD-INFO files.
+- Add 54-provider cleanup regression tests and end-to-end migration fixtures.
+
 ## 1.0.44 — Restore OFS installer completion
 
 - Fix native clock verification for the actual published C flag order; validate flag tokens and the last effective optimisation level without weakening CPU-target or LTO requirements.

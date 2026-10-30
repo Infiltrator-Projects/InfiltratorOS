@@ -78,6 +78,61 @@ class InstallationContract(unittest.TestCase):
             with self.assertRaises(ValueError):
                 worker.installed_provenance(self.entry, root)
 
+    def test_build_info_never_overrides_current_package(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            docs = root / "System/Resources/Documentation" / self.entry["repository"]
+            docs.mkdir(parents=True)
+            (docs / "BUILD-INFO").write_text("Source revision: " + "0" * 40)
+            report = ("Version: 1.2.3+native1\n"
+                      "X-Infiltrator-Source-Revision: " + "a" * 40 + "\n"
+                      "X-Infiltrator-Native-Profile: aggressive\n")
+            with patch.object(worker.subprocess, "check_output", return_value=report):
+                with self.assertRaisesRegex(ValueError, "PDF"):
+                    worker.installed_provenance(self.entry, root)
+                (docs / (self.entry["name"] + ".pdf")).write_bytes(b"%PDF-1.7\n")
+                info = worker.installed_provenance(self.entry, root)
+                self.assertEqual(info["Source revision"], "a" * 40)
+
+    def test_all_54_remove_known_unowned_old_documentation(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for entry in worker.catalogue():
+                docs = root / "System/Resources/Documentation" / entry["repository"]
+                (docs / "common").mkdir(parents=True)
+                (docs / "docs").mkdir()
+                (docs / "common/old-source.c").write_text("old copied source")
+                (docs / "docs/ARCHITECTURE.md").write_text("old engineering")
+                (docs / "BUILD-INFO").write_text("obsolete")
+                (docs / "LICENSE").write_text("obsolete")
+                guide = docs / (entry["name"] + ".pdf")
+                guide.write_bytes(b"%PDF-1.7\n")
+                self.assertEqual(worker.clean_legacy_documentation(
+                    entry, root, owner_lookup=lambda path: False), 4)
+                self.assertEqual({p.name for p in docs.iterdir()}, {guide.name})
+
+    def test_legacy_cleanup_preserves_owned_unknown_and_symlinks(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            docs = root / "System/Resources/Documentation" / self.entry["repository"]
+            docs.mkdir(parents=True)
+            guide = docs / (self.entry["name"] + ".pdf")
+            guide.write_bytes(b"%PDF-1.7\n")
+            (docs / "BUILD-INFO").write_text("package owned")
+            (docs / "SOURCE.md").write_text("unowned")
+            (docs / "personal-note.txt").write_text("unknown")
+            outside = root / "outside"
+            outside.mkdir()
+            (outside / "keep.txt").write_text("preserve")
+            (docs / "common").symlink_to(outside, target_is_directory=True)
+            self.assertEqual(worker.clean_legacy_documentation(
+                self.entry, root, owner_lookup=lambda path: path.name == "BUILD-INFO"), 1)
+            self.assertTrue((docs / "BUILD-INFO").exists())
+            self.assertTrue((docs / "personal-note.txt").exists())
+            self.assertTrue((docs / "common").is_symlink())
+            self.assertTrue((outside / "keep.txt").exists())
+            self.assertTrue(guide.is_file())
+
     def test_exact_native_installer(self):
         version, url, digest, size = worker.release_installer(self.entry, self.release)
         self.assertEqual((version, digest, size), ("1.2.3", "a" * 64, 123))

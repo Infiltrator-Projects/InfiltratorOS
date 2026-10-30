@@ -45,6 +45,15 @@ with tempfile.TemporaryDirectory(prefix="native-worker.", dir=native) as tempora
         module.write_text("legacy ownership fixture\n")
     subprocess.run(["dpkg-deb", "--root-owner-group", "--build", legacy, work / "legacy.deb"], check=True)
     subprocess.run(["dpkg", "--install", work / "legacy.deb"], check=True)
+    # Seed the old engineering layout for all 54 provider identities.
+    for entry in entries:
+        docs = Path("/System/Resources/Documentation") / entry["repository"]
+        (docs / "common").mkdir(parents=True, exist_ok=True)
+        (docs / "docs").mkdir(exist_ok=True)
+        (docs / "common/old-source.c").write_text("copied source")
+        (docs / "docs/README.md").write_text("old engineering notes")
+        (docs / "BUILD-INFO").write_text("Source revision: obsolete\n")
+        (docs / "SOURCE-MANIFEST.json").write_text("{}\n")
     # The exact bundled Python worker is invoked independently for all 54
     # providers, with one status file per provider in this CI installation.
     env = dict(os.environ, INFILTRATOROS_INSTALL_RUNTIME=str(work))
@@ -61,6 +70,13 @@ with tempfile.TemporaryDirectory(prefix="native-worker.", dir=native) as tempora
         assert ownership == entry["package"] + ": " + entry["resource"], ownership
     assert len(list(Path("/System/Resources/Calendars").glob("*.so"))) == 31
     assert len(list(Path("/System/Resources/Clocks").glob("*.so"))) == 23
+    for entry in entries:
+        docs = Path("/System/Resources/Documentation") / entry["repository"]
+        guide = docs / (entry["name"] + ".pdf")
+        assert {p.name for p in docs.iterdir()} == {guide.name}, entry["repository"]
+        assert guide.read_bytes().startswith(b"%PDF-")
+        owner = subprocess.check_output(["dpkg-query", "-S", str(guide)], text=True).strip()
+        assert owner == entry["package"] + ": " + str(guide), owner
 
     # Qualify all four filesystem jobs from the exact sealed maintainer bundle.
     filesystem_entries = json.loads((ROOT / "packaging/filesystem-resources.json").read_text())

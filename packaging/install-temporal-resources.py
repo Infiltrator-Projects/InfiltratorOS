@@ -10,6 +10,7 @@ import json
 import os
 from pathlib import Path
 import re
+import shutil
 import stat
 import subprocess
 import sys
@@ -135,19 +136,14 @@ class Metadata(ctypes.Structure):
 
 
 def installed_provenance(entry, root=Path("/"), query=True):
-    """Support both the original BUILD-INFO and the two-file provider package.
-
-    The two-file package stores its native-build attestation in dpkg control
-    fields rather than writing developer records into the native filesystem.
-    """
+    """Require the two-file package: PDF + Debian metadata, never old BUILD-INFO."""
     docs = root / "System/Resources/Documentation" / entry["repository"]
-    legacy = docs / "BUILD-INFO"
-    if legacy.is_file():
-        return dict(line.split(": ", 1) for line in legacy.read_text().splitlines()
-                    if ": " in line)
     guide = docs / (entry["name"] + ".pdf")
-    if not guide.is_file() or not guide.read_bytes()[:5] == b"%PDF-":
-        raise ValueError("Illustrated calendar PDF is missing or invalid")
+    if guide.is_symlink() or not guide.is_file():
+        raise ValueError("Illustrated calendar or clock PDF is missing or invalid")
+    with guide.open("rb") as stream:
+        if stream.read(5) != b"%PDF-":
+            raise ValueError("Illustrated calendar or clock PDF is missing or invalid")
     if not query:
         raise ValueError("Two-file provider package provenance needs dpkg metadata")
     package_status = subprocess.check_output(
@@ -167,6 +163,82 @@ def installed_provenance(entry, root=Path("/"), query=True):
         "Source revision": fields.get("X-Infiltrator-Source-Revision", ""),
         "SHA256": fields.get("X-Infiltrator-Resource-SHA256", ""),
     }
+
+
+# Files that came from the old installed engineering-document layout.
+# Unknown and package-owned paths are never deleted.
+LEGACY_DOC_NAMES = frozenset({
+    "BUILD-INFO", "LICENSE", "COPYING", "README", "README.md", "SOURCE.md",
+    "SOURCE-MANIFEST.json", "SOURCE-REVISION", "VALIDATION-RESULTS.json",
+    "FORENSIC-AUDIT.json", "CHANGELOG.md",
+})
+LEGACY_DOC_DIRS = frozenset({"common", "docs"})
+
+
+def _dpkg_owns_path(path):
+    result = subprocess.run(["/usr/bin/dpkg-query", "-S", str(path)],
+                            capture_output=True, text=True, check=False)
+    if result.returncode not in (0, 1):
+        raise RuntimeError("Unable to check Debian ownership: " + str(path))
+    return result.returncode == 0
+
+
+def clean_legacy_documentation(entry, root=Path("/"), owner_lookup=None):
+    """Clean known unowned legacy documentation after a successful native check.
+
+    Reject links, foreign owners and unexpected names, never traverse outside
+    the provider documentation folder, and never touch the installed PDF.
+    """
+    docs = root / "System/Resources/Documentation" / entry["repository"]
+    guide = docs / (entry["name"] + ".pdf")
+    if guide.is_symlink() or not guide.is_file():
+        raise ValueError("Refusing cleanup without a provider PDF: " + entry["repository"])
+    with guide.open("rb") as stream:
+        if stream.read(5) != b"%PDF-":
+            raise ValueError("Refusing cleanup without a valid provider PDF")
+    for directory in (root / "System", root / "System/Resources",
+                      root / "System/Resources/Documentation", docs):
+        info = directory.lstat()
+        if (not stat.S_ISDIR(info.st_mode) or info.st_mode & 0o022 or
+                (root == Path("/") and info.st_uid != 0)):
+            raise ValueError("Unsafe temporal documentation directory: " + str(directory))
+    owns = owner_lookup if owner_lookup is not None else _dpkg_owns_path
+    removed = 0
+
+    def safe_legacy_tree(path):
+        pending = [path]
+        checked = 0
+        while pending:
+            item = pending.pop()
+            checked += 1
+            if checked > 20000:
+                return False
+            info = item.lstat()
+            if (not (stat.S_ISDIR(info.st_mode) or stat.S_ISREG(info.st_mode))
+                    or (root == Path("/") and info.st_uid != 0) or owns(item)):
+                return False
+            if stat.S_ISDIR(info.st_mode):
+                pending.extend(item.iterdir())
+        return True
+
+    for item in docs.iterdir():
+        if item.name == guide.name:
+            continue
+        known = ((item.name in LEGACY_DOC_DIRS and item.is_dir())
+                 or (item.name in LEGACY_DOC_NAMES and item.is_file()))
+        if not known or not safe_legacy_tree(item):
+            print("Preserving unknown or package-owned legacy documentation: " + str(item),
+                  flush=True)
+            continue
+        if item.is_dir():
+            shutil.rmtree(item)
+        else:
+            item.unlink()
+        removed += 1
+    if removed:
+        print(f"Removed {removed} obsolete documentation entries for {entry['repository']}; "
+              "retained its PDF and independently installed module.", flush=True)
+    return removed
 
 
 def native_compiler_flags_are_aggressive(flags):
@@ -222,9 +294,8 @@ def native_installed(entry, version, release):
         return False
     library = Path(entry["resource"])
     docs = Path("/System/Resources/Documentation") / entry["repository"]
-    legacy = docs / "BUILD-INFO"
     guide = docs / (entry["name"] + ".pdf")
-    record = legacy if legacy.is_file() else guide
+    record = guide
     try:
         for path in (Path("/System"), Path("/System/Resources"), library.parent,
                      docs, library, record):
@@ -277,6 +348,7 @@ def install_entry(entry):
     release = json.loads(data)
     version, url, digest, size = release_installer(entry, release)
     if native_installed(entry, version, release):
+        clean_legacy_documentation(entry)
         print("Already installed and verified: " + entry["repository"], flush=True)
         return True
     ensure_dependencies(entry)
@@ -287,6 +359,7 @@ def install_entry(entry):
         download_installer(url, installer, digest, size)
         required([installer, "--profile", "aggressive", "--system-package-mode"])
         verify_installation(entry, version)
+        clean_legacy_documentation(entry)
     return False
 
 
