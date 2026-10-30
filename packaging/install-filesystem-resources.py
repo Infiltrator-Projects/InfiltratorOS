@@ -227,8 +227,12 @@ def validate_runtime_dependencies(entry, dynamic_section):
     if entry["id"] != "exfat" and needed:
         raise ValueError("Unexpected ELF runtime dependency")
     if entry["id"] == "exfat":
+        # glibc may record its own architecture-specific dynamic loader as
+        # DT_NEEDED when the native LTO/PGO build links against libc.
+        # This is a system runtime component, not a third-party filesystem
+        # implementation. Retain the strict allowlist for all other SONAMEs.
         allowed = {"libc.so.6", "libcrypto.so.3", "libsqlite3.so.0",
-                   "libm.so.6", "libpthread.so.0"}
+                   "libm.so.6", "libpthread.so.0", "ld-linux-x86-64.so.2"}
         unknown = set(needed) - allowed
         if unknown:
             raise ValueError("Unexpected exFAT runtime dependency: " + ", ".join(sorted(unknown)))
