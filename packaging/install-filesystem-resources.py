@@ -1,6 +1,6 @@
 #!/usr/bin/python3 -u
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Install and verify independently published FAT12/FAT16/FAT32/OFS native .so packages."""
+"""Install and verify independently published FAT12/16/32, OFS and exFAT native SO packages."""
 import fcntl
 import hashlib
 import json
@@ -23,10 +23,16 @@ CATALOGUE = []  # @EMBED_FILESYSTEM_CATALOGUE@
 
 def catalogue():
     entries = CATALOGUE or json.loads((Path(__file__).parent / "filesystem-resources.json").read_text())
-    expected = {"fat12", "fat16", "fat32", "ofs"}
-    if len(entries) != 4 or {x["id"] for x in entries} != expected:
-        raise ValueError("Exactly FAT12, FAT16, FAT32 and OFS must be specified")
+    expected = {"fat12", "fat16", "fat32", "ofs", "exfat"}
+    if len(entries) != 5 or {x["id"] for x in entries} != expected:
+        raise ValueError("Exactly FAT12, FAT16, FAT32, OFS and exFAT must be specified")
     for item in entries:
+        if item["id"] == "exfat":
+            if item != {"id": "exfat", "name": "exFAT",
+                        "repository": "Filesystem-exFAT", "package": "infiltrator-filesystem-exfat",
+                        "resource": "/System/Filesystems/exFAT.so"}:
+                raise ValueError("Invalid exFAT catalogue identity")
+            continue
         if item["id"] == "ofs":
             if item != {"id": "ofs", "name": "Amiga Original File System",
                         "repository": "Filesystem-OFS", "package": "infiltrator-filesystem-ofs",
@@ -91,7 +97,9 @@ def release_installer(entry, release):
     expected = {run_name, deb_name}
     bits = entry["id"][3:]
     milestone = (0, 1, 2) if bits == "32" else (0, 1, 3)
-    if entry["id"] == "ofs":
+    if entry["id"] == "exfat":
+        expected.update({"exFAT.so", "exfat-linux-6.12.107.ko", "SHA256SUMS"})
+    elif entry["id"] == "ofs":
         expected.update({"OFS.so", "SHA256SUMS"})
         if tuple(map(int, version.split("."))) >= (0, 1, 1):
             expected.add("ofs-linux-6.12.107.ko")
@@ -180,6 +188,10 @@ def verify(entry, version, root=Path("/"), query=True):
                "infiltrator_filesystem_module_v4"]
     if entry["id"] in {"fat12", "fat16"}:
         symbols.append("infiltrator_filesystem_defrag_v1")
+    if entry["id"] == "exfat":
+        symbols = ["infiltrator_filesystem_module_v3",
+                   "infiltrator_filesystem_module_v4",
+                   "infiltrator_filesystem_module_v5"]
     if entry["id"] == "ofs":
         symbols = ["infiltrator_filesystem_module_v1", "infiltrator_filesystem_module_v2",
                    "infiltrator_filesystem_module_v3", "infiltrator_filesystem_boot_v1",
@@ -188,7 +200,8 @@ def verify(entry, version, root=Path("/"), query=True):
         if symbol not in readelf:
             raise ValueError("Missing filesystem or defragmentation ABI")
     identity = subprocess.check_output(["/usr/bin/readelf", "-p", ".ifsmeta", str(module)], text=True)
-    for api in ((1, 2, 3) if entry["id"] == "ofs" else (1, 3, 4)):
+    for api in ((1, 2, 3) if entry["id"] == "ofs" else
+                (3, 4, 5) if entry["id"] == "exfat" else (1, 3, 4)):
         if f"IFS-MODULE:{entry['id']}:{api}" not in identity:
             raise ValueError("Wrong filesystem width or ABI")
     if "(NEEDED)" in subprocess.check_output(["/usr/bin/readelf", "-d", str(module)], text=True):
@@ -243,14 +256,18 @@ def cleanup_legacy_docs(entry, root=Path("/"), owner_lookup=None):
 
 
 def ensure_dependencies(entry):
-    ready = STATUS_DIR / "filesystem-dependencies-ready"
+    ready = STATUS_DIR / ("filesystem-exfat-dependencies-ready" if entry["id"] == "exfat"
+                          else "filesystem-dependencies-ready")
     if ready.exists():
         return
     status("running", 5, "Preparing filesystem build prerequisites", entry["name"])
     run(["/usr/bin/apt-get", "-o", "DPkg::Lock::Timeout=-1", "check"])
     run(["/usr/bin/apt-get", "-o", "DPkg::Lock::Timeout=-1", "update"])
+    packages = ["build-essential", "binutils", "python3"]
+    if entry["id"] == "exfat":
+        packages.extend(("exfatprogs", "dosfstools"))
     run(["/usr/bin/apt-get", "-o", "DPkg::Lock::Timeout=-1", "install",
-         "-y", "--no-install-recommends", "build-essential", "binutils", "python3"])
+         "-y", "--no-install-recommends", *packages])
     ready.touch(mode=0o644)
 
 
@@ -287,7 +304,7 @@ def main():
             print(entry["repository"].lower())
         return
     if len(sys.argv) != 2:
-        raise ValueError("Usage: install-filesystem-resources filesystem-fat12|filesystem-fat16|filesystem-fat32|filesystem-ofs")
+        raise ValueError("Usage: install-filesystem-resources filesystem-fat12|filesystem-fat16|filesystem-fat32|filesystem-ofs|filesystem-exfat")
     slug = sys.argv[1]
     entry = next((item for item in entries if item["repository"].lower() == slug), None)
     if entry is None:

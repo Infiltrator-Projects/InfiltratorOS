@@ -265,7 +265,8 @@ static bool valid_provider_slug(const char *slug)
     return strcmp(slug, "filesystem-fat12") == 0 ||
            strcmp(slug, "filesystem-fat16") == 0 ||
            strcmp(slug, "filesystem-fat32") == 0 ||
-           strcmp(slug, "filesystem-ofs") == 0;
+           strcmp(slug, "filesystem-ofs") == 0 ||
+           strcmp(slug, "filesystem-exfat") == 0;
 }
 #endif
 

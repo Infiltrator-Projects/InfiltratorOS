@@ -26,5 +26,12 @@
     "repository": "Filesystem-OFS",
     "package": "infiltrator-filesystem-ofs",
     "resource": "/System/Filesystems/OFS.so"
+  },
+  {
+    "id": "exfat",
+    "name": "exFAT",
+    "repository": "Filesystem-exFAT",
+    "package": "infiltrator-filesystem-exfat",
+    "resource": "/System/Filesystems/exFAT.so"
   }
 ]

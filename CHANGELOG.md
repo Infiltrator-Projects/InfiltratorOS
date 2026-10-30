@@ -1,3 +1,10 @@
+## 1.0.47 — Install aggressive-mode exFAT as fifth filesystem
+
+- Extend InfiltratorOS to five independently launched filesystem jobs: FAT12, FAT16, FAT32, OFS and exFAT (63 total installations).
+- Require exFAT's own release-pinned aggressive source .run with measured two-pass PGO, native CPU optimisation and LTO; verify Debian-native source metadata, ABI V3/V4/V5, module and PDF hashes and exact Debian ownership.
+- Switch only new OS releases to the 63-component native v3 snapshot. Previous 61/62 component snapshots remain available.
+- Test all five filesystem installers in the sealed bundle. The kernel module stays a separate release artifact, not installed.
+
 ## 1.0.46 — Verify filesystem two-file packages and migrate old documentation
 
 - Verify FAT12/FAT16/FAT32/OFS CPU-native shared libraries and illustrated PDFs using Debian source, flags, PGO, ownership and SHA-256 metadata rather than obsolete BUILD-INFO files.

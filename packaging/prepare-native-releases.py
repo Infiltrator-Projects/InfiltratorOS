@@ -13,7 +13,7 @@ import time
 import urllib.error
 import urllib.request
 
-URL = "https://infiltrator-projects.github.io/Infiltrator-Repository/catalogue/native-installers-v2.json"
+URL = "https://infiltrator-projects.github.io/Infiltrator-Repository/catalogue/native-installers-v3.json"
 MAX_BYTES = 3 * 1024 * 1024
 DIGEST = re.compile(r"sha256:[0-9a-f]{64}$")
 VERSION = re.compile(r"v[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?$")
@@ -41,10 +41,10 @@ def download(url: str) -> bytes:
 def expected_repositories(providers: Path, filesystems: Path) -> set[str]:
     temporal = providers.read_text().splitlines()
     fs = filesystems.read_text().splitlines()
-    if len(temporal) != 54 or len(fs) != 4:
+    if len(temporal) != 54 or len(fs) != 5:
         raise ValueError("Native resource catalogue is incomplete")
     slugs = temporal + fs
-    if len(set(slugs)) != 58 or any(not re.fullmatch(r"(?:calendar|clock|filesystem)-[a-z0-9-]+", item) for item in slugs):
+    if len(set(slugs)) != 59 or any(not re.fullmatch(r"(?:calendar|clock|filesystem)-[a-z0-9-]+", item) for item in slugs):
         raise ValueError("Duplicate or unsafe native resource identifier")
     names = {"System-Monitor", "Calculator", "Files", "Defragmenter"}
     names.update("".join(part.capitalize() for part in slug.split("-")[:1]) + "-" + "-".join(slug.split("-")[1:]) for slug in slugs)

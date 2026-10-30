@@ -18,7 +18,7 @@ def sample():
     names = ["System-Monitor", "Calculator", "Files", "Defragmenter"]
     for source in ("temporal-resources.json", "filesystem-resources.json"):
         names.extend(x["repository"] for x in json.loads((ROOT / "packaging" / source).read_text()))
-    assert len(names) == len(set(names)) == 62
+    assert len(names) == len(set(names)) == 63
     releases = {}
     for repo in names:
         version = "1.2.3"
@@ -34,7 +34,7 @@ def sample():
 
 
 class NativeSnapshotTest(unittest.TestCase):
-    def test_one_download_writes_sixty_two_checksums_and_local_releases(self):
+    def test_one_download_writes_sixty_three_checksums_and_local_releases(self):
         data = sample()
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -47,16 +47,16 @@ class NativeSnapshotTest(unittest.TestCase):
             with patch.object(worker, "download", return_value=data) as download, \
                  patch.object(worker.os, "geteuid", return_value=0):
                 count = worker.prepare(root / "release-json", temporal, filesystem)
-            self.assertEqual(count, 62)
+            self.assertEqual(count, 63)
             self.assertEqual(download.call_count, 1)
-            self.assertEqual(len(list((root / "release-json").glob("*.json"))), 62)
-            self.assertEqual(len(list((root / "release-json").glob("*.sha256"))), 62)
+            self.assertEqual(len(list((root / "release-json").glob("*.json"))), 63)
+            self.assertEqual(len(list((root / "release-json").glob("*.sha256"))), 63)
             self.assertEqual((root / "release-json" / "Calculator.sha256").read_text().split()[0], "a" * 64)
 
     def test_snapshot_rejects_tampering_and_missing_providers(self):
         payload = json.loads(sample())
         expected = {name.lower() for name in payload["releases"]}
-        self.assertEqual(len(worker.verify_snapshot(sample(), expected)), 62)
+        self.assertEqual(len(worker.verify_snapshot(sample(), expected)), 63)
         broken = copy.deepcopy(payload)
         broken["releases"]["Calculator"]["assets"][0]["digest"] = None
         with self.assertRaises(ValueError):

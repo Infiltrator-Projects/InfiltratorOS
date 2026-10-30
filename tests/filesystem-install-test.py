@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Contract tests for four independently packaged filesystem installers."""
+"""Contract tests for five independently packaged filesystem installers."""
 import copy
 import importlib.util
 import json
@@ -33,9 +33,9 @@ class InstallerTests(unittest.TestCase):
         }
 
     def test_signed_distinct_catalogue(self):
-        self.assertEqual({item["id"] for item in self.entries}, {"fat12", "fat16", "fat32", "ofs"})
+        self.assertEqual({item["id"] for item in self.entries}, {"fat12", "fat16", "fat32", "ofs", "exfat"})
         self.assertEqual({item["resource"] for item in self.entries},
-                         {"/System/Filesystems/FAT12.so", "/System/Filesystems/FAT16.so", "/System/Filesystems/FAT32.so", "/System/Filesystems/OFS.so"})
+                         {"/System/Filesystems/FAT12.so", "/System/Filesystems/FAT16.so", "/System/Filesystems/FAT32.so", "/System/Filesystems/OFS.so", "/System/Filesystems/exFAT.so"})
 
     def test_two_assets_and_github_native_zip(self):
         version, url, digest, size = worker.release_installer(self.entry, self.release)
@@ -86,6 +86,23 @@ class InstallerTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 worker.release_installer(entry, bad)
 
+    def test_exfat_requires_complete_checksum_bound_release(self):
+        entry = self.entries[4]
+        version = "0.1.2"
+        names = [f"filesystem-exfat-{version}-native-installer.run",
+                 f"infiltrator-filesystem-exfat_{version}_amd64.deb",
+                 "exFAT.so", "exfat-linux-6.12.107.ko", "SHA256SUMS"]
+        prefix = f"https://github.com/Infiltrator-Projects/Filesystem-exFAT/releases/download/v{version}/"
+        release = {"tag_name": "v" + version, "assets": [
+            {"name": name, "browser_download_url": prefix + name,
+             "digest": "sha256:" + "a" * 64, "size": 123} for name in names]}
+        self.assertEqual(worker.release_installer(entry, release)[0], version)
+        for item in names:
+            bad = copy.deepcopy(release)
+            bad["assets"] = [x for x in bad["assets"] if x["name"] != item]
+            with self.assertRaises(ValueError):
+                worker.release_installer(entry, bad)
+
     def test_reject_corrupt_release(self):
         changes = [
             lambda x: x.update(draft=True),
@@ -121,7 +138,7 @@ class InstallerTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "X-Infiltrator-PGO"):
                     worker.verify(self.entry, "0.1.2", root=root, query=False)
 
-    def test_safe_cleanup_all_four_filesystems(self):
+    def test_safe_cleanup_all_five_filesystems(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             for entry in self.entries:
@@ -186,7 +203,7 @@ class InstallerTests(unittest.TestCase):
                         worker.main()
                     record = stage / "status" / (entry["repository"].lower() + "-install.status")
                     self.assertIn("state=complete\n", record.read_text())
-                self.assertEqual(calls, ["fat12", "fat16", "fat32", "ofs"])
+                self.assertEqual(calls, ["fat12", "fat16", "fat32", "ofs", "exfat"])
                 with patch.object(worker.sys, "argv", ["installer", "other"]):
                     with self.assertRaisesRegex(ValueError, "signed filesystem"):
                         worker.main()
