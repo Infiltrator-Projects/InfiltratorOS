@@ -246,7 +246,8 @@ def ensure_dependencies(entry):
     required(["/usr/bin/apt-get", "-o", "DPkg::Lock::Timeout=-1", "update"])
     required(["/usr/bin/apt-get", "-o", "DPkg::Lock::Timeout=-1", "install",
               "-y", "--no-install-recommends", "build-essential", "binutils",
-              "pkg-config", "libglib2.0-dev", "libicu-dev", "python3"])
+              "pkg-config", "libglib2.0-dev", "libicu-dev", "python3",
+              "python3-reportlab"])
     ready.touch(mode=0o644)
 
 

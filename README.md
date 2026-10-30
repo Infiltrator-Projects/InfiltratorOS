@@ -146,6 +146,8 @@ Calendar providers can now ship only their native `.so` and illustrated PDF.
 The OS validates the same source revision, PGO/LTO flags and module SHA-256
 from Debian control metadata rather than requiring a persistent BUILD-INFO
 file. Existing calendar/clock releases with BUILD-INFO remain accepted.
+The shared native build preparation installs `python3-reportlab` so source
+installers can generate those illustrated manuals on a clean system.
 
 ### OFS shared-module provisioning (1.0.43)
 
