@@ -204,8 +204,26 @@ def verify(entry, version, root=Path("/"), query=True):
                 (3, 4, 5) if entry["id"] == "exfat" else (1, 3, 4)):
         if f"IFS-MODULE:{entry['id']}:{api}" not in identity:
             raise ValueError("Wrong filesystem width or ABI")
-    if "(NEEDED)" in subprocess.check_output(["/usr/bin/readelf", "-d", str(module)], text=True):
+    validate_runtime_dependencies(entry, subprocess.check_output(
+        ["/usr/bin/readelf", "-d", str(module)], text=True))
+
+
+def validate_runtime_dependencies(entry, dynamic_section):
+    """Allow only exFAT's declared Linux runtime dependencies.
+
+    FAT and OFS remain independently freestanding. Never use ldd or execute
+    downloaded module code as part of verification.
+    """
+    needed = re.findall(r"\\(NEEDED\\)\\s+Shared library: \\[([^\\]]+)\\]", dynamic_section)
+    if entry["id"] != "exfat" and needed:
         raise ValueError("Unexpected ELF runtime dependency")
+    if entry["id"] == "exfat":
+        allowed = {"libc.so.6", "libcrypto.so.3", "libsqlite3.so.0",
+                   "libm.so.6", "libpthread.so.0"}
+        unknown = set(needed) - allowed
+        if unknown:
+            raise ValueError("Unexpected exFAT runtime dependency: " + ", ".join(sorted(unknown)))
+
 
 def native_installed(entry, version):
     """Verify the actual two-file package, without executing the driver."""
@@ -265,7 +283,10 @@ def ensure_dependencies(entry):
     run(["/usr/bin/apt-get", "-o", "DPkg::Lock::Timeout=-1", "update"])
     packages = ["build-essential", "binutils", "python3"]
     if entry["id"] == "exfat":
-        packages.extend(("exfatprogs", "dosfstools"))
+        # The unified source compiles its own V3/V4/V5/defrag SO using CMake,
+        # pinned InfiltratrCommon source, OpenSSL and SQLite development headers.
+        packages.extend(("exfatprogs", "dosfstools", "cmake", "git",
+                         "pkg-config", "libssl-dev", "libsqlite3-dev"))
     run(["/usr/bin/apt-get", "-o", "DPkg::Lock::Timeout=-1", "install",
          "-y", "--no-install-recommends", *packages])
     ready.touch(mode=0o644)

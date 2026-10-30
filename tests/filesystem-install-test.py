@@ -119,6 +119,19 @@ class InstallerTests(unittest.TestCase):
             with self.subTest(bad=bad), self.assertRaises((ValueError, TypeError)):
                 worker.release_installer(self.entry, bad)
 
+    def test_exfat_unified_runtime_allowlist_preserves_freestanding_other_filesystems(self):
+        exfat = self.entries[4]
+        fat = self.entries[0]
+        allowed = (" 0x0000000000000001 (NEEDED) Shared library: [libc.so.6]\\n"
+                   " 0x0000000000000001 (NEEDED) Shared library: [libcrypto.so.3]\\n"
+                   " 0x0000000000000001 (NEEDED) Shared library: [libsqlite3.so.0]\\n")
+        worker.validate_runtime_dependencies(exfat, allowed)
+        with self.assertRaisesRegex(ValueError, "ELF runtime"):
+            worker.validate_runtime_dependencies(fat, allowed)
+        with self.assertRaisesRegex(ValueError, "exFAT runtime"):
+            worker.validate_runtime_dependencies(exfat, allowed +
+                " 0x0000000000000001 (NEEDED) Shared library: [libbad.so.1]\\n")
+
     def test_native_fat_requires_pdf_and_pgo_in_debian_metadata(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
