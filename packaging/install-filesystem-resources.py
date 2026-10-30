@@ -91,6 +91,8 @@ def release_installer(entry, release):
     if not isinstance(tag, str) or not re.fullmatch(r"v[0-9]+\.[0-9]+\.[0-9]+", tag):
         raise ValueError("Not a canonical version tag")
     version = tag[1:]
+    if entry["id"] == "exfat" and tuple(map(int, version.split("."))) < (0, 1, 3):
+        raise ValueError("exFAT native RUN requires 0.1.3 or newer; 0.1.2 fails SIGPIPE")
     run_name = f"{entry['repository'].lower()}-{version}-native-installer.run"
     deb_name = f"{entry['package']}_{version}_amd64.deb"
     assets = release.get("assets")

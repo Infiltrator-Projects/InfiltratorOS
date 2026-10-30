@@ -53,6 +53,13 @@ class NativeSnapshotTest(unittest.TestCase):
             self.assertEqual(len(list((root / "release-json").glob("*.sha256"))), 63)
             self.assertEqual((root / "release-json" / "Calculator.sha256").read_text().split()[0], "a" * 64)
 
+    def test_snapshot_rejects_known_broken_exfat_012(self):
+        payload = json.loads(sample())
+        expected = {name.lower() for name in payload["releases"]}
+        payload["releases"]["Filesystem-exFAT"]["tag_name"] = "v0.1.2"
+        with self.assertRaisesRegex(ValueError, "exFAT"):
+            worker.verify_snapshot(json.dumps(payload).encode(), expected)
+
     def test_snapshot_rejects_tampering_and_missing_providers(self):
         payload = json.loads(sample())
         expected = {name.lower() for name in payload["releases"]}

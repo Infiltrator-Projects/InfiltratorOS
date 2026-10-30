@@ -70,6 +70,10 @@ def verify_snapshot(data: bytes, expected: set[str]) -> dict[str, dict]:
         tag = release.get("tag_name")
         if not isinstance(tag, str) or not VERSION.fullmatch(tag):
             raise ValueError(repository + ": invalid version tag")
+        if repository.lower() == "filesystem-exfat":
+            parts = tag[1:].split("-", 1)[0].split(".")
+            if tuple(map(int, parts)) < (0, 1, 3):
+                raise ValueError("Rejecting known-broken exFAT native RUN before 0.1.3")
         assets = release.get("assets")
         if not isinstance(assets, list) or not assets:
             raise ValueError(repository + ": missing assets")

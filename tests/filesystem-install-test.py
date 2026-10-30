@@ -88,7 +88,7 @@ class InstallerTests(unittest.TestCase):
 
     def test_exfat_requires_complete_checksum_bound_release(self):
         entry = self.entries[4]
-        version = "0.1.2"
+        version = "0.1.3"
         names = [f"filesystem-exfat-{version}-native-installer.run",
                  f"infiltrator-filesystem-exfat_{version}_amd64.deb",
                  "exFAT.so", "exfat-linux-6.12.107.ko", "SHA256SUMS"]
@@ -97,6 +97,10 @@ class InstallerTests(unittest.TestCase):
             {"name": name, "browser_download_url": prefix + name,
              "digest": "sha256:" + "a" * 64, "size": 123} for name in names]}
         self.assertEqual(worker.release_installer(entry, release)[0], version)
+        old = copy.deepcopy(release)
+        old["tag_name"] = "v0.1.2"
+        with self.assertRaisesRegex(ValueError, "SIGPIPE"):
+            worker.release_installer(entry, old)
         for item in names:
             bad = copy.deepcopy(release)
             bad["assets"] = [x for x in bad["assets"] if x["name"] != item]
