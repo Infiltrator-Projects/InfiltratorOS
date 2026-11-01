@@ -104,14 +104,12 @@ if ! "$stage/prepare-native-releases" "$stage/release-json" "$stage/providers.li
     exit 1
 fi
 export INFILTRATOROS_RELEASE_DIR="$stage/release-json"
-
-# Extra filesystem modules are admitted only when their independent GitHub
-# release contains a digest-verified aggressive native installer and the full
-# two-file package contract. Unpublished CI artifacts are never installed.
-# An optional provider cannot break the five already qualified providers.
+# The five published filesystem providers remain in the verified central
+# release snapshot. Probe the remaining sixteen independently and only admit
+# complete published native RUN/DEB/SO releases. CI artifacts are not releases.
 if ! "$stage/install-filesystem-resources" --discover-additional "$stage/release-json" \
         > "$stage/optional-filesystem-discovery.log" 2>&1; then
-    printf '%s\n' 'Additional filesystem release discovery failed; existing five remain enabled.' \
+    printf '%s\n' 'Additional filesystem release discovery failed; the five established drivers remain enabled.' \
         >> "$stage/optional-filesystem-discovery.log"
     : > "$stage/filesystems-optional.list"
     "$stage/install-filesystem-resources" --list-all |
@@ -119,13 +117,12 @@ if ! "$stage/install-filesystem-resources" --discover-additional "$stage/release
 fi
 test -f "$stage/filesystems-optional.list"
 test -f "$stage/filesystems-pending.list"
-if [ -s "$stage/filesystems-pending.list" ]; then
-    echo 'Additional filesystem modules remain pending published native installer releases.'
-    echo 'The pending inventory is retained under /Temporary/InfiltratorOS after setup.'
-fi
 if [ "$(wc -l < "$stage/filesystems-optional.list")" -gt 16 ]; then
     echo 'Refusing an oversized additional filesystem list.' >&2
     exit 1
+fi
+if [ -s "$stage/filesystems-pending.list" ]; then
+    echo 'Some independent filesystem modules await qualified native installer releases.'
 fi
 
 # Four applications, 54 calendar/clock providers and five independent filesystem processes.
@@ -149,7 +146,6 @@ while IFS= read -r filesystem; do
         echo "Failed to launch $filesystem installer; see $stage/status." >&2
     fi
 done < "$stage/filesystems.list"
-# Each new module is a separately owned, independently verified package.
 while IFS= read -r filesystem; do
     if ! INFILTRATOROS_PROGRESS_MODE=none INFILTRATOROS_INSTALL_RUNTIME="$stage" "$stage/start-filesystem-resources-install" "$filesystem"; then
         echo "Failed to launch $filesystem installer; see $stage/status." >&2
@@ -180,7 +176,9 @@ done < "$stage/filesystems-optional.list"
         done < "$stage/filesystems.list"
         while IFS= read -r filesystem; do
             status="$status_root/$filesystem-install.status"
-            [ -f "$status" ] && grep -Eq '^state=(complete|failed)
+            [ -f "$status" ] && grep -Eq '^state=(complete|failed)$' "$status" || return 1
+        done < "$stage/filesystems-optional.list"
+        return 0
     }
     all_complete() {
         for product in system-monitor calculator files defragmenter; do
@@ -192,6 +190,9 @@ done < "$stage/filesystems-optional.list"
         while IFS= read -r filesystem; do
             grep -Fxq 'state=complete' "$status_root/$filesystem-install.status" || return 1
         done < "$stage/filesystems.list"
+        while IFS= read -r filesystem; do
+            grep -Fxq 'state=complete' "$status_root/$filesystem-install.status" || return 1
+        done < "$stage/filesystems-optional.list"
         return 0
     }
     elapsed=0
@@ -202,77 +203,11 @@ done < "$stage/filesystems-optional.list"
             if all_terminal; then
                 if all_complete; then
                     if [ -s "$stage/filesystems-pending.list" ]; then
-                        # Preserve the factual pending inventory, not the
-                        # installation-only worker bundle or downloaded files.
                         cp -- "$stage/filesystems-pending.list" "$STATUS_ROOT/filesystems-pending.list"
                         chmod 0644 "$STATUS_ROOT/filesystems-pending.list"
                     else
                         rm -f -- "$STATUS_ROOT/filesystems-pending.list"
                     fi
-                    rm -rf -- "$stage"
-                else
-                    printf '%s\n' 'Installation failed; this run retains its logs and statuses.' > "$stage/FAILED"
-                fi
-                exit 0
-            fi
-        fi
-        sleep 5
-        elapsed=$((elapsed + 5))
-    done
-    printf '%s\n' 'Installation monitor timed out; worker files and diagnostics retained.' > "$stage/TIMEOUT"
-) </dev/null >/dev/null 2>&1 &
-
-exit 0
- "$status" || return 1
-        done < "$stage/filesystems-optional.list"
-        return 0
-    }
-    all_complete() {
-        for product in system-monitor calculator files defragmenter; do
-            grep -Fxq 'state=complete' "$status_root/$product-install.status" || return 1
-        done
-        while IFS= read -r provider; do
-            grep -Fxq 'state=complete' "$status_root/$provider-install.status" || return 1
-        done < "$stage/providers.list"
-        while IFS= read -r filesystem; do
-            grep -Fxq 'state=complete' "$status_root/$filesystem-install.status" || return 1
-        done < "$stage/filesystems.list"
-        while IFS= read -r filesystem; do
-            status="$status_root/$filesystem-install.status"
-            [ -f "$status" ] && grep -Eq '^state=(complete|failed)
-    }
-    elapsed=0
-    while [ "$elapsed" -lt 86400 ]; do
-        if all_terminal; then
-            # The single aggregate progress window can observe the final state.
-            sleep 20
-            if all_terminal; then
-                if all_complete; then
-                    rm -rf -- "$stage"
-                else
-                    printf '%s\n' 'Installation failed; this run retains its logs and statuses.' > "$stage/FAILED"
-                fi
-                exit 0
-            fi
-        fi
-        sleep 5
-        elapsed=$((elapsed + 5))
-    done
-    printf '%s\n' 'Installation monitor timed out; worker files and diagnostics retained.' > "$stage/TIMEOUT"
-) </dev/null >/dev/null 2>&1 &
-
-exit 0
- "$status" || return 1
-        done < "$stage/filesystems-optional.list"
-        return 0
-    }
-    elapsed=0
-    while [ "$elapsed" -lt 86400 ]; do
-        if all_terminal; then
-            # The single aggregate progress window can observe the final state.
-            sleep 20
-            if all_terminal; then
-                if all_complete; then
                     rm -rf -- "$stage"
                 else
                     printf '%s\n' 'Installation failed; this run retains its logs and statuses.' > "$stage/FAILED"
