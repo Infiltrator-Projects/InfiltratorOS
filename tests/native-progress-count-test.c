@@ -11,7 +11,7 @@
 
 #define CHECK(condition) do { \
     if (!(condition)) { \
-        fprintf(stderr, "Native progress count test failed at line %d: %s\\n", \
+        fprintf(stderr, "Native progress count test failed at line %d: %s\n", \
                 __LINE__, #condition); \
         return 1; \
     } \
@@ -26,7 +26,7 @@ static int write_manifest(const char *stage, const char *name,
     FILE *file = fopen(path, "w");
     if (!file) return -1;
     for (int n = 0; n < count; ++n)
-        if (fprintf(file, "%s%d\\n", prefix, n) < 0) {
+        if (fprintf(file, "%s%d\n", prefix, n) < 0) {
             (void)fclose(file);
             return -1;
         }
@@ -56,7 +56,7 @@ int main(void)
     CHECK(native_progress_total_jobs(status) == 81);
     FILE *file = fopen(optional, "w");
     CHECK(file != NULL);
-    CHECK(fputs("filesystem-extra-0\\nfilesystem-invalid/name\\n", file) >= 0);
+    CHECK(fputs("filesystem-extra-0\nfilesystem-invalid/name\n", file) >= 0);
     CHECK(fclose(file) == 0);
     CHECK(native_progress_total_jobs(status) == -1);
     CHECK(unlink(optional) == 0);
