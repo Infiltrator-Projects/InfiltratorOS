@@ -37,12 +37,30 @@ static gboolean close_after_success(gpointer data)
     return G_SOURCE_REMOVE;
 }
 
-/* One progress window follows the complete 62-component installation run.
- * Individual native workers keep independent status/log files and the existing
- * global build lock; no additional GUI processes are spawned for providers. */
+/* One window follows four apps, 54 temporal modules, five baseline filesystems
+ * and each additional qualified filesystem release. Keep the progress total
+ * consistent with the exact list of launched workers in this run. */
+static int additional_filesystem_jobs(const char *status_directory)
+{
+    char list[4096];
+    if (snprintf(list, sizeof(list), "%s/../filesystems-optional.list",
+                 status_directory) >= (int)sizeof(list)) return 0;
+    FILE *file = fopen(list, "r");
+    if (!file) return 0;
+    char line[128];
+    int count = 0;
+    while (fgets(line, sizeof(line), file) && count < 16) {
+        if (strncmp(line, "filesystem-", 11) != 0 ||
+            !strchr(line, '\n')) break;
+        ++count;
+    }
+    (void)fclose(file);
+    return count;
+}
+
 static gboolean refresh_aggregate(Ui *ui)
 {
-    enum { TOTAL_JOBS = 62 };
+    const int total_jobs = 63 + additional_filesystem_jobs(ui->status_path);
     DIR *directory = opendir(ui->status_path);
     if (directory == NULL) {
         gtk_progress_bar_pulse(GTK_PROGRESS_BAR(ui->bar));
@@ -85,13 +103,13 @@ static gboolean refresh_aggregate(Ui *ui)
     }
     closedir(directory);
     if (fraction < 0.0) fraction = 0.0;
-    if (fraction > TOTAL_JOBS) fraction = TOTAL_JOBS;
+    if (fraction > total_jobs) fraction = total_jobs;
     gtk_progress_bar_set_fraction(GTK_PROGRESS_BAR(ui->bar),
-                                  fraction / (double)TOTAL_JOBS);
+                                  fraction / (double)total_jobs);
     char stage[256], detail[512];
     const int finished = complete + failed;
     snprintf(stage, sizeof(stage), "%d of %d installations finished",
-             finished, TOTAL_JOBS);
+             finished, total_jobs);
     if (running && active_name[0]) {
         snprintf(detail, sizeof(detail),
                  "%d complete, %d failed, %d running, %d queued. Current: %s — %s. "
@@ -105,7 +123,7 @@ static gboolean refresh_aggregate(Ui *ui)
     }
     gtk_label_set_text(GTK_LABEL(ui->stage), stage);
     gtk_label_set_text(GTK_LABEL(ui->detail), detail);
-    if (finished == TOTAL_JOBS) {
+    if (finished == total_jobs) {
         gtk_label_set_text(GTK_LABEL(ui->title), failed ?
             "InfiltratorOS installation finished with failures" :
             "InfiltratorOS native installation is complete");
