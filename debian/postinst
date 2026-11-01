@@ -119,6 +119,10 @@ if ! "$stage/install-filesystem-resources" --discover-additional "$stage/release
 fi
 test -f "$stage/filesystems-optional.list"
 test -f "$stage/filesystems-pending.list"
+if [ -s "$stage/filesystems-pending.list" ]; then
+    echo 'Additional filesystem modules remain pending published native installer releases.'
+    echo 'The pending inventory is retained under /Temporary/InfiltratorOS after setup.'
+fi
 if [ "$(wc -l < "$stage/filesystems-optional.list")" -gt 16 ]; then
     echo 'Refusing an oversized additional filesystem list.' >&2
     exit 1
@@ -198,10 +202,14 @@ done < "$stage/filesystems-optional.list"
             if all_terminal; then
                 if all_complete; then
                     if [ -s "$stage/filesystems-pending.list" ]; then
-                        printf '%s\n' 'Some independent filesystem providers have no qualified published native release; see filesystems-pending.list.' > "$stage/FILESYSTEMS_PENDING"
+                        # Preserve the factual pending inventory, not the
+                        # installation-only worker bundle or downloaded files.
+                        cp -- "$stage/filesystems-pending.list" "$STATUS_ROOT/filesystems-pending.list"
+                        chmod 0644 "$STATUS_ROOT/filesystems-pending.list"
                     else
-                        rm -rf -- "$stage"
+                        rm -f -- "$STATUS_ROOT/filesystems-pending.list"
                     fi
+                    rm -rf -- "$stage"
                 else
                     printf '%s\n' 'Installation failed; this run retains its logs and statuses.' > "$stage/FAILED"
                 fi
