@@ -114,8 +114,9 @@ def release_installer(entry, release):
     deb_name = f"{entry['package']}_{version}_amd64.deb"
     assets = release.get("assets")
     expected = {run_name, deb_name}
-    if entry.get("abi"):
-        expected.update({entry["resource"].rsplit("/", 1)[1], "SHA256SUMS"})
+    # Standard release contract: portable DEB embeds SO+PDF; RUN embeds
+    # source and generates/installs a CPU-native DEB embedding native SO+PDF.
+    # Neither distribution path requires a separately published bare SO.
     bits = entry["id"][3:]
     milestone = (0, 1, 2) if bits == "32" else (0, 1, 3)
     if entry["id"] == "exfat":
