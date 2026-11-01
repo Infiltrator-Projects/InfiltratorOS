@@ -90,7 +90,7 @@ with tempfile.TemporaryDirectory(prefix="native-worker.", dir=native) as tempora
         assert "state=complete\n" in status, slug
         module = Path(entry["resource"])
         manual = (Path("/System/Resources/Documentation") / entry["repository"] /
-                  (module.stem + ".pdf"))
+                  entry["pdf"])
         assert module.is_file() and not module.is_symlink(), module
         assert manual.is_file() and not manual.is_symlink(), manual
         assert manual.read_bytes().startswith(b"%PDF-"), manual
