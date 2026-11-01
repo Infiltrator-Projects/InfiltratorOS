@@ -79,7 +79,7 @@ class AdditionalFilesystemTests(unittest.TestCase):
                 if selected["repository"] in request.full_url:
                     return io.BytesIO(json.dumps(release).encode())
                 raise urllib.error.HTTPError(request.full_url, 404, "Not Found", {}, None)
-            with patch.object(worker, "STATUS_ROOT", base), \\
+            with patch.object(worker, "STATUS_ROOT", base), \
                  patch.object(worker.urllib.request, "urlopen", side_effect=fake_fetch):
                 worker.discover_additional(snapshot)
             ready = (stage / "filesystems-optional.list").read_text().splitlines()
@@ -100,7 +100,7 @@ class AdditionalFilesystemTests(unittest.TestCase):
             def fake_fetch(request, timeout=None):
                 return io.BytesIO(json.dumps({"tag_name": "v1.0.0",
                                                "assets": []}).encode())
-            with patch.object(worker, "STATUS_ROOT", base), \\
+            with patch.object(worker, "STATUS_ROOT", base), \
                  patch.object(worker.urllib.request, "urlopen", side_effect=fake_fetch):
                 worker.discover_additional(snapshot)
             self.assertEqual((stage / "filesystems-optional.list").read_text(), "")
