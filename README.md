@@ -27,9 +27,10 @@ does **not** qualify as a release and will never be installed as a substitute.
 Unpublished or unqualified providers are recorded as pending in
 `/Temporary/InfiltratorOS/filesystems-pending.list`, not reported as
 installed. They cannot block installation of the five already published
-filesystem packages. The availability of all 21 is therefore **not yet
-claimed**: each additional repository must first publish a matching native
-RUN/portable-DEB release containing the standard SO and PDF and pass source-build qualification.
+filesystem packages. All 16 additional repositories have now published CI-qualified portable-DEB and
+source-native-RUN release pairs, bringing release coverage to 21 filesystems.
+Actual installation remains independently verified on each machine; a published
+release is not proof of an installed or hardware-qualified module.
 
 ## InfiltratorOS components
 
