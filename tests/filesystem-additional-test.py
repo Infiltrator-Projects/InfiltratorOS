@@ -1,0 +1,112 @@
+#!/usr/bin/env python3
+"""Offline safety tests for full 21-filesystem provisioning readiness."""
+import importlib.util
+import io
+import json
+from pathlib import Path
+import tempfile
+import unittest
+from unittest.mock import patch
+import urllib.error
+
+ROOT = Path(__file__).resolve().parents[1]
+spec = importlib.util.spec_from_file_location(
+    "filesystem_worker", ROOT / "packaging/install-filesystem-resources.py")
+worker = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(worker)
+
+
+def release_for(entry, version="1.0.0"):
+    repo = entry["repository"]
+    names = [
+        f"{repo.lower()}-{version}-native-installer.run",
+        f"{entry['package']}_{version}_amd64.deb",
+        entry["resource"].rsplit("/", 1)[1],
+        "SHA256SUMS",
+    ]
+    base = f"https://github.com/Infiltrator-Projects/{repo}/releases/download/v{version}/"
+    return {
+        "tag_name": "v" + version, "draft": False, "prerelease": False,
+        "assets": [{"name": name, "browser_download_url": base + name,
+                    "digest": "sha256:" + "a" * 64, "size": 100}
+                   for name in names],
+    }
+
+
+class AdditionalFilesystemTests(unittest.TestCase):
+    def test_one_authoritative_module_per_filesystem(self):
+        baseline = worker.catalogue()
+        additional = worker.additional_catalogue()
+        complete = worker.all_catalogue()
+        self.assertEqual((len(baseline), len(additional), len(complete)), (5, 16, 21))
+        self.assertEqual(len({item["resource"] for item in complete}), 21)
+        self.assertEqual(len({item["package"] for item in complete}), 21)
+        self.assertTrue(all(item["abi"].startswith("infiltrator_filesystem_")
+                            for item in additional))
+        self.assertEqual({item["id"] for item in additional}, {
+            "ntfs", "ext2", "ext3", "ext4", "xfs", "btrfs", "ffs", "sfs",
+            "pfs3", "hfs", "hfsplus", "minix", "ufs2", "zfs", "apfs", "swap"
+        })
+
+    def test_all_sixteen_require_real_complete_release_assets(self):
+        for entry in worker.additional_catalogue():
+            with self.subTest(entry=entry["id"]):
+                release = release_for(entry)
+                self.assertEqual(worker.release_installer(entry, release)[0], "1.0.0")
+                for asset in list(release["assets"]):
+                    corrupted = dict(release)
+                    corrupted["assets"] = [other for other in release["assets"]
+                                           if other is not asset]
+                    with self.assertRaises(ValueError):
+                        worker.release_installer(entry, corrupted)
+                archived = dict(release)
+                archived["assets"] = [{"name": "build.so", "size": 100,
+                                       "digest": "sha256:" + "a" * 64,
+                                       "browser_download_url": "https://github.com/" +
+                                           "Infiltrator-Projects/" + entry["repository"]}]
+                with self.assertRaises(ValueError):
+                    worker.release_installer(entry, archived)
+
+    def test_discovery_records_unpublished_without_faking_installs(self):
+        selected = worker.additional_catalogue()[0]
+        release = release_for(selected)
+        with tempfile.TemporaryDirectory() as temp:
+            base = Path(temp)
+            stage = base / "native-worker.test"
+            snapshot = stage / "release-json"
+            snapshot.mkdir(parents=True)
+            def fake_fetch(request, timeout=None):
+                if selected["repository"] in request.full_url:
+                    return io.BytesIO(json.dumps(release).encode())
+                raise urllib.error.HTTPError(request.full_url, 404, "Not Found", {}, None)
+            with patch.object(worker, "STATUS_ROOT", base), \\
+                 patch.object(worker.urllib.request, "urlopen", side_effect=fake_fetch):
+                worker.discover_additional(snapshot)
+            ready = (stage / "filesystems-optional.list").read_text().splitlines()
+            pending = (stage / "filesystems-pending.list").read_text().splitlines()
+            self.assertEqual(ready, [selected["repository"].lower()])
+            self.assertEqual(len(pending), 15)
+            self.assertEqual(json.loads(
+                (snapshot / (selected["repository"] + ".json")).read_text()),
+                release)
+            self.assertEqual(len(list(snapshot.glob("*.json"))), 1)
+
+    def test_unqualified_release_remains_pending(self):
+        with tempfile.TemporaryDirectory() as temp:
+            base = Path(temp)
+            stage = base / "native-worker.test"
+            snapshot = stage / "release-json"
+            snapshot.mkdir(parents=True)
+            def fake_fetch(request, timeout=None):
+                return io.BytesIO(json.dumps({"tag_name": "v1.0.0",
+                                               "assets": []}).encode())
+            with patch.object(worker, "STATUS_ROOT", base), \\
+                 patch.object(worker.urllib.request, "urlopen", side_effect=fake_fetch):
+                worker.discover_additional(snapshot)
+            self.assertEqual((stage / "filesystems-optional.list").read_text(), "")
+            self.assertEqual(len((stage / "filesystems-pending.list").read_text().splitlines()), 16)
+            self.assertFalse(list(snapshot.glob("*.json")))
+
+
+if __name__ == "__main__":
+    unittest.main()
