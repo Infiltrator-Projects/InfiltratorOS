@@ -78,7 +78,7 @@ with tempfile.TemporaryDirectory(prefix="native-worker.", dir=native) as tempora
                     "--discover-additional", snapshot], check=True, env=env)
     candidates = (stage / "filesystems-optional.list").read_text().splitlines()
     pending = (stage / "filesystems-pending.list").read_text().splitlines()
-    assert len(extra) == 16 and len(candidates) == 16, (candidates, pending)
+    assert len(extra) == len(candidates) == 18, (candidates, pending)
     assert not pending, pending
     env["INFILTRATOROS_RELEASE_DIR"] = str(snapshot)
     for entry in extra:
