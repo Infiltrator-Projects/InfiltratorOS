@@ -266,7 +266,23 @@ static bool valid_provider_slug(const char *slug)
            strcmp(slug, "filesystem-fat16") == 0 ||
            strcmp(slug, "filesystem-fat32") == 0 ||
            strcmp(slug, "filesystem-ofs") == 0 ||
-           strcmp(slug, "filesystem-exfat") == 0;
+           strcmp(slug, "filesystem-exfat") == 0 ||
+           strcmp(slug, "filesystem-ntfs") == 0 ||
+           strcmp(slug, "filesystem-ext2") == 0 ||
+           strcmp(slug, "filesystem-ext3") == 0 ||
+           strcmp(slug, "filesystem-ext4") == 0 ||
+           strcmp(slug, "filesystem-xfs") == 0 ||
+           strcmp(slug, "filesystem-btrfs") == 0 ||
+           strcmp(slug, "filesystem-ffs") == 0 ||
+           strcmp(slug, "filesystem-sfs") == 0 ||
+           strcmp(slug, "filesystem-pfs3") == 0 ||
+           strcmp(slug, "filesystem-hfs") == 0 ||
+           strcmp(slug, "filesystem-hfsplus") == 0 ||
+           strcmp(slug, "filesystem-minix") == 0 ||
+           strcmp(slug, "filesystem-ufs2") == 0 ||
+           strcmp(slug, "filesystem-zfs") == 0 ||
+           strcmp(slug, "filesystem-apfs") == 0 ||
+           strcmp(slug, "filesystem-swap") == 0;
 }
 #endif
 
