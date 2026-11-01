@@ -188,7 +188,8 @@ PY
     # shellcheck disable=SC2086
     cc -std=c11 -O2 -Wall -Wextra -Werror -Wpedantic "-D$profile" \
         $(pkg-config --cflags gtk+-3.0) \
-        "$ROOT/packaging/native-install-progress.c" "$ROOT/packaging/installer-status.c" \
+        "$ROOT/packaging/native-install-progress.c" "$ROOT/packaging/native-progress-count.c" \
+        "$ROOT/packaging/installer-status.c" \
         -o "$RUNTIME_BUILD/$product-progress" $(pkg-config --libs gtk+-3.0)
 done
 
