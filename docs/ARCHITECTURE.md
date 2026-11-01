@@ -41,7 +41,7 @@ A verified existing current native package may be reused under the provider's ca
 
 System Monitor, Calculator, Files and Defragmenter are installed using independently published product-owned native installers. Only verified replacements may remove competing distribution applications where that product permits it. **Files is additive**: it must not purge Nemo or change the system's default file manager. Calculator's worker checks its exact Debian version, `/Programs/calculator`, one PDF manual, menu/icon/AppStream integration, PATH bridge and verified shared fonts rather than an obsolete persistent `BUILD-INFO` file. Files still requires its product-specific native PGO build evidence.
 
-The InfiltratorOS Defragmenter worker currently checks for private helpers under `/System/Commands/Defragmenter` and the two launchables `/Programs/defragmenter` and `/Programs/defragmenter-test-media`. Its source build is not yet asserted to have trained two-pass PGO. The exact private helper path must be reconciled with Defragmenter's own installed layout; see [Validation](VALIDATION.md#known-integration-discrepancy).
+Defragmenter's CMake install rules and native Debian package builder place its private operation engine, mapper, EXT metadata worker and privileged helper under `/System/Commands/Defragmenter`. InfiltratorOS verifies those same paths, plus the two user launchables `/Programs/defragmenter` and `/Programs/defragmenter-test-media`. The Defragmenter package deliberately rejects `/System/Filesystems/Defragmenter` because private executables are not separately distributed format `.so` drivers. Its source build is not yet asserted to have trained two-pass PGO.
 
 ## Native namespace and desktop integration
 

@@ -36,9 +36,9 @@ Calculator likewise requires its one PDF manual, exact package version, executab
 
 For native-performance claims, record exact source and toolchain, target CPU, measured trained PGO when asserted, build flags, package hashes, functional parity and a repeatable benchmark workload. Flags or a `+native` package suffix alone are not evidence of performance improvement.
 
-## Known integration discrepancy
+## Defragmenter private-helper path verification
 
-The InfiltratorOS worker in `packaging/install-defragmenter.c` currently requires `/System/Commands/Defragmenter/defragmenter-operation-engine`, `defragmenter-mapper`, the EXT metadata worker and privileged helper. Earlier maintained documentation claimed those private workers were under `/System/Filesystems/Defragmenter`. **These two paths cannot both be the current installed-state contract.** This documentation now reports the verifier's actual requirement, but the separately released Defragmenter package must be checked against it before declaring a successful real installation. No source-code or package-path change is implied by this documentation correction.
+The InfiltratorOS worker in `packaging/install-defragmenter.c` requires `/System/Commands/Defragmenter/defragmenter-operation-engine`, `defragmenter-mapper`, the EXT metadata worker and privileged helper. This is **consistent** with Defragmenter's `defragger/cmake/project.cmake`, `defragger/cmake/ext_metadata_map.cmake` and `defragger/packaging/build-deb.sh`. The package builder actively rejects the historical `/System/Filesystems/Defragmenter` private-executable layout. An earlier InfiltratorOS document incorrectly described that old directory; the defect was documentation-only, not a confirmed integration fault. Source/path consistency does not by itself prove that a particular installed host has all required executables.
 
 The post-install script retains historical “63 jobs” comments despite permitting 18 independently discovered extra filesystem jobs; runtime progress now uses actual manifests. This is a source-comment inconsistency, not evidence that all 81 installers were actually launched on a particular machine.
 
