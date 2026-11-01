@@ -15,7 +15,7 @@ int main(void)
     const char *accepted[] = {
         "calendar-gregorian", "clock-binary", "clock-chinese-time",
         "filesystem-fat12", "filesystem-fat16", "filesystem-fat32", "filesystem-ofs", "filesystem-exfat",
-        "filesystem-ntfs", "filesystem-ext2", "filesystem-ext3", "filesystem-ext4", "filesystem-xfs", "filesystem-btrfs", "filesystem-ffs", "filesystem-sfs", "filesystem-pfs3", "filesystem-hfs", "filesystem-hfsplus", "filesystem-minix", "filesystem-ufs2", "filesystem-zfs", "filesystem-apfs", "filesystem-swap"
+        "filesystem-ntfs", "filesystem-ext2", "filesystem-ext3", "filesystem-ext4", "filesystem-xfs", "filesystem-btrfs", "filesystem-ffs", "filesystem-sfs", "filesystem-pfs3", "filesystem-hfs", "filesystem-hfsplus", "filesystem-minix", "filesystem-ufs2", "filesystem-zfs", "filesystem-apfs", "filesystem-swap", "filesystem-sfs2", "filesystem-ufs1"
     };
     const char *rejected[] = {
         "", "calendar-", "clock-", "filesystem-fat", "filesystem-fat1",
