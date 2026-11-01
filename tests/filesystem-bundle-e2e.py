@@ -29,7 +29,7 @@ with tempfile.TemporaryDirectory(prefix="native-worker.", dir=native) as tempora
     assert '$(wc -l < "$stage/filesystems.list")" -ne 5' in script
     assert "all 63 jobs" in script
     assert "filesystem-fat32" in {x["repository"].lower() for x in entries}
-assert len(json.loads((root / "packaging/filesystem-additional.json").read_text())) == 16
+    assert len(json.loads((root / "packaging/filesystem-additional.json").read_text())) == 16
     expected = re.search(r"^BUNDLE_SHA256='([0-9a-f]{64})'$", script, re.MULTILINE).group(1)
     payload = script.split("\n__INFILTRATOROS_NATIVE_BUNDLE_BEGIN__\n", 1)[1].split(
         "\n__INFILTRATOROS_NATIVE_BUNDLE_END__", 1)[0]
