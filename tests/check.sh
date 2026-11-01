@@ -69,6 +69,15 @@ grep -Fq 'DPkg::Lock::Timeout=-1' "$ROOT/packaging/install-temporal-resources.py
 ! grep -Fq 'DPkg::Lock::Timeout=300' "$ROOT/packaging/install-temporal-resources.py"
 grep -Fq 'DPkg::Lock::Timeout=-1' "$ROOT/packaging/install-filesystem-resources.py"
 ! grep -Fq 'DPkg::Lock::Timeout=300' "$ROOT/packaging/install-filesystem-resources.py"
+# Count real per-run manifests, including the 18 additional filesystem
+# installers in v1.0.51 (81 jobs total), without a fixed 16-job ceiling.
+cc -std=c11 -O2 -DNDEBUG -Wall -Wextra -Werror -Wpedantic \
+    "$ROOT/tests/native-progress-count-test.c" \
+    "$ROOT/packaging/native-progress-count.c" \
+    -o "$WORK/native-progress-count-test"
+"$WORK/native-progress-count-test"
+! grep -Fq 'additional_filesystem_jobs' "$ROOT/packaging/native-install-progress.c"
+
 # A single GTK window summarizes all statuses, individual providers remain
 # independently logged but must not spawn 54 graphical windows.
 grep -Fq 'refresh_aggregate' "$ROOT/packaging/native-install-progress.c"
