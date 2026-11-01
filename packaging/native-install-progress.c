@@ -1,6 +1,7 @@
 #include <gtk/gtk.h>
 #include "installer-profile.h"
 #include "installer-status.h"
+#include "native-progress-count.h"
 #include <dirent.h>
 #include <errno.h>
 #include <stdbool.h>
@@ -37,30 +38,23 @@ static gboolean close_after_success(gpointer data)
     return G_SOURCE_REMOVE;
 }
 
-/* One window follows four apps, 54 temporal modules, five baseline filesystems
- * and each additional qualified filesystem release. Keep the progress total
- * consistent with the exact list of launched workers in this run. */
-static int additional_filesystem_jobs(const char *status_directory)
-{
-    char list[4096];
-    if (snprintf(list, sizeof(list), "%s/../filesystems-optional.list",
-                 status_directory) >= (int)sizeof(list)) return 0;
-    FILE *file = fopen(list, "r");
-    if (!file) return 0;
-    char line[128];
-    int count = 0;
-    while (fgets(line, sizeof(line), file) && count < 16) {
-        if (strncmp(line, "filesystem-", 11) != 0 ||
-            !strchr(line, '\n')) break;
-        ++count;
-    }
-    (void)fclose(file);
-    return count;
-}
-
 static gboolean refresh_aggregate(Ui *ui)
 {
-    const int total_jobs = 63 + additional_filesystem_jobs(ui->status_path);
+    const int total_jobs = native_progress_total_jobs(ui->status_path);
+    /* The lists are written before the job workers begin. Never infer a
+     * smaller fixed total while the manifests are unavailable. */
+    if (total_jobs <= 0) {
+        cancel_success_close(ui);
+        gtk_label_set_text(GTK_LABEL(ui->title),
+            "Preparing InfiltratorOS installation inventory");
+        gtk_label_set_text(GTK_LABEL(ui->stage),
+            "Reading exact native installation manifests");
+        gtk_label_set_text(GTK_LABEL(ui->detail),
+            "Waiting for the provider manifests for this installation run.");
+        gtk_widget_hide(ui->close_button);
+        gtk_progress_bar_pulse(GTK_PROGRESS_BAR(ui->bar));
+        return G_SOURCE_CONTINUE;
+    }
     DIR *directory = opendir(ui->status_path);
     if (directory == NULL) {
         gtk_progress_bar_pulse(GTK_PROGRESS_BAR(ui->bar));
