@@ -60,7 +60,7 @@ def additional_catalogue():
 
 def pdf_name(entry):
     """Only format-specific names from the sealed catalogue are accepted."""
-    return entry.get("pdf", pdf_name(entry))
+    return entry.get("pdf") or (entry["resource"].rsplit("/", 1)[1].removesuffix(".so") + ".pdf")
 
 def all_catalogue():
     entries = catalogue() + additional_catalogue()
@@ -179,8 +179,7 @@ def verify(entry, version, root=Path("/"), query=True):
         if identity.splitlines() != ["install ok installed", version + "+native1"]:
             raise ValueError("Expected native filesystem package missing or wrong version")
     module = root / entry["resource"].lstrip("/")
-    guide = root / "System/Resources/Documentation" / entry["repository"] / (
-        entry["resource"].rsplit("/", 1)[1].removesuffix(".so") + ".pdf")
+    guide = root / "System/Resources/Documentation" / entry["repository"] / pdf_name(entry)
     if guide.is_symlink() or not guide.is_file():
         raise ValueError("Required filesystem illustrated PDF is missing")
     with guide.open("rb") as file:
