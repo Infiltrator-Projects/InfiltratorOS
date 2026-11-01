@@ -14,11 +14,12 @@ int main(void)
 {
     const char *accepted[] = {
         "calendar-gregorian", "clock-binary", "clock-chinese-time",
-        "filesystem-fat12", "filesystem-fat16", "filesystem-fat32", "filesystem-ofs", "filesystem-exfat"
+        "filesystem-fat12", "filesystem-fat16", "filesystem-fat32", "filesystem-ofs", "filesystem-exfat",
+        "filesystem-ntfs", "filesystem-ext2", "filesystem-ext3", "filesystem-ext4", "filesystem-xfs", "filesystem-btrfs", "filesystem-ffs", "filesystem-sfs", "filesystem-pfs3", "filesystem-hfs", "filesystem-hfsplus", "filesystem-minix", "filesystem-ufs2", "filesystem-zfs", "filesystem-apfs", "filesystem-swap"
     };
     const char *rejected[] = {
         "", "calendar-", "clock-", "filesystem-fat", "filesystem-fat1",
-        "filesystem-fat64", "filesystem-ofs-extra", "filesystem-exfat-extra", "filesystem-ext4", "filesystem-OFs"
+        "filesystem-fat64", "filesystem-ofs-extra", "filesystem-exfat-extra", "filesystem-ext444", "filesystem-OFs"
     };
     for (size_t i = 0; i < sizeof(accepted)/sizeof(accepted[0]); ++i)
         if (expect(accepted[i], true)) return 1;
