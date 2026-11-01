@@ -51,12 +51,16 @@ def catalogue():
 
 def additional_catalogue():
     entries = ADDITIONAL or json.loads((Path(__file__).parent / "filesystem-additional.json").read_text())
-    expected = [["ntfs","Filesystem-NTFS","NTFS","infiltrator-filesystem-ntfs","/System/Filesystems/NTFS.so","infiltrator_filesystem_ntfs_v1"],["ext2","Filesystem-EXT2","EXT2","infiltrator-filesystem-ext2","/System/Filesystems/EXT2.so","infiltrator_filesystem_module_v1"],["ext3","Filesystem-EXT3","EXT3","infiltrator-filesystem-ext3","/System/Filesystems/EXT3.so","infiltrator_filesystem_ext_v1"],["ext4","Filesystem-EXT4","EXT4","infiltrator-filesystem-ext4","/System/Filesystems/EXT4.so","infiltrator_filesystem_ext_v1"],["xfs","Filesystem-XFS","XFS","infiltrator-filesystem-xfs","/System/Filesystems/XFS.so","infiltrator_filesystem_xfs_v1"],["btrfs","Filesystem-Btrfs","BTRFS","infiltrator-filesystem-btrfs","/System/Filesystems/BTRFS.so","infiltrator_filesystem_btrfs_v1"],["ffs","Filesystem-FFS","FFS","infiltrator-filesystem-ffs","/System/Filesystems/FFS.so","infiltrator_filesystem_ffs_defrag_v1"],["sfs","Filesystem-SFS","SFS","infiltrator-filesystem-sfs","/System/Filesystems/SFS.so","infiltrator_filesystem_sfs_v1"],["pfs3","Filesystem-PFS3","PFS3","infiltrator-filesystem-pfs3","/System/Filesystems/PFS3.so","infiltrator_filesystem_pfs3_v1"],["hfs","Filesystem-HFS","HFS","infiltrator-filesystem-hfs","/System/Filesystems/HFS.so","infiltrator_filesystem_hfs_v1"],["hfsplus","Filesystem-HFSPlus","HFSPLUS","infiltrator-filesystem-hfsplus","/System/Filesystems/HFSPLUS.so","infiltrator_filesystem_hfsplus_v1"],["minix","Filesystem-Minix","MINIX","infiltrator-filesystem-minix","/System/Filesystems/MINIX.so","infiltrator_filesystem_minix_defrag_v1"],["ufs2","Filesystem-UFS2","UFS2","infiltrator-filesystem-ufs2","/System/Filesystems/UFS2.so","infiltrator_filesystem_ufs_v1"],["zfs","Filesystem-ZFS","ZFS","infiltrator-filesystem-zfs","/System/Filesystems/ZFS.so","infiltrator_filesystem_zfs_v1"],["apfs","Filesystem-APFS","APFS","infiltrator-filesystem-apfs","/System/Filesystems/APFS.so","infiltrator_filesystem_apfs_v1"],["swap","Filesystem-Swap","SWAP","infiltrator-filesystem-swap","/System/Filesystems/SWAP.so","infiltrator_filesystem_swap_v1"]]
+    expected = [["ntfs","Filesystem-NTFS","NTFS","infiltrator-filesystem-ntfs","/System/Filesystems/NTFS.so","infiltrator_filesystem_ntfs_v1","NTFS.pdf"],["ext2","Filesystem-EXT2","EXT2","infiltrator-filesystem-ext2","/System/Filesystems/EXT2.so","infiltrator_filesystem_module_v1","EXT2.pdf"],["ext3","Filesystem-EXT3","EXT3","infiltrator-filesystem-ext3","/System/Filesystems/EXT3.so","infiltrator_filesystem_ext_v1","EXT3.pdf"],["ext4","Filesystem-EXT4","EXT4","infiltrator-filesystem-ext4","/System/Filesystems/EXT4.so","infiltrator_filesystem_ext_v1","EXT4.pdf"],["xfs","Filesystem-XFS","XFS","infiltrator-filesystem-xfs","/System/Filesystems/XFS.so","infiltrator_filesystem_xfs_v1","XFS.pdf"],["btrfs","Filesystem-Btrfs","BTRFS","infiltrator-filesystem-btrfs","/System/Filesystems/BTRFS.so","infiltrator_filesystem_btrfs_v1","Btrfs.pdf"],["ffs","Filesystem-FFS","FFS","infiltrator-filesystem-ffs","/System/Filesystems/FFS.so","infiltrator_filesystem_ffs_defrag_v1","FFS.pdf"],["sfs","Filesystem-SFS","SFS","infiltrator-filesystem-sfs","/System/Filesystems/SFS.so","infiltrator_filesystem_sfs_v1","SFS.pdf"],["pfs3","Filesystem-PFS3","PFS3","infiltrator-filesystem-pfs3","/System/Filesystems/PFS3.so","infiltrator_filesystem_pfs3_v1","PFS3.pdf"],["hfs","Filesystem-HFS","HFS","infiltrator-filesystem-hfs","/System/Filesystems/HFS.so","infiltrator_filesystem_hfs_v1","HFS.pdf"],["hfsplus","Filesystem-HFSPlus","HFSPLUS","infiltrator-filesystem-hfsplus","/System/Filesystems/HFSPLUS.so","infiltrator_filesystem_hfsplus_v1","HFSPlus.pdf"],["minix","Filesystem-Minix","MINIX","infiltrator-filesystem-minix","/System/Filesystems/MINIX.so","infiltrator_filesystem_minix_defrag_v1","Minix.pdf"],["ufs2","Filesystem-UFS2","UFS2","infiltrator-filesystem-ufs2","/System/Filesystems/UFS2.so","infiltrator_filesystem_ufs_v1","UFS.pdf"],["zfs","Filesystem-ZFS","ZFS","infiltrator-filesystem-zfs","/System/Filesystems/ZFS.so","infiltrator_filesystem_zfs_v1","ZFS.pdf"],["apfs","Filesystem-APFS","APFS","infiltrator-filesystem-apfs","/System/Filesystems/APFS.so","infiltrator_filesystem_apfs_v1","APFS.pdf"],["swap","Filesystem-Swap","SWAP","infiltrator-filesystem-swap","/System/Filesystems/SWAP.so","infiltrator_filesystem_swap_v1","Swap.pdf"]]
     actual = [[e.get("id"), e.get("repository"), e.get("name"), e.get("package"),
-               e.get("resource"), e.get("abi")] for e in entries]
+               e.get("resource"), e.get("abi"), e.get("pdf")] for e in entries]
     if len(actual) != 16 or actual != expected:
         raise ValueError("Incomplete or modified sixteen-provider filesystem catalogue")
     return entries
+
+def pdf_name(entry):
+    """Only format-specific names from the sealed catalogue are accepted."""
+    return entry.get("pdf") or (entry["resource"].rsplit("/", 1)[1].removesuffix(".so") + ".pdf")
 
 def all_catalogue():
     entries = catalogue() + additional_catalogue()
@@ -175,8 +179,7 @@ def verify(entry, version, root=Path("/"), query=True):
         if identity.splitlines() != ["install ok installed", version + "+native1"]:
             raise ValueError("Expected native filesystem package missing or wrong version")
     module = root / entry["resource"].lstrip("/")
-    guide = root / "System/Resources/Documentation" / entry["repository"] / (
-        entry["resource"].rsplit("/", 1)[1].removesuffix(".so") + ".pdf")
+    guide = root / "System/Resources/Documentation" / entry["repository"] / pdf_name(entry)
     if guide.is_symlink() or not guide.is_file():
         raise ValueError("Required filesystem illustrated PDF is missing")
     with guide.open("rb") as file:
@@ -292,7 +295,7 @@ def native_installed(entry, version):
 def cleanup_legacy_docs(entry, root=Path("/"), owner_lookup=None):
     """Remove known old unowned records; leave all foreign/package-owned files."""
     folder = root / "System/Resources/Documentation" / entry["repository"]
-    manual = folder / (entry["resource"].rsplit("/", 1)[1].removesuffix(".so") + ".pdf")
+    manual = folder / pdf_name(entry)
     if not manual.is_file() or manual.is_symlink():
         raise ValueError("Filesystem PDF must exist before any legacy cleanup")
     with manual.open("rb") as file:

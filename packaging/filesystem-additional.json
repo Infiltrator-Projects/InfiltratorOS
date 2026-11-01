@@ -5,7 +5,8 @@
     "repository": "Filesystem-NTFS",
     "package": "infiltrator-filesystem-ntfs",
     "resource": "/System/Filesystems/NTFS.so",
-    "abi": "infiltrator_filesystem_ntfs_v1"
+    "abi": "infiltrator_filesystem_ntfs_v1",
+    "pdf": "NTFS.pdf"
   },
   {
     "id": "ext2",
@@ -13,7 +14,8 @@
     "repository": "Filesystem-EXT2",
     "package": "infiltrator-filesystem-ext2",
     "resource": "/System/Filesystems/EXT2.so",
-    "abi": "infiltrator_filesystem_module_v1"
+    "abi": "infiltrator_filesystem_module_v1",
+    "pdf": "EXT2.pdf"
   },
   {
     "id": "ext3",
@@ -21,7 +23,8 @@
     "repository": "Filesystem-EXT3",
     "package": "infiltrator-filesystem-ext3",
     "resource": "/System/Filesystems/EXT3.so",
-    "abi": "infiltrator_filesystem_ext_v1"
+    "abi": "infiltrator_filesystem_ext_v1",
+    "pdf": "EXT3.pdf"
   },
   {
     "id": "ext4",
@@ -29,7 +32,8 @@
     "repository": "Filesystem-EXT4",
     "package": "infiltrator-filesystem-ext4",
     "resource": "/System/Filesystems/EXT4.so",
-    "abi": "infiltrator_filesystem_ext_v1"
+    "abi": "infiltrator_filesystem_ext_v1",
+    "pdf": "EXT4.pdf"
   },
   {
     "id": "xfs",
@@ -37,7 +41,8 @@
     "repository": "Filesystem-XFS",
     "package": "infiltrator-filesystem-xfs",
     "resource": "/System/Filesystems/XFS.so",
-    "abi": "infiltrator_filesystem_xfs_v1"
+    "abi": "infiltrator_filesystem_xfs_v1",
+    "pdf": "XFS.pdf"
   },
   {
     "id": "btrfs",
@@ -45,7 +50,8 @@
     "repository": "Filesystem-Btrfs",
     "package": "infiltrator-filesystem-btrfs",
     "resource": "/System/Filesystems/BTRFS.so",
-    "abi": "infiltrator_filesystem_btrfs_v1"
+    "abi": "infiltrator_filesystem_btrfs_v1",
+    "pdf": "Btrfs.pdf"
   },
   {
     "id": "ffs",
@@ -53,7 +59,8 @@
     "repository": "Filesystem-FFS",
     "package": "infiltrator-filesystem-ffs",
     "resource": "/System/Filesystems/FFS.so",
-    "abi": "infiltrator_filesystem_ffs_defrag_v1"
+    "abi": "infiltrator_filesystem_ffs_defrag_v1",
+    "pdf": "FFS.pdf"
   },
   {
     "id": "sfs",
@@ -61,7 +68,8 @@
     "repository": "Filesystem-SFS",
     "package": "infiltrator-filesystem-sfs",
     "resource": "/System/Filesystems/SFS.so",
-    "abi": "infiltrator_filesystem_sfs_v1"
+    "abi": "infiltrator_filesystem_sfs_v1",
+    "pdf": "SFS.pdf"
   },
   {
     "id": "pfs3",
@@ -69,7 +77,8 @@
     "repository": "Filesystem-PFS3",
     "package": "infiltrator-filesystem-pfs3",
     "resource": "/System/Filesystems/PFS3.so",
-    "abi": "infiltrator_filesystem_pfs3_v1"
+    "abi": "infiltrator_filesystem_pfs3_v1",
+    "pdf": "PFS3.pdf"
   },
   {
     "id": "hfs",
@@ -77,7 +86,8 @@
     "repository": "Filesystem-HFS",
     "package": "infiltrator-filesystem-hfs",
     "resource": "/System/Filesystems/HFS.so",
-    "abi": "infiltrator_filesystem_hfs_v1"
+    "abi": "infiltrator_filesystem_hfs_v1",
+    "pdf": "HFS.pdf"
   },
   {
     "id": "hfsplus",
@@ -85,7 +95,8 @@
     "repository": "Filesystem-HFSPlus",
     "package": "infiltrator-filesystem-hfsplus",
     "resource": "/System/Filesystems/HFSPLUS.so",
-    "abi": "infiltrator_filesystem_hfsplus_v1"
+    "abi": "infiltrator_filesystem_hfsplus_v1",
+    "pdf": "HFSPlus.pdf"
   },
   {
     "id": "minix",
@@ -93,7 +104,8 @@
     "repository": "Filesystem-Minix",
     "package": "infiltrator-filesystem-minix",
     "resource": "/System/Filesystems/MINIX.so",
-    "abi": "infiltrator_filesystem_minix_defrag_v1"
+    "abi": "infiltrator_filesystem_minix_defrag_v1",
+    "pdf": "Minix.pdf"
   },
   {
     "id": "ufs2",
@@ -101,7 +113,8 @@
     "repository": "Filesystem-UFS2",
     "package": "infiltrator-filesystem-ufs2",
     "resource": "/System/Filesystems/UFS2.so",
-    "abi": "infiltrator_filesystem_ufs_v1"
+    "abi": "infiltrator_filesystem_ufs_v1",
+    "pdf": "UFS.pdf"
   },
   {
     "id": "zfs",
@@ -109,7 +122,8 @@
     "repository": "Filesystem-ZFS",
     "package": "infiltrator-filesystem-zfs",
     "resource": "/System/Filesystems/ZFS.so",
-    "abi": "infiltrator_filesystem_zfs_v1"
+    "abi": "infiltrator_filesystem_zfs_v1",
+    "pdf": "ZFS.pdf"
   },
   {
     "id": "apfs",
@@ -117,7 +131,8 @@
     "repository": "Filesystem-APFS",
     "package": "infiltrator-filesystem-apfs",
     "resource": "/System/Filesystems/APFS.so",
-    "abi": "infiltrator_filesystem_apfs_v1"
+    "abi": "infiltrator_filesystem_apfs_v1",
+    "pdf": "APFS.pdf"
   },
   {
     "id": "swap",
@@ -125,6 +140,7 @@
     "repository": "Filesystem-Swap",
     "package": "infiltrator-filesystem-swap",
     "resource": "/System/Filesystems/SWAP.so",
-    "abi": "infiltrator_filesystem_swap_v1"
+    "abi": "infiltrator_filesystem_swap_v1",
+    "pdf": "Swap.pdf"
   }
 ]
