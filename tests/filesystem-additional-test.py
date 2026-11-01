@@ -21,8 +21,6 @@ def release_for(entry, version="1.0.0"):
     names = [
         f"{repo.lower()}-{version}-native-installer.run",
         f"{entry['package']}_{version}_amd64.deb",
-        entry["resource"].rsplit("/", 1)[1],
-        "SHA256SUMS",
     ]
     base = f"https://github.com/Infiltrator-Projects/{repo}/releases/download/v{version}/"
     return {
@@ -47,6 +45,18 @@ class AdditionalFilesystemTests(unittest.TestCase):
             "ntfs", "ext2", "ext3", "ext4", "xfs", "btrfs", "ffs", "sfs",
             "pfs3", "hfs", "hfsplus", "minix", "ufs2", "zfs", "apfs", "swap"
         })
+
+    def test_deb_is_portable_and_run_rebuilds_native_package_contract(self):
+        """Admission checks the same two published assets as FAT32/OFS."""
+        for entry in worker.additional_catalogue():
+            with self.subTest(entry=entry["id"]):
+                release = release_for(entry)
+                names = {asset["name"] for asset in release["assets"]}
+                self.assertEqual(names, {
+                    entry["package"] + "_1.0.0_amd64.deb",
+                    entry["repository"].lower() + "-1.0.0-native-installer.run",
+                })
+                self.assertEqual(worker.release_installer(entry, release)[0], "1.0.0")
 
     def test_all_sixteen_require_real_complete_release_assets(self):
         for entry in worker.additional_catalogue():
