@@ -13,7 +13,7 @@
     "repository": "Filesystem-EXT2",
     "package": "infiltrator-filesystem-ext2",
     "resource": "/System/Filesystems/EXT2.so",
-    "abi": "infiltrator_filesystem_ext_v1"
+    "abi": "infiltrator_filesystem_module_v1"
   },
   {
     "id": "ext3",
