@@ -282,7 +282,9 @@ static bool valid_provider_slug(const char *slug)
            strcmp(slug, "filesystem-ufs2") == 0 ||
            strcmp(slug, "filesystem-zfs") == 0 ||
            strcmp(slug, "filesystem-apfs") == 0 ||
-           strcmp(slug, "filesystem-swap") == 0;
+           strcmp(slug, "filesystem-swap") == 0 ||
+           strcmp(slug, "filesystem-sfs2") == 0 ||
+           strcmp(slug, "filesystem-ufs1") == 0;
 }
 #endif
 
