@@ -101,9 +101,11 @@ with tempfile.TemporaryDirectory(prefix="native-worker.", dir=native) as tempora
         assert subprocess.check_output(
             ["dpkg-query", "-S", str(manual)], text=True).strip() == (
                 entry["package"] + ": " + str(manual))
+        release = json.loads((snapshot / (entry["repository"] + ".json")).read_text())
+        expected_version = release["tag_name"].removeprefix("v") + "+native1"
         assert subprocess.check_output(
             ["dpkg-query", "-W", "-f=\u0024{Version}", entry["package"]],
-            text=True).strip() == "1.0.0+native1"
+            text=True).strip() == expected_version
     assert len(list((stage / "status").glob("*-install.status"))) == 21
     print("All 21 independently owned native filesystem SOs and PDFs installed")
 
