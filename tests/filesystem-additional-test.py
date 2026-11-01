@@ -38,7 +38,7 @@ class AdditionalFilesystemTests(unittest.TestCase):
         complete = worker.all_catalogue()
         self.assertEqual((len(baseline), len(additional), len(complete)), (5, 18, 23))
         self.assertEqual(len({item["resource"] for item in complete}), 23)
-        self.assertEqual(len({item["package"] for item in complete}), 21)
+        self.assertEqual(len({item["package"] for item in complete}), 23)
         self.assertTrue(all(item["abi"].startswith("infiltrator_filesystem_")
                             for item in additional))
         self.assertEqual({item["id"] for item in additional}, {
