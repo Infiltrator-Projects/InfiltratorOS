@@ -16,8 +16,10 @@ The OS recognises all 21 independent filesystem module identities used by Defrag
 The five existing published providers (FAT12, FAT16, FAT32, OFS and exFAT)
 remain on the validated central release snapshot. At installation time the
 OS separately checks the other 16 repositories for *published*, stable
-native installers and checksum-bound SO/deb release assets. When an eligible
-release is present, it installs through the same aggressive hardware-native
+native installers and portable DEB release assets, both checksum-bound. The portable DEB includes the standard SO and its illustrated PDF, while the
+source-embedded RUN builds a local CPU-native SO and installs it through an
+independently owned native DEB. When an eligible release is present, it
+installs through the same aggressive hardware-native
 per-provider worker and verifies the package-owned SO, single illustrated PDF,
 ABI, compiled build metadata and SHA-256. An ordinary GitHub Actions artifact
 does **not** qualify as a release and will never be installed as a substitute.
@@ -27,7 +29,7 @@ Unpublished or unqualified providers are recorded as pending in
 installed. They cannot block installation of the five already published
 filesystem packages. The availability of all 21 is therefore **not yet
 claimed**: each additional repository must first publish a matching native
-RUN/deb/SO/checksum release and pass source-build qualification.
+RUN/portable-DEB release containing the standard SO and PDF and pass source-build qualification.
 
 ## InfiltratorOS components
 
