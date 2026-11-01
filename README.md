@@ -10,6 +10,28 @@ The operating-system integration project for Infiltrator Projects. The current d
 
 [Philosophy](docs/PHILOSOPHY.md) · [Architecture](docs/ARCHITECTURE.md) · [Filesystem](docs/FILESYSTEM.md) · [Validation](docs/VALIDATION.md) · [Changes](CHANGELOG.md). [VERSION](VERSION) owns package identity.
 
+## Independent filesystem provisioning
+
+The OS recognises all 21 independent filesystem module identities used by Defragmenter Test Media.
+The five existing published providers (FAT12, FAT16, FAT32, OFS and exFAT)
+remain on the validated central release snapshot. At installation time the
+OS separately checks the other 16 repositories for *published*, stable
+native installers and portable DEB release assets, both checksum-bound. The portable DEB includes the standard SO and its illustrated PDF, while the
+source-embedded RUN builds a local CPU-native SO and installs it through an
+independently owned native DEB. When an eligible release is present, it
+installs through the same aggressive hardware-native
+per-provider worker and verifies the package-owned SO, single illustrated PDF,
+ABI, compiled build metadata and SHA-256. An ordinary GitHub Actions artifact
+does **not** qualify as a release and will never be installed as a substitute.
+
+Unpublished or unqualified providers are recorded as pending in
+`/Temporary/InfiltratorOS/filesystems-pending.list`, not reported as
+installed. They cannot block installation of the five already published
+filesystem packages. All 16 additional repositories have now published CI-qualified portable-DEB and
+source-native-RUN release pairs, bringing release coverage to 21 filesystems.
+Actual installation remains independently verified on each machine; a published
+release is not proof of an installed or hardware-qualified module.
+
 ## InfiltratorOS components
 
 The product and this repository are named **InfiltratorOS**. The related components

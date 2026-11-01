@@ -164,10 +164,16 @@ import json, pathlib, sys
 root, output = pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2])
 catalogue = json.loads((root / "packaging/filesystem-resources.json").read_text())
 assert len(catalogue) == 5
+additional = json.loads((root / "packaging/filesystem-additional.json").read_text())
+assert len(additional) == 16
+assert len({e["resource"] for e in catalogue + additional}) == 21
 source = (root / "packaging/install-filesystem-resources.py").read_text()
 marker = "CATALOGUE = []  # @EMBED_FILESYSTEM_CATALOGUE@"
-assert source.count(marker) == 1
-output.write_text(source.replace(marker, "CATALOGUE = " + repr(catalogue)))
+additional_marker = "ADDITIONAL = []  # @EMBED_FILESYSTEM_ADDITIONAL@"
+assert source.count(marker) == source.count(additional_marker) == 1
+source = source.replace(marker, "CATALOGUE = " + repr(catalogue))
+source = source.replace(additional_marker, "ADDITIONAL = " + repr(additional))
+output.write_text(source)
 output.chmod(0o755)
 PY
     else

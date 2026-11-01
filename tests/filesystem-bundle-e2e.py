@@ -28,7 +28,8 @@ with tempfile.TemporaryDirectory(prefix="native-worker.", dir=native) as tempora
     # retaining its historical FAT-only limit while the Python workers know four.
     assert '$(wc -l < "$stage/filesystems.list")" -ne 5' in script
     assert "all 63 jobs" in script
-    assert "filesystem-fat32" in (root / "packaging/install-filesystem-resources.py").read_text()
+    assert "filesystem-fat32" in {x["repository"].lower() for x in entries}
+    assert len(json.loads((root / "packaging/filesystem-additional.json").read_text())) == 16
     expected = re.search(r"^BUNDLE_SHA256='([0-9a-f]{64})'$", script, re.MULTILINE).group(1)
     payload = script.split("\n__INFILTRATOROS_NATIVE_BUNDLE_BEGIN__\n", 1)[1].split(
         "\n__INFILTRATOROS_NATIVE_BUNDLE_END__", 1)[0]
@@ -68,6 +69,44 @@ with tempfile.TemporaryDirectory(prefix="native-worker.", dir=native) as tempora
         pdf_owner = subprocess.check_output(["dpkg-query", "-S", str(pdf)], text=True).strip()
         assert pdf_owner == entry["package"] + ": " + str(pdf), pdf_owner
     assert len(list((stage / "status").glob("*-install.status"))) == 5
+    # Prove the sixteen newly released SO providers through the exact sealed
+    # InfiltratorOS worker on disposable GitHub Actions hardware.
+    extra = json.loads((root / "packaging/filesystem-additional.json").read_text())
+    snapshot = stage / "release-json"
+    snapshot.mkdir()
+    subprocess.run([stage / "workers/install-filesystem-resources",
+                    "--discover-additional", snapshot], check=True, env=env)
+    candidates = (stage / "filesystems-optional.list").read_text().splitlines()
+    pending = (stage / "filesystems-pending.list").read_text().splitlines()
+    assert len(extra) == 16 and len(candidates) == 16, (candidates, pending)
+    assert not pending, pending
+    env["INFILTRATOROS_RELEASE_DIR"] = str(snapshot)
+    for entry in extra:
+        slug = entry["repository"].lower()
+        assert slug in candidates, slug
+        subprocess.run([stage / "workers/install-filesystem-resources", slug],
+                       check=True, env=env)
+        status = (stage / "status" / (slug + "-install.status")).read_text()
+        assert "state=complete\n" in status, slug
+        module = Path(entry["resource"])
+        manual = (Path("/System/Resources/Documentation") / entry["repository"] /
+                  (module.stem + ".pdf"))
+        assert module.is_file() and not module.is_symlink(), module
+        assert manual.is_file() and not manual.is_symlink(), manual
+        assert manual.read_bytes().startswith(b"%PDF-"), manual
+        assert {p.name for p in manual.parent.iterdir()} == {manual.name}
+        assert subprocess.check_output(
+            ["dpkg-query", "-S", str(module)], text=True).strip() == (
+                entry["package"] + ": " + str(module))
+        assert subprocess.check_output(
+            ["dpkg-query", "-S", str(manual)], text=True).strip() == (
+                entry["package"] + ": " + str(manual))
+        assert subprocess.check_output(
+            ["dpkg-query", "-W", "-f=\u0024{Version}", entry["package"]],
+            text=True).strip() == "1.0.0+native1"
+    assert len(list((stage / "status").glob("*-install.status"))) == 21
+    print("All 21 independently owned native filesystem SOs and PDFs installed")
+
     assert {p.name for p in Path("/System/Filesystems").glob("FAT*.so")} == {"FAT12.so", "FAT16.so", "FAT32.so"}
 print("Five filesystems installed and verified by the sealed InfiltratorOS worker")
 
