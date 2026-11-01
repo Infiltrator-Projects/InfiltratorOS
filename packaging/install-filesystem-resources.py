@@ -170,6 +170,29 @@ def download(url, path, digest, length):
         raise ValueError("Installer SHA256 or size mismatch")
     path.chmod(0o700)
 
+def required_interface_symbols(entry):
+    """The installed module must expose every ABI used by its consumers."""
+    symbols = ([entry["abi"]] if entry.get("abi") else
+               ["infiltrator_filesystem_module_v1",
+                "infiltrator_filesystem_module_v3",
+                "infiltrator_filesystem_module_v4"])
+    if entry["id"] in {"fat12", "fat16"}:
+        symbols.append("infiltrator_filesystem_defrag_v1")
+    if entry["id"] == "ext2":
+        # The original freestanding drop-in ABI is not sufficient for
+        # Defragmenter Test Media, which needs fixture/create/verify support.
+        symbols.append("infiltrator_filesystem_ext_v1")
+    if entry["id"] == "exfat":
+        symbols = ["infiltrator_filesystem_module_v3",
+                   "infiltrator_filesystem_module_v4",
+                   "infiltrator_filesystem_module_v5"]
+    if entry["id"] == "ofs":
+        symbols = ["infiltrator_filesystem_module_v1", "infiltrator_filesystem_module_v2",
+                   "infiltrator_filesystem_module_v3", "infiltrator_filesystem_boot_v1",
+                   "infiltrator_filesystem_defrag_v2"]
+    return symbols
+
+
 def verify(entry, version, root=Path("/"), query=True):
     """Verify an installed SO + PDF against Debian-native source/build data."""
     if query:
@@ -219,21 +242,7 @@ def verify(entry, version, root=Path("/"), query=True):
             if not owner.startswith(entry["package"] + ":"):
                 raise ValueError("Filesystem payload owned by wrong package")
     readelf = subprocess.check_output(["/usr/bin/readelf", "-Ws", str(module)], text=True)
-    symbols = ([entry["abi"]] if entry.get("abi") else
-               ["infiltrator_filesystem_module_v1",
-                "infiltrator_filesystem_module_v3",
-                "infiltrator_filesystem_module_v4"])
-    if entry["id"] in {"fat12", "fat16"}:
-        symbols.append("infiltrator_filesystem_defrag_v1")
-    if entry["id"] == "exfat":
-        symbols = ["infiltrator_filesystem_module_v3",
-                   "infiltrator_filesystem_module_v4",
-                   "infiltrator_filesystem_module_v5"]
-    if entry["id"] == "ofs":
-        symbols = ["infiltrator_filesystem_module_v1", "infiltrator_filesystem_module_v2",
-                   "infiltrator_filesystem_module_v3", "infiltrator_filesystem_boot_v1",
-                   "infiltrator_filesystem_defrag_v2"]
-    for symbol in symbols:
+    for symbol in required_interface_symbols(entry):
         if symbol not in readelf:
             raise ValueError("Missing filesystem or defragmentation ABI")
     if not entry.get("abi"):
