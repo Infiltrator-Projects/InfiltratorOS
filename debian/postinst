@@ -105,7 +105,7 @@ if ! "$stage/prepare-native-releases" "$stage/release-json" "$stage/providers.li
 fi
 export INFILTRATOROS_RELEASE_DIR="$stage/release-json"
 # The five published filesystem providers remain in the verified central
-# release snapshot. Probe the remaining sixteen independently and only admit
+# release snapshot. Probe the remaining eighteen independently and only admit
 # complete published native RUN/DEB/SO releases. CI artifacts are not releases.
 if ! "$stage/install-filesystem-resources" --discover-additional "$stage/release-json" \
         > "$stage/optional-filesystem-discovery.log" 2>&1; then
@@ -117,7 +117,7 @@ if ! "$stage/install-filesystem-resources" --discover-additional "$stage/release
 fi
 test -f "$stage/filesystems-optional.list"
 test -f "$stage/filesystems-pending.list"
-if [ "$(wc -l < "$stage/filesystems-optional.list")" -gt 16 ]; then
+if [ "$(wc -l < "$stage/filesystems-optional.list")" -gt 18 ]; then
     echo 'Refusing an oversized additional filesystem list.' >&2
     exit 1
 fi

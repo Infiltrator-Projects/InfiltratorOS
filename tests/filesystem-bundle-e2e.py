@@ -29,7 +29,7 @@ with tempfile.TemporaryDirectory(prefix="native-worker.", dir=native) as tempora
     assert '$(wc -l < "$stage/filesystems.list")" -ne 5' in script
     assert "all 63 jobs" in script
     assert "filesystem-fat32" in {x["repository"].lower() for x in entries}
-    assert len(json.loads((root / "packaging/filesystem-additional.json").read_text())) == 16
+    assert len(json.loads((root / "packaging/filesystem-additional.json").read_text())) == 18
     expected = re.search(r"^BUNDLE_SHA256='([0-9a-f]{64})'$", script, re.MULTILINE).group(1)
     payload = script.split("\n__INFILTRATOROS_NATIVE_BUNDLE_BEGIN__\n", 1)[1].split(
         "\n__INFILTRATOROS_NATIVE_BUNDLE_END__", 1)[0]
@@ -69,7 +69,7 @@ with tempfile.TemporaryDirectory(prefix="native-worker.", dir=native) as tempora
         pdf_owner = subprocess.check_output(["dpkg-query", "-S", str(pdf)], text=True).strip()
         assert pdf_owner == entry["package"] + ": " + str(pdf), pdf_owner
     assert len(list((stage / "status").glob("*-install.status"))) == 5
-    # Prove the sixteen newly released SO providers through the exact sealed
+    # Prove the eighteen conditionally published SO providers through the exact sealed
     # InfiltratorOS worker on disposable GitHub Actions hardware.
     extra = json.loads((root / "packaging/filesystem-additional.json").read_text())
     snapshot = stage / "release-json"
@@ -106,8 +106,8 @@ with tempfile.TemporaryDirectory(prefix="native-worker.", dir=native) as tempora
         assert subprocess.check_output(
             ["dpkg-query", "-W", "-f=\u0024{Version}", entry["package"]],
             text=True).strip() == expected_version
-    assert len(list((stage / "status").glob("*-install.status"))) == 21
-    print("All 21 independently owned native filesystem SOs and PDFs installed")
+    assert len(list((stage / "status").glob("*-install.status"))) == 23
+    print("All 23 independently owned native filesystem SOs and PDFs installed")
 
     assert {p.name for p in Path("/System/Filesystems").glob("FAT*.so")} == {"FAT12.so", "FAT16.so", "FAT32.so"}
 print("Five filesystems installed and verified by the sealed InfiltratorOS worker")

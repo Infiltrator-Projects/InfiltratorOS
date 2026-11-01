@@ -142,5 +142,25 @@
     "resource": "/System/Filesystems/SWAP.so",
     "abi": "infiltrator_filesystem_swap_v1",
     "pdf": "Swap.pdf"
+  },
+  {
+    "id": "sfs2",
+    "name": "SFS2",
+    "repository": "Filesystem-SFS2",
+    "package": "infiltrator-filesystem-sfs2",
+    "resource": "/System/Filesystems/SFS2.so",
+    "abi": "infiltrator_filesystem_sfs2_v1",
+    "pdf": "SFS2.pdf",
+    "qualification": "read-only; independent-media defrag and recovery not qualified"
+  },
+  {
+    "id": "ufs1",
+    "name": "UFS1",
+    "repository": "Filesystem-UFS1",
+    "package": "infiltrator-filesystem-ufs1",
+    "resource": "/System/Filesystems/UFS1.so",
+    "abi": "infiltrator_filesystem_ufs_v1",
+    "pdf": "UFS1.pdf",
+    "qualification": "experimental; independent real-media mutation and recovery not qualified"
   }
 ]

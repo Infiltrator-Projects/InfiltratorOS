@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Offline safety tests for full 21-filesystem provisioning readiness."""
+"""Offline safety tests for full 23-filesystem provisioning readiness."""
 import importlib.util
 import io
 import json
@@ -36,14 +36,14 @@ class AdditionalFilesystemTests(unittest.TestCase):
         baseline = worker.catalogue()
         additional = worker.additional_catalogue()
         complete = worker.all_catalogue()
-        self.assertEqual((len(baseline), len(additional), len(complete)), (5, 16, 21))
-        self.assertEqual(len({item["resource"] for item in complete}), 21)
+        self.assertEqual((len(baseline), len(additional), len(complete)), (5, 18, 23))
+        self.assertEqual(len({item["resource"] for item in complete}), 23)
         self.assertEqual(len({item["package"] for item in complete}), 21)
         self.assertTrue(all(item["abi"].startswith("infiltrator_filesystem_")
                             for item in additional))
         self.assertEqual({item["id"] for item in additional}, {
             "ntfs", "ext2", "ext3", "ext4", "xfs", "btrfs", "ffs", "sfs",
-            "pfs3", "hfs", "hfsplus", "minix", "ufs2", "zfs", "apfs", "swap"
+            "pfs3", "hfs", "hfsplus", "minix", "ufs2", "zfs", "apfs", "swap", "sfs2", "ufs1"
         })
 
     def test_deb_is_portable_and_run_rebuilds_native_package_contract(self):
@@ -58,7 +58,7 @@ class AdditionalFilesystemTests(unittest.TestCase):
                 })
                 self.assertEqual(worker.release_installer(entry, release)[0], "1.0.0")
 
-    def test_all_sixteen_require_real_complete_release_assets(self):
+    def test_all_eighteen_require_real_complete_release_assets(self):
         for entry in worker.additional_catalogue():
             with self.subTest(entry=entry["id"]):
                 release = release_for(entry)
@@ -95,7 +95,7 @@ class AdditionalFilesystemTests(unittest.TestCase):
             ready = (stage / "filesystems-optional.list").read_text().splitlines()
             pending = (stage / "filesystems-pending.list").read_text().splitlines()
             self.assertEqual(ready, [selected["repository"].lower()])
-            self.assertEqual(len(pending), 15)
+            self.assertEqual(len(pending), 17)
             self.assertEqual(json.loads(
                 (snapshot / (selected["repository"] + ".json")).read_text()),
                 release)
@@ -114,7 +114,7 @@ class AdditionalFilesystemTests(unittest.TestCase):
                  patch.object(worker.urllib.request, "urlopen", side_effect=fake_fetch):
                 worker.discover_additional(snapshot)
             self.assertEqual((stage / "filesystems-optional.list").read_text(), "")
-            self.assertEqual(len((stage / "filesystems-pending.list").read_text().splitlines()), 16)
+            self.assertEqual(len((stage / "filesystems-pending.list").read_text().splitlines()), 18)
             self.assertFalse(list(snapshot.glob("*.json")))
 
 
