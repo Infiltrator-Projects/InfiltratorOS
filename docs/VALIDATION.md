@@ -1,66 +1,49 @@
-# Validation
+# Validation and evidence boundaries
 
-**Unimplemented final gate:** [one `.so` per filesystem for firmware, kernel and applications](FILESYSTEM_SO_RUNTIME_CONTRACT.md). Existing installed shared objects and separately tested platform drivers do not prove the kernel can mount or BOOT can read a volume through the same `.so`. Require a real UEFI load test, kernel VFS bridge read/write and early-root qualification before a completion claim.
+This document distinguishes **implemented automated checks** from **system behaviour still awaiting independent qualification**. The final one-`.so`-for-BOOT/kernel/apps design is specified in [the filesystem runtime contract](FILESYSTEM_SO_RUNTIME_CONTRACT.md); its generic kernel bridge and real UEFI/root integration have not been demonstrated by the OS package.
 
-## Local contracts
+## Run the local checks
 
-Run `sh tests/check.sh` on Linux. Optimised builds with NDEBUG exercise the production process and status modules using disposable fixtures. Checks remain active in release builds.
+```sh
+sh tests/check.sh
+sh scripts/build-deb.sh
+```
 
-Process fixtures cover missing executables, failed setup, successful exec, an executable that subsequently fails, asynchronous worker handoff, closure of a parent descriptor above 4096, and startup with closed stdin. Status fixtures cover complete records, indeterminate progress, CRLF, unknown fields, invalid numbers, overflow, bounds, duplicate fields, embedded NUL, oversized lines and truncated records. Rejected records must leave output unchanged.
+`tests/check.sh` compiles and exercises production C launcher and status logic with warnings treated as errors, checks exact worker/package contracts, and runs temporal, filesystem, release, icon and native-progress regression tests. Process cases include failed or detached exec, closed standard streams and high-numbered file descriptors. Status cases include malformed records, overflows, duplicate/unknown fields and incomplete writes. Invalid input must not create a false success state.
 
-Defragmenter's integration worker is compiled with warnings-as-errors and checked for its published-release checksum validation, native -O3/LTO compiler policy, native package identity, Test Media and launcher contract. Built-package qualification requires the fourth worker, launcher and progress binary. Actual native build quality and integration on physical Linux/Mint hardware remain distinct from a hosted package-construction test.
+## Package and published release
 
-## Source-first and local optimisation evidence
+The main GitHub Actions build verifies the exact approved Plymouth artwork and resource integrity, builds the Debian package twice and compares the resulting bytes. It checks Debian metadata and maintainer scripts, an exhaustive permanent-file inventory, required native executable profiles and the checksum-sealed temporary worker runtime.
 
-The [source-first native-build contract](PHILOSOPHY.md#source-first-hardware-native-execution) is qualified per component and per supported installation path. Provider repositories remain responsible for their compiler and runtime tests; the InfiltratorOS integration tests verify that their declared results were obtained and installed. Evidence for each native build should distinguish:
+Publication consumes the qualified archive/DEB/commit identity and verifies remote bytes before and after making a release public. Previously published tags and assets are immutable. `VERSION` is the package identity; changes to documentation after a published tag do not retroactively rewrite that release.
 
-1. **Source identity:** exact release revision, verified source/installer bytes, toolchain and dependency identities, with no unnoticed substitution of a generic precompiled binary.
-2. **Target identity:** actual target CPU architecture and supported features, recorded compiler choices and the absence of unsupported instruction assumptions.
-3. **Optimisation evidence:** applied `-O3`, CPU tuning and LTO where claimed, plus recorded PGO training workload, profile use and final trained build when PGO is claimed. Untrained, unsupported, failed or skipped PGO must not be described as completed.
-4. **Installed identity:** verified installed artifact hashes, package ownership, expected paths, ABI versions, provider identity and declared capabilities.
-5. **Behaviour and performance:** parity with the qualified functional and failure-path tests. If a performance gain is claimed, compare against an appropriate baseline with a documented workload; optimisation flags alone do not prove a gain.
-6. **Failure and recovery:** interrupted downloads, source-build failures, incompatible hardware, unsupported compiler features, failed verification and recovery without accepting a partially qualified native installation.
+## Provider qualification exercised in CI
 
-These are system-wide acceptance criteria, not an assertion that the existing automated CI exercises every condition on physical hardware. Individual component records and the integration tests below identify the evidence currently available. A generic package can be a valid documented bootstrap or compatibility path, but must be identified separately from a successful locally optimised build.
+- **Temporal:** `tests/temporal-install-test.py` and `tests/temporal-bundle-e2e.py` exercise the 31 calendar and 23 clock providers, their independent releases, sealed installer workflow, per-provider package ownership, one `.so` and illustrated PDF, and source/build metadata.
+- **Established filesystems:** `tests/filesystem-install-test.py` checks the five fixed identities, SHA-256/asset rules, package/PDF/ABI validation, runtime dependencies and safe legacy-file cleanup. `tests/filesystem-bundle-e2e.py` installs the sealed actual workers on disposable GitHub Actions hosts.
+- **Additional filesystems:** `tests/filesystem-additional-test.py` verifies the 18 other identities and discovery/qualification rules. The filesystem bundle end-to-end test exercises **all 23** independent native `.so` and PDF packages using published release assets. This is evidence on ephemeral CI machines, not a claim they have been installed or tested on the user's PC.
+- **Aggregate progress:** `tests/native-progress-count-test.c` verifies the real 81-job manifest-derived total and rejection of missing/malformed manifests, avoiding a progress display capped at a historical 63/79 count.
 
-## Calculator native installation contract (1.0.41)
+The first 63 jobs (four applications, 54 temporal providers, five established filesystems) use one central checksum-checked native release snapshot; up to 18 optional filesystem jobs are checked against their own published releases. An unqualified optional provider is pending, not successful. Test failures and real installation failures are distinct; neither should be suppressed by documentation.
 
-Calculator 0.2.63 removed the installed build-provenance report; 0.2.64
-delivers only the user manual PDF in its native documentation directory.
-InfiltratorOS must not recreate or require that retired file. Its Calculator
-worker verifies the published native installer checksum, requires successful
-completion of Calculator's source-build/PGO/LTO/test/install pipeline, and
-then confirms the exact selected Debian package version, executable, single
-PDF manual, menu/icon/AppStream entries, PATH bridge and shared fonts.
-The exact-version check is exercised with independent dpkg status fixtures.
-Successful execution is installer-owned build evidence, not a separately
-validated persistent build report. The package's actual CPU/PGO profile
-remains Calculator's responsibility to qualify.
+## Installed-state acceptance rules
 
-## Package and release qualification
+Each independently installed product must match its exact published native release and package ownership; required executable or `.so` paths, companion PDF where specified, release/source identity, build provenance, checksum and ABI must be checked by the owning worker.
 
-GitHub Actions builds all installed C programs with warnings as errors, builds the DEB twice and compares bytes, inspects control metadata and maintainer-script syntax, extracts the payload, verifies installed executable membership, and compares the installed PNG with approved source artwork. Source archive and commit identity accompany SHA-256 sealed artifacts.
+Calendar/clock and filesystem two-file packages have the `.so` and one illustrated PDF as their expected installed provider files, with native source, optimisation and SHA-256 attestations held in Debian metadata. Obsolete persistent `BUILD-INFO` files are not required for these providers. A verified cached build may skip recompilation only if it still satisfies the exact release and installed-state checks. Unknown or package-owned legacy documents are not silently removed.
 
-Publication consumes only the successful build's sealed artifact. It verifies remote bytes while the release is a draft and again after publication. A draft can be repaired; public tags and assets cannot be replaced.
+Calculator likewise requires its one PDF manual, exact package version, executable and desktop integration, but no retired `BUILD-INFO`. Files retains its separate recorded two-pass PGO contract. Defragmenter's OS worker currently claims CPU-native optimisation and LTO, **not** demonstrated two-pass PGO.
 
-## Integration scope
+For native-performance claims, record exact source and toolchain, target CPU, measured trained PGO when asserted, build flags, package hashes, functional parity and a repeatable benchmark workload. Flags or a `+native` package suffix alone are not evidence of performance improvement.
 
-These automated checks do not run the package's root maintainer scripts on the CI host. Real Debian/Mint qualification must inspect Plymouth during boot, reboot and shutdown; GRUB and initramfs updates; graphical/headless worker startup; APT lock contention; interrupted downloads/builds; local PGO; and replacement verification on supported hardware. Record distribution, kernel, desktop, package version and logs with that evidence.
+## Known integration discrepancy
 
-The calendar/clock contract checks all 54 catalogue identities, validates stable three-asset release selection and digest rejection, verifies independent per-provider and per-run statuses, and tests the extracted native package record and module identity. Package construction embeds a fifteenth temporary worker and launcher/progress group while preserving the exhaustive permanent-payload allowlist. Provider repositories qualify the exact generic package and aggressive native installer before publishing.
+The InfiltratorOS worker in `packaging/install-defragmenter.c` currently requires `/System/Commands/Defragmenter/defragmenter-operation-engine`, `defragmenter-mapper`, the EXT metadata worker and privileged helper. Earlier maintained documentation claimed those private workers were under `/System/Filesystems/Defragmenter`. **These two paths cannot both be the current installed-state contract.** This documentation now reports the verifier's actual requirement, but the separately released Defragmenter package must be checked against it before declaring a successful real installation. No source-code or package-path change is implied by this documentation correction.
 
-Release qualification also runs `tests/temporal-bundle-e2e.py` on an ephemeral GitHub Actions host. The test extracts the exact integrity-checked worker from the built Debian maintainer script, installs a legacy ownership fixture at all 54 canonical module paths, invokes the real worker against the published releases, and verifies aggressive native package installation, provider metadata and all 54 dpkg ownership transfers. The OS release is published only after this full worker test passes. A distinct process installs each provider and verifies its own status and package ownership. The maintainer-script monitor checks all 58 statuses from the current run and only removes that run’s stage, never the shared /Temporary/InfiltratorOS directory.
+The post-install script retains historical “63 jobs” comments despite permitting 18 independently discovered extra filesystem jobs; runtime progress now uses actual manifests. This is a source-comment inconsistency, not evidence that all 81 installers were actually launched on a particular machine.
 
-## Native installed-build reuse
+## Evidence still required on real systems
 
-The calendar, clock and FAT resource workers now distinguish a verified current native build from a missing/stale build. Provider tests exercise the no-download/no-APT fast path and the fallback that still invokes the checksum-checked native installer and post-install verification. A previously installed version must not bypass newer release discovery. The verification checks use the exact installed package version, BUILD-INFO provenance, module checksum, native optimisation profile and ABI/identity, with source revision comparison for temporal resources. These tests prove control flow with fixtures; they do not assert performance gains, current-host CPU fingerprint equivalence or production filesystem media write safety.
+Hosted package construction and disposable CI installation do **not** run the OS's complete privileged Debian package configuration on a physical user's Mint installation or prove drive safety. Separately test package configuration and removal, GRUB/initramfs/Plymouth at boot and shutdown, graphical and headless operation, concurrent APT/`aptk` locks, failed/interrupted downloads, native toolchains and PGO training, retries, package ownership and rollback.
 
-The FAT 0.1.2+ installed-module contract additionally requires `LTO: enabled` and `PGO: trained two-pass profile (V1 and V3/V4 fixtures)`. The standalone FAT12/FAT16 source build uses disposable images for training and must still produce a freestanding library without runtime dependencies. These checks verify the declared training path and installed module identity; they do not assert performance uplift or full defragmentation crash-recovery coverage.
-
-## Independently released FAT modules
-
-`tests/filesystem-install-test.py` validates the two-item catalogue, exact two-asset stable release contract, digest/URL/size fail-closed rules and independent per-run status tracking. InfiltratorOS must not claim success unless the matching module is installed under `/System/Filesystems`, owned by the format-specific Debian package, built aggressively with local CPU/LTO flags and authenticated by BUILD-INFO hash plus format-specific V1/V3/V4/defrag exports. The individual FAT repositories separately qualify actual native package installation and filesystem fixtures before publication. Full Defragmenter integration and physical-media and firmware qualification remain separate evidence gates.
-
-### Three independent FAT installation workers (1.0.40)
-
-The SHA-256 sealed native bundle contains Filesystem-FAT12, Filesystem-FAT16 and Filesystem-FAT32. The three .so builds, native optimisations, package ownership and ABI signatures are verified separately. FAT32 does not claim the FAT12/FAT16 defrag ABI. Later releases require independently qualified .efi and kernel-specific .ko release assets. The OS worker does not load kernel modules or stage firmware drivers on arbitrary installations; host-specific deployment and physical-media/boot qualification remain separately gated.
+Filesystem claims additionally require independent media read/write/format/defragmentation and crash recovery, identity and ABI tests, relevant kernel/driver qualification, and real BOOT/UEFI and early-root testing where advertised. Record host distribution, CPU, kernel, file/module hashes, exact release, run logs and observed results; do not turn a simulated or CI pass into a physical-hardware completion claim.

@@ -1,291 +1,52 @@
-## 1.0.47 — Install aggressive-mode exFAT as fifth filesystem
-
-- Extend InfiltratorOS to five independently launched filesystem jobs: FAT12, FAT16, FAT32, OFS and exFAT (63 total installations).
-- Require exFAT's own release-pinned aggressive source .run with measured two-pass PGO, native CPU optimisation and LTO; verify Debian-native source metadata, ABI V3/V4/V5, module and PDF hashes and exact Debian ownership.
-- Switch only new OS releases to the 63-component native v3 snapshot. Previous 61/62 component snapshots remain available.
-- Test all five filesystem installers in the sealed bundle. The kernel module stays a separate release artifact, not installed.
-
-## 1.0.46 — Verify filesystem two-file packages and migrate old documentation
-
-- Verify FAT12/FAT16/FAT32/OFS CPU-native shared libraries and illustrated PDFs using Debian source, flags, PGO, ownership and SHA-256 metadata rather than obsolete BUILD-INFO files.
-- Reuse an installed filesystem only when both qualified files are present; clean known unowned obsolete engineering documentation after verification.
-- Regression-test metadata failure and four-format cleanup; seed obsolete documentation in end-to-end filesystem integration tests.
-
-## 1.0.45 — Clean all 54 calendar and clock documentation installs
-
-- Require the current PDF and Debian-native attestation for all 31 calendars and 23 clocks, never an obsolete BUILD-INFO record.
-- Clean only known, unowned previous engineering documentation after each native package and ABI check. Preserve unfamiliar, symbolic-link and package-owned content.
-- Require the PDF to exist before treating a provider as a cached successful installation, regardless of stale BUILD-INFO files.
-- Add 54-provider cleanup regression tests and end-to-end migration fixtures.
-
-## 1.0.44 — Restore OFS installer completion
-
-- Fix native clock verification for the actual published C flag order; validate flag tokens and the last effective optimisation level without weakening CPU-target or LTO requirements.
-
-- Allow the 62nd installer (`filesystem-ofs`) through the per-job launcher.
-- Write failed-launch status into the current installation run, not a stale path.
-- Compile regression tests for all filesystem slugs and rejected identities.
-- Make the detached-process descriptor test adapt to the host's RLIMIT_NOFILE.
-
-## 1.0.43 — 30 October 2026
-
-- Provision the independent OFS.so source package as the fourth filesystem
-  job, with native PGO/LTO, package ownership/hash and Boot ABI verification.
-- Consume the 62-component v2 snapshot while the publisher retains the
-  earlier 61-component endpoint for existing OS releases.
-
 # Changelog
 
-## 1.0.42 — Accept the calendar two-file guide and native provenance contract
+This is a concise record of **published changes**, not an alternative copy of the current architecture or a replay of every development commit. The [README](README.md) and [technical documentation](docs/README.md) describe current behaviour. [Immutable release tags](https://github.com/Infiltrator-Projects/InfiltratorOS/releases) and [Git commits](https://github.com/Infiltrator-Projects/InfiltratorOS/commits/main/) preserve detailed historical provenance; the full older changelog is retained at [v1.0.52](https://github.com/Infiltrator-Projects/InfiltratorOS/blob/v1.0.52/CHANGELOG.md).
 
-- Support illustrated-calendar PDF plus native shared object as the only
-  installed provider content, with source/PGO/LTO/SHA256 provenance in Debian
-  package control metadata.
-- Preserve full verification and cache reuse for existing BUILD-INFO based
-  calendar and clock packages.
-- Add a regression check for two-file metadata and missing manual rejection.
+## 1.0.52 — Actual native-job progress totals
 
+- Compute aggregate GUI progress from the current run's provider manifests instead of hard-coded additional filesystem counts.
+- Regress-test the 81-job case and refuse malformed or incomplete job manifests. This resolves the incorrect 79-job denominator when all 23 filesystem providers are present.
 
-## 1.0.41 — Align Calculator verification with its single-PDF package contract
+## 1.0.51 — EXT2 dual-ABI qualification
 
-- Fix the one failed Calculator job in the 61-job native installer: Calculator
-  0.2.63+ intentionally no longer packages BUILD-INFO, but the InfiltratorOS
-  1.0.40 worker still required it after Calculator 0.2.64 installed.
-- Require successful execution of the authenticated native source installer,
-  then verify the exact selected dpkg version, executable, user manual PDF,
-  desktop integration and shared fonts without installing extra documentation.
-- Add synthetic dpkg status tests for correct version, wrong version, removed
-  package, another package and missing status. Preserve all other 60 jobs.
-- Publish a new immutable version; do not alter the public v1.0.40 artifacts.
+- Require both EXT2's standard format interface and the Test Media ABI before qualifying its native installation.
+- Add verification regression coverage for the two exports.
 
-## 1.0.38 — Central native release metadata and checked downloads
+## 1.0.50 — Twenty-three filesystem providers
 
-- Replace 60 independent native release REST API lookups with one complete HTTPS snapshot generated by Infiltrator-Repository using an authenticated publisher.
-- Validate the exact 60 resource identities, canonical GitHub release URLs, asset sizes and SHA-256 digests before launching workers. Fail before launching any native builds if the snapshot is unavailable or invalid.
-- Enforce published SHA-256 verification of each downloaded native RUN in Calculator, Files, System Monitor and Defragmenter in addition to existing independent verification and filesystem contracts.
-- Show the running component and current installation stage in the single aggregate progress window.
-- Retain source-owned installation, CPU-specific compilation, native ABI checks, existing job serialization and per-run diagnostics.
+- Extend independent filesystem catalogue and installer qualification from 21 to 23 providers, including SFS2 and UFS1.
+- Verify distinct per-format Debian ownership and the complete sealed bundle installation flow.
 
-## 1.0.37 — Independently installed FAT12 and FAT16 shared-object modules
+## 1.0.49 — Exact filesystem PDF and native package identity
 
-- Add two independently published format packages under `/System/Filesystems` with their own .deb, source-embedded native .run, GitHub source ZIP and copy-preserving repository ownership.
-- Provision 60 independent jobs while preserving the 1.0.36 **single aggregate GTK progress window**, duplicate-run prevention, run-wide flock and unlimited APT lock waits.
-- Verify release SHA256, package ownership/version, native BUILD-INFO, module identity, V1/V3/V4 and Defragmenter ABI contracts.
-- End-to-end test actual FAT12/FAT16 downloads and installation from the checksum-sealed OS bundle on ephemeral CI hosts.
-- Do not ship or claim kernel or UEFI driver qualification in the initial .so-only packages.
+- Match released module/PDF names, case and versions for the independently packaged filesystems.
+- Requalify actual native `.so` and illustrated-PDF installations on disposable CI hosts.
 
+## 1.0.48 — Independent native filesystem coverage
 
-## 1.0.36 — Mint aptk lock handling and one installation window
+- Extend the OS to 21 independently selected filesystem providers with per-format published `.run`, portable `.deb`, native `.so` and PDF verification.
+- Add release qualification, dynamic progress and real sealed-worker installation tests.
 
-- Respect a live Mint `aptk`/dpkg package-manager transaction: native System Monitor, Calculator, Files, Defragmenter and temporal provider workers wait for the frontend lock instead of giving up after five minutes. Never remove dpkg locks.
-- Replace the 58 overlapping progress dialogs with one aggregated InfiltratorOS progress window. Keep all 58 independent status and diagnostic files, and preserve the global native-build serialisation lock.
-- Prevent repeated OS reinstall attempts from launching another simultaneous 58-job batch. A run-wide provision lock remains held by the detached status monitor until the batch completes or reaches its diagnostic timeout.
-- Require util-linux for the `flock` coordination tool and add packaging regression checks.
-- This does not change the application-owned Files PGO training pipeline, fixed independently in Files 0.1.76.
+## 1.0.47 — Fifth established filesystem
 
+- Add aggressive source-native exFAT provisioning alongside FAT12, FAT16, FAT32 and OFS, retaining the 63-component central snapshot.
+- Check module/PDF identity, ABI, Debian ownership, LTO/PGO metadata and separate kernel asset boundaries.
 
-## 1.0.35 — Independent temporal installers and run-safe cleanup
+## 1.0.46–1.0.45 — Two-file provider documentation contracts
 
-- Launch 31 calendar and 23 clock native installers as 54 independent processes
-  with individual GTK progress windows, individual per-run statuses and logs,
-  published-release digest validation and per-provider native build verification.
-- Keep one reusable signed worker implementation, with a strict 54-provider
-  catalogue, rather than copying 54 implementations into InfiltratorOS.
-- Give the four application installer jobs the same run-specific status/log
-  isolation. Preserve the shared native build lock but never erase shared
-  /Temporary/InfiltratorOS while another installation may still be active.
-- Remove only the current run's temporary worker stage after all 58 jobs
-  succeed. Retain that run's logs and binaries when a job fails or times out.
-  Unit tests validate distinct provider and run statuses; packaged integration
-  tests exercise 54 separate published .run installers.
+- Move filesystem and 54 calendar/clock provider provenance to Debian metadata and require an illustrated PDF with the native `.so`.
+- Remove only known unowned legacy engineering documents after verification; preserve unrelated or package-owned files.
 
+## 1.0.44–1.0.41 — Native-install verification repairs
 
-## 1.0.34
+- Repair OFS worker dispatch and clock optimisation flag parsing; introduce OFS as the fourth established filesystem in 1.0.43.
+- Accept calendar two-file documentation and fix Calculator installation checks for its one PDF manual instead of an obsolete persistent build report.
 
-Install all 31 calendars and 23 clocks from their independent checksum-verified source installers using explicit aggressive CPU-native/LTO/two-pass-PGO builds. Verify each native package and module, serialize them with existing application builds, and retain failure diagnostics. Retire the OS dependency on the combined resource package while preserving Common source and existing-module ownership transitions.
+## Earlier development milestones
 
-## 1.0.33 — Automatic Cinnamon/Nemo icons for native programs
+- **1.0.38–1.0.34:** central authenticated-HTTPS release catalogue, independent FAT modules, single aggregate progress window, native-build reuse and separately released temporal providers.
+- **1.0.33–1.0.28:** native Cinnamon icon integration, verified direct font/icon layout, `/Temporary` installer staging, fail-closed embedded bundle and removal of permanent provisioning executables.
+- **1.0.26–1.0.20:** Defragmenter provisioning and audited direct MB/Daimler font/icon collections.
+- **1.0.19–1.0.5:** Files and Calculator installation integration, native directory hierarchy, canonical naming, verified release bytes, graphical progress and defensive launcher/status contracts.
 
-- Add a per-user Cinnamon login integration to register file-manager custom icons for all five installed user-facing native executables without terminal commands. Root-run Debian scripts cannot set GVfs metadata in a user's desktop session.
-- Prefer the actual application-owned artwork under `/System/Resources/Icons`; fall back to installed desktop theme icons for Files if its own native artwork is not yet present.
-- Preserve existing user custom icons; never override icon metadata already set by the user, never add executable wrappers or duplicate icon data. Apply at graphical user login, including after application installation.
-- Keep the implementation in the OS-owned `/System/Commands/InfiltratorOS` hierarchy and Cinnamon's existing XDG autostart mechanism. No application installers or temporary workers are permanently added.
-
-
-## 1.0.32 — Direct native fonts and icons; no Seed directories
-
-- Eliminate installed `/System/Resources/Fonts/Seed` and `/System/Resources/Icons/Seed` entirely. The 23 verified TTF files are packaged directly into `/System/Resources/Fonts`, and 1,233 verified flat PNG/WebP files directly into `/System/Resources/Icons`.
-- Package the two SHA-256 inventories under `/System/Resources/Documentation/InfiltratorOS`; helpers verify their resource files in place rather than copying/hard-linking a second seed.
-- Extract the validated source icon archive **during the package build**, not on the installed machine. No installer archive or duplicate resources remain anywhere in the installed native directories.
-- Qualify direct placement, canonical resource hashes, absence of seed paths, font configuration, icon legacy migration and unsafe/missing resource refusal. Debian package upgrades replace the old package-owned `Seed` files.
-- Remove `/Temporary/InfiltratorOS` completely after all four applications install successfully; preserve diagnostic files only on failure.
-- Application ownership, `/Temporary` setup, `/Volumes`, Files/Nemo coexistence and Defragmenter installation layout are unchanged by this resource-only correction.
-
-## 1.0.31 — Native /Temporary installation layout
-
-- Respect the InfiltratorOS filesystem contract: all OS-owned installation worker executables, native-installer downloads, status/progress records, build locks and worker logs live within `/Temporary/InfiltratorOS`, created before resource setup and workers run.
-- Remove InfiltratorOS-specific staging, locks, status and logs from Linux `/run`, `/var/lib`, `/var/log` and `/tmp`. Linux-owned dpkg metadata and XDG graphical-session interfaces remain usable without becoming OS-owned storage locations.
-- Set `TMPDIR` for OS setup and worker processes to the native temporary area.
-- Preserve `/Volumes`, Files/Nemo coexistence, the existing application installers and the 34-file permanent InfiltratorOS package payload. Temporary executables are cleaned on completion or timeout.
-- Add CI checks against regressions to Linux-specific staging paths.
-
-
-## 1.0.30 — Fix installer execution on Ubuntu/Mint noexec /run
-
-- Fix failed native application setup on physical Mint systems where `/run` is mounted `noexec`; installer helpers cannot be executed from that filesystem.
-- Keep runtime state and progress under `/run/infiltratoros`, but stage the temporary native binaries under `/var/lib/infiltratoros-native-worker.*` on the normal executable root filesystem. Automatically remove the temporary executable directory at terminal completion or timeout.
-- Preserve the 34 permanent package files, native system folders, fonts, icons, applications, `/Volumes`, and Nemo policy. A fresh InfiltratorOS package configuration recreates `/System`, `/Programs`, `/Users`, and `/Temporary` after the user explicitly clears them.
-- Extend CI to reject regression to the noexec `/run` execution path.
-
-
-## 1.0.29 — Fail-closed temporary installer validation
-
-- Stop extraction immediately if the embedded installation bundle fails base64 decoding, SHA-256 verification, archive extraction or individual worker checks, even when called through a guarded error-handling conditional.
-- Add a regression test proving a deliberately mismatched embedded SHA-256 cannot pass installer qualification.
-- Keep the 1.0.28 architecture of one InfiltratorOS installer, 34 persistent package files and temporary native installation workers.
-
-
-## 1.0.28 — One OS installation, no permanent application install workers
-
-- Remove all twelve per-application installer launchers, workers and GTK progress executables from the installed `/System/Commands/InfiltratorOS` package payload.
-- Embed the original four application-native provisioning pipelines in the single InfiltratorOS Debian maintainer script as a checksum-verified compressed bundle. Unpack only under `/run/infiltratoros` while provisioning is active and remove it after all four jobs finish (including failures); `/run` is volatile on reboot.
-- Retain normal `/System` directories, fonts, icons, calendar and theme configuration, native installed applications, logs and status files.
-- Keep independent GitHub application releases as the authoritative compilation sources and retain Nemo during Files installation.
-- Require CI to verify the embedded bundle and forbid permanent provisioning binaries in the package payload.
-
-## 1.0.26 — Native Defragmenter provisioning
-
-- Add Defragmenter as an additive fourth native-provisioned application with the existing shared build lock, GTK progress window, status file and failure log.
-- Resolve the latest published Defragmenter native compiler and verify its SHA-256 against the release manifest before executing downloaded code as root.
-- Compile with the product-owned package builder and -O3, -march=native, -mtune=native and LTO; verify native +native1 package identity, Test Media, C++ services and desktop launchers.
-- Preserve Defragmenter's own Linux executable compatibility and existing filesystem utilities. Trained two-pass PGO remains outside Defragmenter's current local-installer contract.
-- Extend release packaging and CI qualification to the fourth worker.
-
-## 1.0.23 — Install icons directly in Icons
-
-- Install all 1,233 icons directly in /System/Resources/Icons, retaining application and normal/night identities in filenames.
-- Migrate the 1.0.22 subdirectory after verifying all replacement icons; preserve locally modified and added files, and remove only empty legacy directories.
-- Verify fresh installation, repeat installation and migration, including custom-file preservation and unsafe destination rejection.
-
-## 1.0.22 — Mercedes native icon resources
-
-- Add a curated, checksum-verified portable Mercedes icon collection extracted from the six supplied Android application archives: 1,233 named icons and 816 distinct binaries.
-- Install persistent application/variant-namespaced icons under /System/Resources/Icons/mercedes via a package seed, without modifying the desktop's default icon theme.
-- Make icon installation idempotent, validate all image digests and fail closed for unsafe resource paths; qualify archive and staging behavior in CI.
-- Exclude compiled Android XML vectors, nine-patches, animations, photographs and parking-sequence diagrams, which are not directly portable desktop icons.
-
-
-## 1.0.21
-
-- Document all 23 installed MB/Daimler faces by their internal font family names and allocate restrained, task-specific typography across InfiltratorOS, System Monitor, Calculator and Files.
-- Update the native GTK installation-progress window to use verified S Text, S Title, S Text Cond and A Screen typography when available, with existing Common Title families as an independent-install fallback.
-- Preserve all existing progress/status/installer operations and the immutable 23-font package manifest.
-
-## 1.0.20
-
-- Replace three superseded 1.000 MB Corpo faces with the corresponding 1.010 Title builds, which preserve their glyph outlines and metrics but update corporate font metadata.
-- Retain 23 distinct MB Corpo and Daimler font resources, excluding non-Mercedes third-party fonts, with readable filenames and a single verified SHA-256 manifest.
-- Package and install all 23 fonts as persistent shared native resources without downloading font payloads at installation time.
-- Extend Calculator font-cache qualification and release tests to verify the new named resources and the full 23-font set.
-
-## 1.0.19
-
-- Let native-install progress windows recover cleanly when a failed installation is retried and later succeeds.
-- Treat the shared status file as authoritative on every refresh instead of permanently latching the first terminal state seen by the window.
-- Cancel any pending success auto-close when a new queued, running or failed state appears, and restore the active optimisation heading during retries.
-
-## 1.0.18
-
-- Make the standard `infiltrator-calendar-resources` capability pack a direct operating-system dependency so calendar implementations remain system resources rather than application-owned payloads.
-- Add Files as the third native-provisioned InfiltratorOS application, consuming Files 0.1.34's published self-contained native installer and shared heavyweight-build lock.
-- Require Files to install canonically at `/Programs/files` with aggressive native optimisation, LTO, two-pass PGO BUILD-INFO and a desktop launcher targeting the native executable.
-- Keep Files additive for now: do not purge Nemo or another distribution file manager, and do not change the desktop's current default file-manager association.
-- Extend package construction, progress/status profiles and CI qualification to the Files worker while continuing to reject `/System/Programs`.
-
-## 1.0.17
-
-- Fix Calculator post-install verification to validate the canonical persistent MB Corpo resources under `/System/Resources/Fonts` instead of the retired Calculator-owned `/usr/share/fonts/truetype/calculator` payload.
-- Keep Calculator verification aligned with the native font-cache architecture introduced in Calculator 0.2.50 and InfiltratorOS 1.0.16.
-- Add a regression gate requiring all three native font resource paths and rejecting any reintroduction of the retired Calculator-specific font directory.
-
-## 1.0.16
-
-- Commit the three canonical MB Corpo TTF files directly under `assets/fonts/` in the InfiltratorOS repository and verify their fixed SHA-256 identities during package construction.
-- Remove font acquisition from InfiltratorOS installation: the package seeds the persistent native cache from its repository-owned files and requires no MBLink or other network access for fonts.
-- Keep `/System/Resources/Fonts` outside Debian payload ownership so uninstalling InfiltratorOS cannot remove fonts still used by standalone Infiltrator applications.
-- Prefer hard links between the package seed and persistent native cache when they share a filesystem, avoiding duplicate font data; retain a verified copy fallback for split-filesystem installations.
-- Remove the now-unneeded `xz-utils` runtime dependency and qualify that the built package contains the three exact repository font seeds but no package-owned TTFs in the native cache.
-
-## 1.0.15
-
-- Change the MB Corpo faces from InfiltratorOS-owned Debian payload files into persistent native machine resources under `/System/Resources/Fonts`.
-- Use the canonical Libraries 1.19.51 bootstrap contract to verify, download only when needed, atomically repair and Fontconfig-register the three shared faces.
-- Keep the font cache and its Fontconfig registration intact when InfiltratorOS or any individual application is removed, so standalone Infiltrator software cannot be broken by another package uninstall.
-- Qualify that the DEB owns no TTF files in the native cache and prove the bootstrap can seed a clean staged system and then reuse it without another archive read.
-
-## 1.0.14
-
-- Populate `/System/Resources/Fonts` with the three canonical MB Corpo faces used by Infiltrator applications.
-- Source the font archive from immutable MBLink commit `aa161e7342112beab8feb7669f072c870f742765` during package construction and verify both the archive and each extracted TTF by SHA-256 before staging.
-- Keep font acquisition out of `postinst`: the released DEB already contains the verified fonts, and CI qualifies their exact bytes in the installed native filesystem payload.
-
-## 1.0.13
-
-- Retire the one-shot native filesystem migration workflow and script so normal CI never edits, commits or pushes source back to `main`.
-- Make `/Programs` the sole native namespace for user-launchable applications and reserve `/System` for operating-system infrastructure, with `/System/Commands` for genuine command helpers.
-- Stop packaging `/System/Programs` and make package qualification fail if that directory is ever reintroduced; do not add upgrade-time cleanup logic for a path that should not exist.
-- Add `/System/Commands:/Programs` to future login-shell PATHs without creating `/usr/bin` compatibility aliases.
-- Require System Monitor provisioning to verify the canonical `/Programs/system-monitor` executable as well as the installed package.
-
-## 1.0.12
-
-- Make Calculator provisioning consume Calculator's own published native installer instead of maintaining a second source-download, PGO and Debian-build implementation inside InfiltratorOS.
-- Verify the canonical `/Programs/calculator` executable rather than the retired `/usr/bin/calculator` path that caused a successful package installation to be reported as failed.
-- Treat menu integration as part of successful installation: require the visible desktop launcher, Calculator icon, AppStream metadata, native PATH bridge, native BUILD-INFO and packaged MB Corpo fonts before declaring completion.
-- Remove obsolete `infiltrator-calculator` and `infiltrator-calc` package identities, and distribution calculators, only after the canonical Calculator installation has passed verification.
-- Read authoritative dpkg status instead of treating any `dpkg-query` database entry as an installed package.
-- Add regression checks preventing the OS worker from reintroducing its own `dpkg-buildpackage`/source-bundle pipeline or the obsolete `/usr/bin/calculator` assumption.
-
-## 1.0.11
-
-- Let the published System Monitor native installer own its canonical optimisation profile in system-package mode instead of selecting that profile again in InfiltratorOS.
-
-## 1.0.10
-
-- Add the native `/System/Kernel` namespace with `Images`, `Modules` and `Firmware` directories.
-- Keep the new kernel hierarchy structural only; do not alter `/boot`, Linux module trees, firmware locations or the running kernel.
-- Qualify the kernel namespace in the built Debian package.
-
-## 1.0.9
-
-- Establish the first native InfiltratorOS filesystem skeleton at `/System`, `/Programs`, `/Users`, `/Volumes` and `/Temporary`.
-- Add system role directories for Programs, Commands, Libraries, Devices, Filesystems, Preferences and shared Resources.
-- Add resource directories for Calendars, Clocks, Fonts, Locales, Icons and Themes.
-- Keep the native hierarchy additive over the Debian/Linux base and retain the earlier temporal discovery roots in parallel.
-- Qualify every native directory in the built Debian package.
-
-## 1.0.8
-
-- Establish provisional system-wide temporal resource directories for discovered calendars and clocks.
-- Qualify the built Debian package by verifying both temporal resource roots are present.
-- Keep the installed path provisional while the resource representation and final hierarchy are still being proven.
-
-## 1.0.7
-
-- Resolve Calculator and System Monitor installers using their canonical package and command names.
-- Derive installer filename prefix lengths from the canonical prefix.
-
-## 1.0.6
-
-- Give package identity one VERSION file and preserve immutable qualified release bytes.
-- Share native launch and progress mechanics while retaining each product's installation policy.
-- Report setup and exec failures before claiming background startup.
-- Reject malformed or incomplete status records.
-- Qualify process handoff and status failures with production-code fixtures; verify reproducible package bytes and approved artwork in CI.
-
-## 1.0.5
-
-- Use InfiltratorOS consistently in documentation, Plymouth metadata, package descriptions and provisioning windows.
-- Document Boot, Filesystems, the planned Setup installer and the unchanged InfiltratorFS format name.
-- Publish the infiltratoros Debian package and use infiltratoros consistently for installed paths and Plymouth files.
-- Read the package version from VERSION and preserve immutable qualified release tags and assets.
+For exact fixes, transitional arrangements and abandoned layouts in these older releases, inspect their [immutable tags](https://github.com/Infiltrator-Projects/InfiltratorOS/tags) or the [complete v1.0.52 historical changelog](https://github.com/Infiltrator-Projects/InfiltratorOS/blob/v1.0.52/CHANGELOG.md). Historical installation paths and job counts do not define current behaviour.
