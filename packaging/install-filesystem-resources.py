@@ -129,6 +129,17 @@ def release_installer(entry, release):
     if (not isinstance(assets, list) or len(assets) != len(expected) or
             {x.get("name") for x in assets if isinstance(x, dict)} != expected):
         raise ValueError("Filesystem release is missing required native driver assets")
+    # A release is a complete provenance set: reject malformed metadata for
+    # *every* declared asset, not just the executable native installer.
+    for item in assets:
+        name = item["name"]
+        asset_url = (f"https://github.com/Infiltrator-Projects/"
+                     f"{entry['repository']}/releases/download/{tag}/{name}")
+        if (item.get("browser_download_url") != asset_url or
+                not re.fullmatch(r"sha256:[0-9a-f]{64}", item.get("digest", "") or "") or
+                not isinstance(item.get("size"), int) or
+                not 0 < item["size"] < 512 * 1024 * 1024):
+            raise ValueError("Invalid filesystem release asset metadata: " + name)
     asset = next(x for x in assets if x["name"] == run_name)
     url = f"https://github.com/Infiltrator-Projects/{entry['repository']}/releases/download/{tag}/{run_name}"
     digest = asset.get("digest", "")
