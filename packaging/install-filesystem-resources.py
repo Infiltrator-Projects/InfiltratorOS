@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Install and verify independently published FAT12/16/32, OFS and exFAT native SO packages."""
 import fcntl
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import hashlib
 import json
 import os
@@ -20,6 +21,7 @@ STATUS_ROOT = Path("/Temporary/InfiltratorOS")
 STATUS_DIR = STATUS_ROOT
 STATUS_PATH = None
 CATALOGUE = []  # @EMBED_FILESYSTEM_CATALOGUE@
+ADDITIONAL = []  # @EMBED_FILESYSTEM_ADDITIONAL@
 
 def catalogue():
     entries = CATALOGUE or json.loads((Path(__file__).parent / "filesystem-resources.json").read_text())
@@ -45,6 +47,21 @@ def catalogue():
                     "package": "infiltrator-filesystem-fat" + width,
                     "resource": "/System/Filesystems/FAT" + width + ".so"}:
             raise ValueError("Invalid filesystem catalogue identity")
+    return entries
+
+def additional_catalogue():
+    entries = ADDITIONAL or json.loads((Path(__file__).parent / "filesystem-additional.json").read_text())
+    expected = [["ntfs","Filesystem-NTFS","NTFS","infiltrator-filesystem-ntfs","/System/Filesystems/NTFS.so","infiltrator_filesystem_ntfs_v1"],["ext2","Filesystem-EXT2","EXT2","infiltrator-filesystem-ext2","/System/Filesystems/EXT2.so","infiltrator_filesystem_ext_v1"],["ext3","Filesystem-EXT3","EXT3","infiltrator-filesystem-ext3","/System/Filesystems/EXT3.so","infiltrator_filesystem_ext_v1"],["ext4","Filesystem-EXT4","EXT4","infiltrator-filesystem-ext4","/System/Filesystems/EXT4.so","infiltrator_filesystem_ext_v1"],["xfs","Filesystem-XFS","XFS","infiltrator-filesystem-xfs","/System/Filesystems/XFS.so","infiltrator_filesystem_xfs_v1"],["btrfs","Filesystem-Btrfs","BTRFS","infiltrator-filesystem-btrfs","/System/Filesystems/BTRFS.so","infiltrator_filesystem_btrfs_v1"],["ffs","Filesystem-FFS","FFS","infiltrator-filesystem-ffs","/System/Filesystems/FFS.so","infiltrator_filesystem_ffs_defrag_v1"],["sfs","Filesystem-SFS","SFS","infiltrator-filesystem-sfs","/System/Filesystems/SFS.so","infiltrator_filesystem_sfs_v1"],["pfs3","Filesystem-PFS3","PFS3","infiltrator-filesystem-pfs3","/System/Filesystems/PFS3.so","infiltrator_filesystem_pfs3_v1"],["hfs","Filesystem-HFS","HFS","infiltrator-filesystem-hfs","/System/Filesystems/HFS.so","infiltrator_filesystem_hfs_v1"],["hfsplus","Filesystem-HFSPlus","HFSPLUS","infiltrator-filesystem-hfsplus","/System/Filesystems/HFSPLUS.so","infiltrator_filesystem_hfsplus_v1"],["minix","Filesystem-Minix","MINIX","infiltrator-filesystem-minix","/System/Filesystems/MINIX.so","infiltrator_filesystem_minix_defrag_v1"],["ufs2","Filesystem-UFS2","UFS2","infiltrator-filesystem-ufs2","/System/Filesystems/UFS2.so","infiltrator_filesystem_ufs_v1"],["zfs","Filesystem-ZFS","ZFS","infiltrator-filesystem-zfs","/System/Filesystems/ZFS.so","infiltrator_filesystem_zfs_v1"],["apfs","Filesystem-APFS","APFS","infiltrator-filesystem-apfs","/System/Filesystems/APFS.so","infiltrator_filesystem_apfs_v1"],["swap","Filesystem-Swap","SWAP","infiltrator-filesystem-swap","/System/Filesystems/SWAP.so","infiltrator_filesystem_swap_v1"]]
+    actual = [[e.get("id"), e.get("repository"), e.get("name"), e.get("package"),
+               e.get("resource"), e.get("abi")] for e in entries]
+    if len(actual) != 16 or actual != expected:
+        raise ValueError("Incomplete or modified sixteen-provider filesystem catalogue")
+    return entries
+
+def all_catalogue():
+    entries = catalogue() + additional_catalogue()
+    if len(entries) != 21 or len(set(x["resource"] for x in entries)) != 21:
+        raise ValueError("Incomplete or overlapping filesystem catalogue")
     return entries
 
 def status(state, number, label, message):
@@ -97,6 +114,8 @@ def release_installer(entry, release):
     deb_name = f"{entry['package']}_{version}_amd64.deb"
     assets = release.get("assets")
     expected = {run_name, deb_name}
+    if entry.get("abi"):
+        expected.update({entry["resource"].rsplit("/", 1)[1], "SHA256SUMS"})
     bits = entry["id"][3:]
     milestone = (0, 1, 2) if bits == "32" else (0, 1, 3)
     if entry["id"] == "exfat":
@@ -185,9 +204,10 @@ def verify(entry, version, root=Path("/"), query=True):
             if not owner.startswith(entry["package"] + ":"):
                 raise ValueError("Filesystem payload owned by wrong package")
     readelf = subprocess.check_output(["/usr/bin/readelf", "-Ws", str(module)], text=True)
-    symbols = ["infiltrator_filesystem_module_v1",
-               "infiltrator_filesystem_module_v3",
-               "infiltrator_filesystem_module_v4"]
+    symbols = ([entry["abi"]] if entry.get("abi") else
+               ["infiltrator_filesystem_module_v1",
+                "infiltrator_filesystem_module_v3",
+                "infiltrator_filesystem_module_v4"])
     if entry["id"] in {"fat12", "fat16"}:
         symbols.append("infiltrator_filesystem_defrag_v1")
     if entry["id"] == "exfat":
@@ -201,11 +221,12 @@ def verify(entry, version, root=Path("/"), query=True):
     for symbol in symbols:
         if symbol not in readelf:
             raise ValueError("Missing filesystem or defragmentation ABI")
-    identity = subprocess.check_output(["/usr/bin/readelf", "-p", ".ifsmeta", str(module)], text=True)
-    for api in ((1, 2, 3) if entry["id"] == "ofs" else
-                (3, 4, 5) if entry["id"] == "exfat" else (1, 3, 4)):
-        if f"IFS-MODULE:{entry['id']}:{api}" not in identity:
-            raise ValueError("Wrong filesystem width or ABI")
+    if not entry.get("abi"):
+        identity = subprocess.check_output(["/usr/bin/readelf", "-p", ".ifsmeta", str(module)], text=True)
+        for api in ((1, 2, 3) if entry["id"] == "ofs" else
+                    (3, 4, 5) if entry["id"] == "exfat" else (1, 3, 4)):
+            if f"IFS-MODULE:{entry['id']}:{api}" not in identity:
+                raise ValueError("Wrong filesystem width or ABI")
     validate_runtime_dependencies(entry, subprocess.check_output(
         ["/usr/bin/readelf", "-d", str(module)], text=True))
 
@@ -224,7 +245,15 @@ def validate_runtime_dependencies(entry, dynamic_section):
         if marker not in line or "]" not in line.split(marker, 1)[1]:
             raise ValueError("Malformed ELF runtime dependency record")
         needed.append(line.split(marker, 1)[1].split("]", 1)[0])
-    if entry["id"] != "exfat" and needed:
+    if entry.get("abi"):
+        allowed = {"libc.so.6", "libcrypto.so.3", "libsqlite3.so.0",
+                   "libstdc++.so.6", "libgcc_s.so.1", "libm.so.6",
+                   "libpthread.so.0", "ld-linux-x86-64.so.2"}
+        unknown = set(needed) - allowed
+        if unknown:
+            raise ValueError("Unexpected filesystem runtime dependency: " +
+                             ", ".join(sorted(unknown)))
+    elif entry["id"] != "exfat" and needed:
         raise ValueError("Unexpected ELF runtime dependency")
     if entry["id"] == "exfat":
         # glibc may record its own architecture-specific dynamic loader as
@@ -295,7 +324,8 @@ def ensure_dependencies(entry):
     run(["/usr/bin/apt-get", "-o", "DPkg::Lock::Timeout=-1", "check"])
     run(["/usr/bin/apt-get", "-o", "DPkg::Lock::Timeout=-1", "update"])
     packages = ["build-essential", "binutils", "python3"]
-    if entry["id"] == "exfat":
+    if entry["id"] == "exfat" or entry.get("abi"):
+        # Additional independent SO providers also use pinned CMake toolchains.
         # The unified source compiles its own V3/V4/V5/defrag SO using CMake,
         # pinned InfiltratrCommon source, OpenSSL and SQLite development headers.
         packages.extend(("exfatprogs", "dosfstools", "cmake", "git",
