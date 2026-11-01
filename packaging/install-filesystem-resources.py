@@ -361,14 +361,81 @@ def install(entry):
         cleanup_legacy_docs(entry)
     return False
 
+
+def discover_additional(release_dir):
+    """Admit extra drivers only with real, complete SHA-256-bound releases.
+
+    GitHub Actions artifacts are intentionally NOT accepted for installation.
+    Missing releases remain explicitly pending, never reported as installed.
+    """
+    if (not release_dir.is_dir() or
+            not release_dir.parent.name.startswith("native-worker.") or
+            release_dir.parent.parent != STATUS_ROOT):
+        raise ValueError("Invalid native release snapshot directory")
+    ready = {}
+    pending = {}
+
+    def inspect(entry):
+        repository = entry["repository"]
+        url = ("https://api.github.com/repos/Infiltrator-Projects/" +
+               repository + "/releases/latest")
+        headers = {"Accept": "application/vnd.github+json",
+                   "User-Agent": "InfiltratorOS-native-filesystem-provisioner"}
+        token = os.environ.get("GITHUB_TOKEN")
+        if token:
+            headers["Authorization"] = "Bearer " + token
+        try:
+            with urllib.request.urlopen(urllib.request.Request(url, headers=headers),
+                                        timeout=12) as response:
+                payload = response.read(4 * 1024 * 1024 + 1)
+            if len(payload) > 4 * 1024 * 1024:
+                raise ValueError("Oversized GitHub release metadata")
+            release = json.loads(payload)
+            release_installer(entry, release)
+            return (repository, release, None)
+        except (OSError, ValueError, urllib.error.URLError) as exc:
+            return (repository, None, str(exc))
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        tasks = [pool.submit(inspect, entry) for entry in additional_catalogue()]
+        for task in as_completed(tasks):
+            repository, release, error = task.result()
+            if error is None:
+                ready[repository] = release
+            else:
+                pending[repository] = error
+
+    for repository in sorted(ready):
+        path = release_dir / (repository + ".json")
+        if path.exists():
+            raise ValueError("Additional filesystem release collides with snapshot")
+        path.write_text(json.dumps(ready[repository], separators=(",", ":")) + "\n")
+        path.chmod(0o644)
+    (release_dir.parent / "filesystems-optional.list").write_text(
+        "".join(key.lower() + "\n" for key in sorted(ready)))
+    (release_dir.parent / "filesystems-pending.list").write_text(
+        "".join(key + ": " + pending[key].replace("\n", " ") + "\n"
+                for key in sorted(pending)))
+    print(f"Filesystem publication: {len(ready)} newly installable, "
+          f"{len(pending)} not yet published or not qualified", flush=True)
+
 def main():
-    entries = catalogue()
-    if sys.argv[1:] == ["--list"]:
+    entries = all_catalogue()
+    if sys.argv[1:] == ["--list-all"]:
         for entry in entries:
             print(entry["repository"].lower())
         return
+    if len(sys.argv) == 3 and sys.argv[1] == "--discover-additional":
+        if os.geteuid() != 0:
+            raise RuntimeError("Native release discovery requires root")
+        discover_additional(Path(sys.argv[2]))
+        return
+    if sys.argv[1:] == ["--list"]:
+        for entry in catalogue():
+            print(entry["repository"].lower())
+        return
     if len(sys.argv) != 2:
-        raise ValueError("Usage: install-filesystem-resources filesystem-fat12|filesystem-fat16|filesystem-fat32|filesystem-ofs|filesystem-exfat")
+        raise ValueError("Usage: --list | --list-all | --discover-additional RELEASE_DIR | filesystem-provider")
     slug = sys.argv[1]
     entry = next((item for item in entries if item["repository"].lower() == slug), None)
     if entry is None:
