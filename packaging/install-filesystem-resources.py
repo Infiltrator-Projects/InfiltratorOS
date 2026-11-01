@@ -124,7 +124,7 @@ def release_installer(entry, release):
         expected.update({"OFS.so", "SHA256SUMS"})
         if tuple(map(int, version.split("."))) >= (0, 1, 1):
             expected.add("ofs-linux-6.12.107.ko")
-    elif tuple(map(int, version.split("."))) >= milestone:
+    elif entry["id"] in {"fat12", "fat16", "fat32"} and tuple(map(int, version.split("."))) >= milestone:
         expected.update({f"FAT{bits}.efi", f"fat{bits}-linux-6.12.107.ko"})
     if (not isinstance(assets, list) or len(assets) != len(expected) or
             {x.get("name") for x in assets if isinstance(x, dict)} != expected):
@@ -316,8 +316,10 @@ def cleanup_legacy_docs(entry, root=Path("/"), owner_lookup=None):
 
 
 def ensure_dependencies(entry):
-    ready = STATUS_DIR / ("filesystem-exfat-dependencies-ready" if entry["id"] == "exfat"
-                          else "filesystem-dependencies-ready")
+    ready_name = ("filesystem-extended-dependencies-ready" if entry.get("abi") else
+                  "filesystem-exfat-dependencies-ready" if entry["id"] == "exfat" else
+                  "filesystem-dependencies-ready")
+    ready = STATUS_DIR / ready_name
     if ready.exists():
         return
     status("running", 5, "Preparing filesystem build prerequisites", entry["name"])
@@ -328,8 +330,9 @@ def ensure_dependencies(entry):
         # Additional independent SO providers also use pinned CMake toolchains.
         # The unified source compiles its own V3/V4/V5/defrag SO using CMake,
         # pinned InfiltratrCommon source, OpenSSL and SQLite development headers.
-        packages.extend(("exfatprogs", "dosfstools", "cmake", "git",
-                         "pkg-config", "libssl-dev", "libsqlite3-dev"))
+        packages.extend(("cmake", "git", "pkg-config", "libssl-dev", "libsqlite3-dev"))
+        if entry["id"] == "exfat":
+            packages.extend(("exfatprogs", "dosfstools"))
     run(["/usr/bin/apt-get", "-o", "DPkg::Lock::Timeout=-1", "install",
          "-y", "--no-install-recommends", *packages])
     ready.touch(mode=0o644)
