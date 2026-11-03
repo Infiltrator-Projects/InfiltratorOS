@@ -202,7 +202,8 @@ def exported_interface_symbols(table):
     for line in table.splitlines():
         fields = line.split(None, 7)
         if (len(fields) == 8 and fields[0].endswith(":") and
-                fields[0][:-1].isdigit() and fields[4] == "GLOBAL" and
+                fields[0][:-1].isdigit() and fields[3] in ("FUNC", "IFUNC") and
+                fields[4] == "GLOBAL" and
                 fields[5] in ("DEFAULT", "PROTECTED") and fields[6] != "UND"):
             result.add(fields[7].split("@", 1)[0])
     return result
