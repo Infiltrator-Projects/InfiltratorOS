@@ -208,7 +208,7 @@ def exported_interface_symbols(table):
     return result
 
 
-def verify(entry, version, root=Path("/"), query=True):
+def verify(entry, version, root=Path("/"), query=True, revision=None):
     """Verify an installed SO + PDF against Debian-native source/build data."""
     if query:
         expression = "-f=" + chr(36) + "{Status}\n" + chr(36) + "{Version}\n"
@@ -240,8 +240,11 @@ def verify(entry, version, root=Path("/"), query=True):
     if not optimisations or optimisations[-1] != "-O3" or "-march=native" not in flags or not any(
             item == "-flto" or item.startswith("-flto=") for item in flags):
         raise ValueError("Module not compiled with the advertised native flags")
-    if not re.fullmatch(r"[0-9a-f]{40}", data.get("X-Infiltrator-Source-Revision", "")):
+    source = data.get("X-Infiltrator-Source-Revision", "")
+    if not re.fullmatch(r"[0-9a-f]{40}", source):
         raise ValueError("Missing filesystem source revision in Debian control")
+    if revision is not None and source != revision:
+        raise ValueError("Installed filesystem source does not match the selected published release")
     if hashlib.sha256(module.read_bytes()).hexdigest() != data.get("X-Infiltrator-Resource-SHA256"):
         raise ValueError("Installed filesystem SO differs from Debian package hash")
     if hashlib.sha256(guide.read_bytes()).hexdigest() != data.get("X-Infiltrator-PDF-SHA256"):
@@ -307,10 +310,10 @@ def validate_runtime_dependencies(entry, dynamic_section):
             raise ValueError("Unexpected exFAT runtime dependency: " + ", ".join(sorted(unknown)))
 
 
-def native_installed(entry, version):
+def native_installed(entry, version, revision):
     """Verify the actual two-file package, without executing the driver."""
     try:
-        verify(entry, version)
+        verify(entry, version, revision=revision)
         return True
     except (OSError, ValueError, subprocess.SubprocessError) as error:
         print("Native cache miss for " + entry["repository"] + ": " + str(error), flush=True)
@@ -388,8 +391,12 @@ def install(entry):
             payload = response.read(4*1024*1024+1)
     if len(payload) > 4*1024*1024:
         raise ValueError("Oversized GitHub release metadata")
-    version, location, digest, length = release_installer(entry, json.loads(payload))
-    if native_installed(entry, version):
+    release = json.loads(payload)
+    version, location, digest, length = release_installer(entry, release)
+    revision = release.get("target_commitish")
+    if not isinstance(revision, str) or not re.fullmatch(r"[0-9a-f]{40}", revision):
+        raise ValueError("Filesystem release has no exact source commit identity")
+    if native_installed(entry, version, revision):
         cleanup_legacy_docs(entry)
         print("Already installed and verified: " + entry["repository"], flush=True)
         return True
@@ -400,7 +407,7 @@ def install(entry):
         installer = Path(folder) / "filesystem.run"
         download(location, installer, digest, length)
         run([installer, "--profile", "aggressive", "--system-package-mode"])
-        verify(entry, version)
+        verify(entry, version, revision=revision)
         cleanup_legacy_docs(entry)
     return False
 
