@@ -27,7 +27,11 @@ with tempfile.TemporaryDirectory(prefix="native-worker.", dir=native) as tempora
     # Protect the real Debian post-installation entry point from silently
     # retaining its historical FAT-only limit while the Python workers know four.
     assert '$(wc -l < "$stage/filesystems.list")" -ne 5' in script
-    assert "all 63 jobs" in script
+    assert "all launched jobs" in script
+    assert "publish_summary complete" in script
+    assert "publish_summary failed" in script
+    assert "publish_summary timeout" in script
+    assert "record_launch_failure" in script
     assert "filesystem-fat32" in {x["repository"].lower() for x in entries}
     assert len(json.loads((root / "packaging/filesystem-additional.json").read_text())) == 18
     expected = re.search(r"^BUNDLE_SHA256='([0-9a-f]{64})'$", script, re.MULTILINE).group(1)
