@@ -2,7 +2,6 @@
 #include "installer-profile.h"
 #include "installer-status.h"
 #include "native-progress-count.h"
-#include <dirent.h>
 #include <errno.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -40,7 +39,8 @@ static gboolean close_after_success(gpointer data)
 
 static gboolean refresh_aggregate(Ui *ui)
 {
-    const int total_jobs = native_progress_total_jobs(ui->status_path);
+    NativeProgressJobs jobs;
+    const int total_jobs = native_progress_load_jobs(ui->status_path, &jobs);
     /* The lists are written before the job workers begin. Never infer a
      * smaller fixed total while the manifests are unavailable. */
     if (total_jobs <= 0) {
@@ -55,27 +55,24 @@ static gboolean refresh_aggregate(Ui *ui)
         gtk_progress_bar_pulse(GTK_PROGRESS_BAR(ui->bar));
         return G_SOURCE_CONTINUE;
     }
-    DIR *directory = opendir(ui->status_path);
-    if (directory == NULL) {
-        gtk_progress_bar_pulse(GTK_PROGRESS_BAR(ui->bar));
-        return G_SOURCE_CONTINUE;
-    }
     int complete = 0, failed = 0, queued = 0, running = 0;
     double fraction = 0.0;
     char active_name[96] = {0}, active_stage[128] = {0};
-    struct dirent *entry;
-    while ((entry = readdir(directory)) != NULL) {
-        const char *name = entry->d_name;
-        const size_t length = strlen(name);
-        const char suffix[] = "-install.status";
-        const size_t suffix_length = sizeof(suffix) - 1U;
-        if (length <= suffix_length ||
-            strcmp(name + length - suffix_length, suffix) != 0) continue;
+    /* Read only the signed run inventory. An unexpected status file must
+     * never substitute for a missing expected worker or close the UI early. */
+    for (int index = 0; index < jobs.count; ++index) {
+        const char *name = jobs.slugs[index];
         char path[4096];
-        if (snprintf(path, sizeof(path), "%s/%s", ui->status_path, name) >= (int)sizeof(path))
+        if (snprintf(path, sizeof(path), "%s/%s-install.status",
+                     ui->status_path, name) >= (int)sizeof(path)) {
+            ++queued;
             continue;
+        }
         InstallerStatus job;
-        if (!installer_status_read(path, &job)) continue;
+        if (!installer_status_read(path, &job)) {
+            ++queued;
+            continue;
+        }
         if (strcmp(job.state, "complete") == 0) {
             ++complete;
             fraction += 1.0;
@@ -87,15 +84,13 @@ static gboolean refresh_aggregate(Ui *ui)
             if (job.progress >= 0 && job.progress <= 100)
                 fraction += (double)job.progress / 100.0;
             if (active_name[0] == '\0') {
-                snprintf(active_name, sizeof(active_name), "%.*s",
-                         (int)(length - suffix_length), name);
+                snprintf(active_name, sizeof(active_name), "%.95s", name);
                 snprintf(active_stage, sizeof(active_stage), "%.110s", job.stage);
             }
         } else {
             ++queued;
         }
     }
-    closedir(directory);
     if (fraction < 0.0) fraction = 0.0;
     if (fraction > total_jobs) fraction = total_jobs;
     gtk_progress_bar_set_fraction(GTK_PROGRESS_BAR(ui->bar),
