@@ -37,8 +37,49 @@ static gboolean close_after_success(gpointer data)
     return G_SOURCE_REMOVE;
 }
 
+/* The run outcome remains after successful cleanup of the per-run manifests.
+ * Match the recorded stage exactly; never read another installation's result. */
+static int finished_run_outcome(const char *status_path)
+{
+    FILE *file = fopen("/Temporary/InfiltratorOS/last-provision.status", "r");
+    if (!file) return 0;
+    char state[64], stage[4096], expected[4096];
+    const int valid = fgets(state, sizeof(state), file) != NULL &&
+                      fgets(stage, sizeof(stage), file) != NULL;
+    (void)fclose(file);
+    if (!valid || strncmp(stage, "stage=", 6) != 0) return 0;
+    const size_t length = strlen(stage);
+    if (length < 8 || stage[length - 1] != '\n') return 0;
+    stage[length - 1] = '\0';
+    if (snprintf(expected, sizeof(expected), "%s/status", stage + 6) >=
+            (int)sizeof(expected) || strcmp(expected, status_path) != 0) return 0;
+    if (strcmp(state, "state=complete\n") == 0) return 1;
+    if (strcmp(state, "state=failed\n") == 0) return 2;
+    if (strcmp(state, "state=timeout\n") == 0) return 3;
+    return 0;
+}
+
 static gboolean refresh_aggregate(Ui *ui)
 {
+    const int outcome = finished_run_outcome(ui->status_path);
+    if (outcome != 0) {
+        gtk_label_set_text(GTK_LABEL(ui->title),
+            outcome == 1 ? "InfiltratorOS native installation is complete" :
+            outcome == 2 ? "InfiltratorOS installation finished with failures" :
+                           "InfiltratorOS installation timed out");
+        gtk_label_set_text(GTK_LABEL(ui->stage),
+            outcome == 1 ? "All eligible native jobs completed" :
+                           "Native provisioning needs attention");
+        gtk_label_set_text(GTK_LABEL(ui->detail),
+            outcome == 1 ? "The run outcome is recorded in /Temporary/InfiltratorOS." :
+                           "The run outcome and retained diagnostics are in /Temporary/InfiltratorOS.");
+        if (outcome == 1) gtk_progress_bar_set_fraction(GTK_PROGRESS_BAR(ui->bar), 1.0);
+        gtk_widget_show(ui->close_button);
+        if (outcome == 1 && ui->close_timer_id == 0U)
+            ui->close_timer_id = g_timeout_add_seconds(8U, close_after_success, ui);
+        if (outcome != 1) cancel_success_close(ui);
+        return G_SOURCE_CONTINUE;
+    }
     NativeProgressJobs jobs;
     const int total_jobs = native_progress_load_jobs(ui->status_path, &jobs);
     /* The lists are written before the job workers begin. Never infer a
