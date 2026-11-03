@@ -156,6 +156,9 @@ class InstallerTests(unittest.TestCase):
                                  "infiltrator_filesystem_module_v1@@IFS_1")
         self.assertIn("infiltrator_filesystem_module_v1",
                       worker.exported_interface_symbols(published))
+        spoofed_object = "  6: 0000000000000000 8 OBJECT GLOBAL DEFAULT 12 infiltrator_filesystem_module_v2\n"
+        self.assertNotIn("infiltrator_filesystem_module_v2",
+                         worker.exported_interface_symbols(spoofed_object))
 
     def test_native_fat_requires_pdf_and_pgo_in_debian_metadata(self):
         with tempfile.TemporaryDirectory() as temp:
