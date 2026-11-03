@@ -140,6 +140,22 @@ class InstallerTests(unittest.TestCase):
             worker.validate_runtime_dependencies(exfat, allowed +
                 " 0x0000000000000001 (NEEDED) Shared library: [libbad.so.1]\n")
 
+    def test_abi_matching_rejects_substrings_and_undefined_exports(self):
+        row = lambda number, binding, visibility, section, name: (
+            f"    {number}: 0000000000000000    32 FUNC    "
+            f"{binding} {visibility} {section} {name}\\n")
+        forged = (
+            row(1, "GLOBAL", "DEFAULT", "UND", "infiltrator_filesystem_module_v1") +
+            row(2, "GLOBAL", "DEFAULT", "12", "infiltrator_filesystem_module_v1_suffix") +
+            row(3, "LOCAL", "DEFAULT", "12", "infiltrator_filesystem_module_v3") +
+            row(4, "GLOBAL", "HIDDEN", "12", "infiltrator_filesystem_module_v4"))
+        self.assertEqual(worker.exported_interface_symbols(forged),
+                         {"infiltrator_filesystem_module_v1_suffix"})
+        published = forged + row(5, "GLOBAL", "DEFAULT", "12",
+                                 "infiltrator_filesystem_module_v1@@IFS_1")
+        self.assertIn("infiltrator_filesystem_module_v1",
+                      worker.exported_interface_symbols(published))
+
     def test_native_fat_requires_pdf_and_pgo_in_debian_metadata(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
