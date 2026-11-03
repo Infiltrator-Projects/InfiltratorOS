@@ -22,6 +22,7 @@ class InstallerTests(unittest.TestCase):
         url = f"https://github.com/Infiltrator-Projects/{repo}/releases/download/v{version}/"
         self.release = {
             "tag_name": "v" + version, "draft": False, "prerelease": False,
+            "target_commitish": "1"*40,
             "assets": [
                 {"name": f"{repo.lower()}-{version}-native-installer.run",
                  "browser_download_url": url + f"{repo.lower()}-{version}-native-installer.run",
@@ -202,6 +203,18 @@ class InstallerTests(unittest.TestCase):
                  patch.object(worker, "cleanup_legacy_docs") as cleanup:
                 self.assertTrue(worker.install(self.entry))
                 cleanup.assert_called_once_with(self.entry)
+
+    def test_source_commit_required_before_reusing_or_installing(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            release = dict(self.release)
+            release.pop("target_commitish")
+            (root / (self.entry["repository"] + ".json")).write_text(json.dumps(release))
+            with patch.dict(worker.os.environ, {"INFILTRATOROS_RELEASE_DIR": str(root)}), \
+                 patch.object(worker, "ensure_dependencies",
+                              side_effect=AssertionError("no build on invalid release")):
+                with self.assertRaisesRegex(ValueError, "exact source commit"):
+                    worker.install(self.entry)
 
     def test_stale_native_fat_rebuilds(self):
         with tempfile.TemporaryDirectory() as temporary:
