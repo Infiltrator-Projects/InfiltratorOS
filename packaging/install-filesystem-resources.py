@@ -193,6 +193,21 @@ def required_interface_symbols(entry):
     return symbols
 
 
+def exported_interface_symbols(table):
+    """Return only exact, defined, publicly exported ELF dynamic symbols.
+
+    A substring match can be fooled by unrelated or undefined symbol names.
+    """
+    result = set()
+    for line in table.splitlines():
+        fields = line.split(None, 7)
+        if (len(fields) == 8 and fields[0].endswith(":") and
+                fields[0][:-1].isdigit() and fields[4] == "GLOBAL" and
+                fields[5] in ("DEFAULT", "PROTECTED") and fields[6] != "UND"):
+            result.add(fields[7].split("@", 1)[0])
+    return result
+
+
 def verify(entry, version, root=Path("/"), query=True):
     """Verify an installed SO + PDF against Debian-native source/build data."""
     if query:
@@ -241,10 +256,11 @@ def verify(entry, version, root=Path("/"), query=True):
             owner = subprocess.check_output(["/usr/bin/dpkg-query", "-S", str(path)], text=True)
             if not owner.startswith(entry["package"] + ":"):
                 raise ValueError("Filesystem payload owned by wrong package")
-    readelf = subprocess.check_output(["/usr/bin/readelf", "-Ws", str(module)], text=True)
+    table = subprocess.check_output(["/usr/bin/readelf", "-W", "--dyn-syms", str(module)], text=True)
+    exports = exported_interface_symbols(table)
     for symbol in required_interface_symbols(entry):
-        if symbol not in readelf:
-            raise ValueError("Missing filesystem or defragmentation ABI")
+        if symbol not in exports:
+            raise ValueError("Missing exact exported filesystem or defragmentation ABI: " + symbol)
     if not entry.get("abi"):
         identity = subprocess.check_output(["/usr/bin/readelf", "-p", ".ifsmeta", str(module)], text=True)
         for api in ((1, 2, 3) if entry["id"] == "ofs" else
