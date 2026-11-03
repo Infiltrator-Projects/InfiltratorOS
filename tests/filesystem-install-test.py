@@ -143,7 +143,7 @@ class InstallerTests(unittest.TestCase):
     def test_abi_matching_rejects_substrings_and_undefined_exports(self):
         row = lambda number, binding, visibility, section, name: (
             f"    {number}: 0000000000000000    32 FUNC    "
-            f"{binding} {visibility} {section} {name}\\n")
+            f"{binding} {visibility} {section} {name}\n")
         forged = (
             row(1, "GLOBAL", "DEFAULT", "UND", "infiltrator_filesystem_module_v1") +
             row(2, "GLOBAL", "DEFAULT", "12", "infiltrator_filesystem_module_v1_suffix") +
