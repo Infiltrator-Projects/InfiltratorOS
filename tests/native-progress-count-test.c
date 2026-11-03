@@ -54,6 +54,20 @@ int main(void)
     CHECK(native_progress_total_jobs(status) == 63);
     CHECK(write_manifest(stage, "filesystems-optional.list", "filesystem-extra-", 18) == 0);
     CHECK(native_progress_total_jobs(status) == 81);
+    NativeProgressJobs jobs;
+    CHECK(native_progress_load_jobs(status, &jobs) == 81);
+    CHECK(strcmp(jobs.slugs[0], "system-monitor") == 0);
+    CHECK(strcmp(jobs.slugs[4], "calendar-test-0") == 0);
+    CHECK(strcmp(jobs.slugs[80], "filesystem-extra-17") == 0);
+    /* Duplicate slugs across manifests are invalid, not extra jobs. */
+    CHECK(write_manifest(stage, "filesystems-optional.list", "filesystem-main-", 1) == 0);
+    CHECK(native_progress_total_jobs(status) == -1);
+    CHECK(write_manifest(stage, "filesystems-optional.list", "filesystem-extra-", 19) == 0);
+    CHECK(native_progress_total_jobs(status) == -1);
+    CHECK(write_manifest(stage, "filesystems-optional.list", "filesystem-extra-", 18) == 0);
+    CHECK(write_manifest(stage, "providers.list", "calendar-test-", 53) == 0);
+    CHECK(native_progress_total_jobs(status) == -1);
+    CHECK(write_manifest(stage, "providers.list", "calendar-test-", 54) == 0);
     FILE *file = fopen(optional, "w");
     CHECK(file != NULL);
     CHECK(fputs("filesystem-extra-0\nfilesystem-invalid/name\n", file) >= 0);
@@ -69,6 +83,6 @@ int main(void)
     CHECK(rmdir(status) == 0);
     CHECK(rmdir(stage) == 0);
     CHECK(rmdir(root) == 0);
-    puts("Native installer manifest totals passed (63, 79, 81, invalid and missing lists)");
+    puts("Native installer inventory passed (63, 79, 81, duplicate and malformed lists)");
     return 0;
 }
