@@ -68,7 +68,7 @@ with tempfile.TemporaryDirectory(prefix="native-worker.", dir=native) as tempora
         assert version.endswith("+native1"), version
         folder = Path("/System/Resources/Documentation") / entry["repository"]
         pdf = folder / (module.stem + ".pdf")
-        assert {x.name for x in folder.iterdir()} == {pdf.name}, entry["repository"]
+        assert {x.name for x in folder.glob("*.pdf")} == {pdf.name}, entry["repository"]
         assert pdf.read_bytes().startswith(b"%PDF-"), pdf
         pdf_owner = subprocess.check_output(["dpkg-query", "-S", str(pdf)], text=True).strip()
         assert pdf_owner == entry["package"] + ": " + str(pdf), pdf_owner

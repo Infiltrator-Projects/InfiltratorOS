@@ -10,7 +10,6 @@ import json
 import os
 from pathlib import Path
 import re
-import shutil
 import stat
 import subprocess
 import sys
@@ -184,62 +183,30 @@ def _dpkg_owns_path(path):
 
 
 def clean_legacy_documentation(entry, root=Path("/"), owner_lookup=None):
-    """Clean known unowned legacy documentation after a successful native check.
+    """Preserve existing documents without independently proved provenance.
 
-    Reject links, foreign owners and unexpected names, never traverse outside
-    the provider documentation folder, and never touch the installed PDF.
+    New packages install one PDF. Neither a familiar name nor lack of dpkg
+    ownership makes an old root-owned file safe to erase.
     """
     docs = root / "System/Resources/Documentation" / entry["repository"]
     guide = docs / (entry["name"] + ".pdf")
     if guide.is_symlink() or not guide.is_file():
-        raise ValueError("Refusing cleanup without a provider PDF: " + entry["repository"])
+        raise ValueError("Refusing legacy inspection without provider PDF: " + entry["repository"])
     with guide.open("rb") as stream:
         if stream.read(5) != b"%PDF-":
-            raise ValueError("Refusing cleanup without a valid provider PDF")
+            raise ValueError("Refusing legacy inspection without valid provider PDF")
     for directory in (root / "System", root / "System/Resources",
                       root / "System/Resources/Documentation", docs):
         info = directory.lstat()
-        if (not stat.S_ISDIR(info.st_mode) or info.st_mode & 0o022 or
-                (root == Path("/") and info.st_uid != 0)):
+        if (not stat.S_ISDIR(info.st_mode) or info.st_mode & 0o022
+                or (root == Path("/") and info.st_uid != 0)):
             raise ValueError("Unsafe temporal documentation directory: " + str(directory))
-    owns = owner_lookup if owner_lookup is not None else _dpkg_owns_path
-    removed = 0
-
-    def safe_legacy_tree(path):
-        pending = [path]
-        checked = 0
-        while pending:
-            item = pending.pop()
-            checked += 1
-            if checked > 20000:
-                return False
-            info = item.lstat()
-            if (not (stat.S_ISDIR(info.st_mode) or stat.S_ISREG(info.st_mode))
-                    or (root == Path("/") and info.st_uid != 0) or owns(item)):
-                return False
-            if stat.S_ISDIR(info.st_mode):
-                pending.extend(item.iterdir())
-        return True
-
+    _ = owner_lookup
     for item in docs.iterdir():
-        if item.name == guide.name:
-            continue
-        known = ((item.name in LEGACY_DOC_DIRS and item.is_dir())
-                 or (item.name in LEGACY_DOC_NAMES and item.is_file()))
-        if not known or not safe_legacy_tree(item):
-            print("Preserving unknown or package-owned legacy documentation: " + str(item),
+        if item.name in LEGACY_DOC_NAMES or item.name in LEGACY_DOC_DIRS:
+            print("Preserving unverified legacy temporal documentation: " + str(item),
                   flush=True)
-            continue
-        if item.is_dir():
-            shutil.rmtree(item)
-        else:
-            item.unlink()
-        removed += 1
-    if removed:
-        print(f"Removed {removed} obsolete documentation entries for {entry['repository']}; "
-              "retained its PDF and independently installed module.", flush=True)
-    return removed
-
+    return 0
 
 def native_compiler_flags_are_aggressive(flags):
     """Check actual flag tokens, including the effective final -O level.

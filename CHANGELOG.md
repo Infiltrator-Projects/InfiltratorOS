@@ -2,6 +2,13 @@
 
 This is a concise record of **published changes**, not an alternative copy of the current architecture or a replay of every development commit. The [README](README.md) and [technical documentation](docs/README.md) describe current behaviour. [Immutable release tags](https://github.com/Infiltrator-Projects/InfiltratorOS/releases) and [Git commits](https://github.com/Infiltrator-Projects/InfiltratorOS/commits/main/) preserve detailed historical provenance; the full older changelog is retained at [v1.0.52](https://github.com/Infiltrator-Projects/InfiltratorOS/blob/v1.0.52/CHANGELOG.md).
 
+## 1.0.54 — Bootstrap failure safety and historical-document preservation
+
+- Publish a fresh run status before fallible installation bootstrap, so failures in fonts, icons, sealed worker verification and release preparation cannot leave an earlier success record visible.
+- Preserve the failed run stage and diagnostics; only the detached monitor owns terminal status after worker launch.
+- Retain pre-existing unowned documents unless their actual source can be independently proven; a clean module package still provides one illustrated PDF.
+- Add pre-launch failure-injection tests and update filesystem/calendar/clock preservation tests. Real filesystem and performance qualification remain independent acceptance gates.
+
 ## 1.0.53 — Native provisioning integrity
 
 - Reject duplicated, incomplete or overlapping native job manifests and ignore unexpected status files when reporting aggregate installation progress.

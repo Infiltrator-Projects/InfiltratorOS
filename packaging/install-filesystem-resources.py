@@ -322,42 +322,32 @@ def native_installed(entry, version, revision):
 
 
 def cleanup_legacy_docs(entry, root=Path("/"), owner_lookup=None):
-    """Remove known old unowned records; leave all foreign/package-owned files."""
+    """Preserve documents whose obsolete-installer provenance cannot be proved.
+
+    A known filename, root owner and missing dpkg ownership do not establish
+    that a document was made by an old installer. The new package ships only
+    its PDF; never unlink pre-existing unverified material.
+    """
     folder = root / "System/Resources/Documentation" / entry["repository"]
     manual = folder / pdf_name(entry)
-    if not manual.is_file() or manual.is_symlink():
-        raise ValueError("Filesystem PDF must exist before any legacy cleanup")
-    with manual.open("rb") as file:
-        if file.read(5) != b"%PDF-":
-            raise ValueError("Invalid filesystem PDF before cleanup")
+    if manual.is_symlink() or not manual.is_file():
+        raise ValueError("Filesystem PDF must exist before legacy documentation inspection")
+    with manual.open("rb") as guide:
+        if guide.read(5) != b"%PDF-":
+            raise ValueError("Invalid filesystem PDF before legacy inspection")
     if root == Path("/"):
-        for d in (root / "System", root / "System/Resources",
-                  root / "System/Resources/Documentation", folder):
-            meta = d.lstat()
-            if not stat.S_ISDIR(meta.st_mode) or meta.st_uid != 0 or meta.st_mode & 0o022:
+        for directory in (root / "System", root / "System/Resources",
+                          root / "System/Resources/Documentation", folder):
+            metadata = directory.lstat()
+            if (not stat.S_ISDIR(metadata.st_mode) or metadata.st_uid != 0
+                    or metadata.st_mode & 0o022):
                 raise ValueError("Unsafe filesystem documentation directory")
-    names = {"BUILD-INFO", "README.md", "MIGRATION-PROVENANCE.md", "LICENSE"}
-    removed = 0
+    _ = owner_lookup
     for item in folder.iterdir():
-        if item.name not in names or item.is_symlink() or not item.is_file():
-            continue
-        if root == Path("/") and item.stat().st_uid != 0:
-            continue
-        if owner_lookup is None:
-            owned = subprocess.run(["/usr/bin/dpkg-query", "-S", str(item)],
-                                   capture_output=True, text=True, check=False)
-            if owned.returncode not in (0, 1) or owned.returncode == 0:
-                print("Preserving package-owned filesystem documentation: " + str(item), flush=True)
-                continue
-        elif owner_lookup(item):
-            continue
-        item.unlink()
-        removed += 1
-    if removed:
-        print("Removed " + str(removed) + " unowned obsolete document(s) for " +
-              entry["repository"], flush=True)
-    return removed
-
+        if item.name in {"BUILD-INFO", "README.md", "MIGRATION-PROVENANCE.md", "LICENSE"}:
+            print("Preserving unverified legacy filesystem documentation: " + str(item),
+                  flush=True)
+    return 0
 
 def ensure_dependencies(entry):
     ready_name = ("filesystem-extended-dependencies-ready" if entry.get("abi") else

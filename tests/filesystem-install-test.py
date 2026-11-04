@@ -191,9 +191,10 @@ class InstallerTests(unittest.TestCase):
                     (docs / legacy).write_text("obsolete")
                 (docs / "personal.txt").write_text("keep")
                 self.assertEqual(worker.cleanup_legacy_docs(
-                    entry, root=root, owner_lookup=lambda path: path.name == "LICENSE"), 3)
+                    entry, root=root, owner_lookup=lambda path: path.name == "LICENSE"), 0)
                 self.assertEqual({p.name for p in docs.iterdir()},
-                                 {name, "LICENSE", "personal.txt"})
+                                 {name, "BUILD-INFO", "README.md",
+                                  "MIGRATION-PROVENANCE.md", "LICENSE", "personal.txt"})
 
     def test_current_native_fat_skips_download_and_build(self):
         with tempfile.TemporaryDirectory() as temporary:

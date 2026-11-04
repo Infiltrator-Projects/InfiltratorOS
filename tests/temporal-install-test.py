@@ -94,7 +94,7 @@ class InstallationContract(unittest.TestCase):
                 info = worker.installed_provenance(self.entry, root)
                 self.assertEqual(info["Source revision"], "a" * 40)
 
-    def test_all_54_remove_known_unowned_old_documentation(self):
+    def test_all_54_preserve_unproven_old_documentation(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             for entry in worker.catalogue():
@@ -108,8 +108,9 @@ class InstallationContract(unittest.TestCase):
                 guide = docs / (entry["name"] + ".pdf")
                 guide.write_bytes(b"%PDF-1.7\n")
                 self.assertEqual(worker.clean_legacy_documentation(
-                    entry, root, owner_lookup=lambda path: False), 4)
-                self.assertEqual({p.name for p in docs.iterdir()}, {guide.name})
+                    entry, root, owner_lookup=lambda path: False), 0)
+                self.assertEqual({p.name for p in docs.iterdir()},
+                                 {guide.name, "common", "docs", "BUILD-INFO", "LICENSE"})
 
     def test_legacy_cleanup_preserves_owned_unknown_and_symlinks(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -126,7 +127,8 @@ class InstallationContract(unittest.TestCase):
             (outside / "keep.txt").write_text("preserve")
             (docs / "common").symlink_to(outside, target_is_directory=True)
             self.assertEqual(worker.clean_legacy_documentation(
-                self.entry, root, owner_lookup=lambda path: path.name == "BUILD-INFO"), 1)
+                self.entry, root, owner_lookup=lambda path: path.name == "BUILD-INFO"), 0)
+            self.assertTrue((docs / "SOURCE.md").exists())
             self.assertTrue((docs / "BUILD-INFO").exists())
             self.assertTrue((docs / "personal-note.txt").exists())
             self.assertTrue((docs / "common").is_symlink())

@@ -59,15 +59,35 @@ fi
 TMPDIR="$STATUS_ROOT"
 export TMPDIR
 
+# Assign a fresh run identity before any fallible setup; stale success from a
+# previous installation must never outlive a failed new bootstrap.
+stage=$(mktemp -d "$STATUS_ROOT/native-worker.XXXXXXXX")
+chmod 0755 "$stage"
+publish_summary() {
+    summary_state=$1
+    summary_tmp="$STATUS_ROOT/.last-provision.$.tmp"
+    printf 'state=%s\nstage=%s\n' "$summary_state" "$stage" > "$summary_tmp"
+    chmod 0644 "$summary_tmp"
+    mv -f -- "$summary_tmp" "$STATUS_ROOT/last-provision.status"
+}
+bootstrap_on_exit() {
+    result=$1
+    trap - 0
+    if [ "$result" -ne 0 ]; then
+        printf '%s\n' 'Native bootstrap failed; see package-manager output and retained stage.' > "$stage/FAILED" || :
+        publish_summary failed || :
+    fi
+    exit "$result"
+}
+trap 'bootstrap_on_exit $?' 0
+publish_summary running
+
 /System/Commands/InfiltratorOS/ensure-native-fonts
 /System/Commands/InfiltratorOS/ensure-native-icons
 /System/Commands/InfiltratorOS/select-theme configure
 
-stage=$(mktemp -d "$STATUS_ROOT/native-worker.XXXXXXXX")
 # Progress windows run as the graphical desktop user and need directory access.
-chmod 0755 "$stage"
 if ! unpack_native_workers "$stage"; then
-    rm -rf -- "$stage"
     echo 'InfiltratorOS could not verify its native installation workers.' >&2
     exit 1
 fi
@@ -125,21 +145,12 @@ if [ -s "$stage/filesystems-pending.list" ]; then
     echo 'Some independent filesystem modules await qualified native installer releases.'
 fi
 
-# A successful Debian package configuration starts provisioning; it does not
-# claim its independently installed components have completed successfully.
-# Publish a separate atomic run outcome for software management and recovery.
-publish_summary() {
-    summary_state=$1
-    summary_tmp="$STATUS_ROOT/.last-provision.$.tmp"
-    printf 'state=%s\nstage=%s\n' "$summary_state" "$stage" > "$summary_tmp"
-    chmod 0644 "$summary_tmp"
-    mv -f -- "$summary_tmp" "$STATUS_ROOT/last-provision.status"
-}
+# A successful Debian package configuration starts provisioning, not
+# confirmation that its detached workers finished.
 record_launch_failure() {
     printf 'state=failed\nprogress=100\nstage=Native installer could not start\ndetail=See the run logs.\n' \
         > "$stage/status/$1-install.status"
 }
-publish_summary running
 
 # Four applications, 54 calendar/clock providers and all eligible filesystems.
 # Each invocation reports to the one aggregate window and verifies its own .run.
@@ -179,6 +190,9 @@ done < "$stage/filesystems-optional.list"
 # prevents a second apt reinstall from launching a duplicate native run.
 # All statuses are terminal before this run's binaries can be removed.
 (
+    # The background monitor, not the parent's bootstrap handler, now owns
+    # the final status, with its independent lock and run directory.
+    trap - 0
     trap '' HUP INT TERM
     status_root="$stage/status"
     all_terminal() {
@@ -244,4 +258,6 @@ done < "$stage/filesystems-optional.list"
     publish_summary timeout
 ) </dev/null >/dev/null 2>&1 &
 
+# Disable the bootstrap handler only after spawning the terminal monitor.
+trap - 0
 exit 0

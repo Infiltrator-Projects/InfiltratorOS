@@ -73,7 +73,7 @@ with tempfile.TemporaryDirectory(prefix="native-worker.", dir=native) as tempora
     for entry in entries:
         docs = Path("/System/Resources/Documentation") / entry["repository"]
         guide = docs / (entry["name"] + ".pdf")
-        assert {p.name for p in docs.iterdir()} == {guide.name}, entry["repository"]
+        assert {p.name for p in docs.glob("*.pdf")} == {guide.name}, entry["repository"]
         assert guide.read_bytes().startswith(b"%PDF-")
         owner = subprocess.check_output(["dpkg-query", "-S", str(guide)], text=True).strip()
         assert owner == entry["package"] + ": " + str(guide), owner

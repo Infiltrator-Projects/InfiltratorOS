@@ -6,6 +6,7 @@ python3 "$ROOT/tests/calendar-switch-test.py"
 python3 "$ROOT/tests/temporal-install-test.py"
 python3 "$ROOT/tests/filesystem-install-test.py"
 python3 "$ROOT/tests/filesystem-additional-test.py"
+python3 "$ROOT/tests/postinst-bootstrap-test.py"
 python3 "$ROOT/tests/native-release-test.py"
 sh "$ROOT/tests/native-icons.sh"
 
