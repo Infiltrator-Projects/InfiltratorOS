@@ -291,6 +291,14 @@ static bool valid_provider_slug(const char *slug)
 int main(int argc, char **argv)
 {
     if (geteuid() != 0) die("must run as root");
+#ifdef INSTALL_SYSTEM_MONITOR
+    if (argc == 2 && strcmp(argv[1], "--show-progress") == 0) {
+        resolve_temporary_runtime();
+        DesktopSession session = find_desktop_session();
+        spawn_progress_ui(&session);
+        return EXIT_SUCCESS;
+    }
+#endif
 #if defined(INSTALL_TEMPORAL_RESOURCES) || defined(INSTALL_FILESYSTEM_RESOURCES)
     if (argc != 2 || !valid_provider_slug(argv[1]))
         die("expected one calendar, clock, or filesystem provider slug");

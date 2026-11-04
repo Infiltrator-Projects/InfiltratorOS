@@ -25,6 +25,7 @@ def release_for(entry, version="1.0.0"):
     base = f"https://github.com/Infiltrator-Projects/{repo}/releases/download/v{version}/"
     return {
         "tag_name": "v" + version, "draft": False, "prerelease": False,
+        "target_commitish": "b" * 40,
         "assets": [{"name": name, "browser_download_url": base + name,
                     "digest": "sha256:" + "a" * 64, "size": 100}
                    for name in names],
@@ -129,6 +130,26 @@ class AdditionalFilesystemTests(unittest.TestCase):
                 worker.discover_additional(snapshot)
             self.assertEqual((stage / "filesystems-optional.list").read_text(), "")
             self.assertEqual(len((stage / "filesystems-pending.list").read_text().splitlines()), 18)
+            self.assertFalse(list(snapshot.glob("*.json")))
+
+    def test_release_with_branch_source_remains_pending(self):
+        with tempfile.TemporaryDirectory() as temp:
+            base = Path(temp)
+            stage = base / "native-worker.test"
+            snapshot = stage / "release-json"
+            snapshot.mkdir(parents=True)
+            entries = {entry["repository"]: entry for entry in worker.additional_catalogue()}
+            def fake_fetch(request, timeout=None):
+                repository = request.full_url.split("/")[-3]
+                release = dict(release_for(entries[repository]), target_commitish="main")
+                return io.BytesIO(json.dumps(release).encode())
+            with patch.object(worker, "STATUS_ROOT", base), \
+                 patch.object(worker.urllib.request, "urlopen", side_effect=fake_fetch):
+                worker.discover_additional(snapshot)
+            self.assertEqual((stage / "filesystems-optional.list").read_text(), "")
+            pending = (stage / "filesystems-pending.list").read_text().splitlines()
+            self.assertEqual(len(pending), 18)
+            self.assertTrue(all("no exact source commit identity" in line for line in pending))
             self.assertFalse(list(snapshot.glob("*.json")))
 
 

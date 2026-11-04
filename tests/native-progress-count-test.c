@@ -33,6 +33,15 @@ static int write_manifest(const char *stage, const char *name,
     return fclose(file);
 }
 
+static int write_status(const char *path, const char *state)
+{
+    FILE *file = fopen(path, "w");
+    if (!file) return -1;
+    int written = fprintf(file, "state=%s\nprogress=100\nstage=Finished\ndetail=Test\n", state);
+    int closed = fclose(file);
+    return written < 0 || closed != 0 ? -1 : 0;
+}
+
 int main(void)
 {
     char root[] = "/tmp/infiltrator-progress-test.XXXXXX";
@@ -59,6 +68,23 @@ int main(void)
     CHECK(strcmp(jobs.slugs[0], "system-monitor") == 0);
     CHECK(strcmp(jobs.slugs[4], "calendar-test-0") == 0);
     CHECK(strcmp(jobs.slugs[80], "filesystem-extra-17") == 0);
+    CHECK(strcmp(native_progress_run_status(status), "running") == 0);
+    char path[4096];
+    for (int index = 0; index < jobs.count; ++index) {
+        CHECK(snprintf(path, sizeof(path), "%s/%s-install.status", status,
+                       jobs.slugs[index]) < (int)sizeof(path));
+        CHECK(write_status(path, "complete") == 0);
+    }
+    CHECK(strcmp(native_progress_run_status(status), "complete") == 0);
+    CHECK(write_status(path, "failed") == 0);
+    CHECK(strcmp(native_progress_run_status(status), "failed") == 0);
+    CHECK(write_status(path, "complete\nstate=failed") == 0);
+    CHECK(strcmp(native_progress_run_status(status), "running") == 0);
+    for (int index = 0; index < jobs.count; ++index) {
+        CHECK(snprintf(path, sizeof(path), "%s/%s-install.status", status,
+                       jobs.slugs[index]) < (int)sizeof(path));
+        CHECK(unlink(path) == 0);
+    }
     /* Duplicate slugs across manifests are invalid, not extra jobs. */
     CHECK(write_manifest(stage, "filesystems-optional.list", "filesystem-main-", 1) == 0);
     CHECK(native_progress_total_jobs(status) == -1);
@@ -75,7 +101,6 @@ int main(void)
     CHECK(native_progress_total_jobs(status) == -1);
     CHECK(unlink(optional) == 0);
     CHECK(native_progress_total_jobs(status) == -1);
-    char path[4096];
     CHECK(snprintf(path, sizeof(path), "%s/providers.list", stage) < (int)sizeof(path));
     CHECK(unlink(path) == 0);
     CHECK(snprintf(path, sizeof(path), "%s/filesystems.list", stage) < (int)sizeof(path));

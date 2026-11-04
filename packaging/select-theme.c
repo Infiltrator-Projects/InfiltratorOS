@@ -24,6 +24,9 @@
 #ifndef FILE_GRUB
 #define FILE_GRUB "/etc/default/grub"
 #endif
+#ifndef GRUB_UPDATE
+#define GRUB_UPDATE "/usr/sbin/update-grub"
+#endif
 
 /* Theme activation and initramfs rebuilding are acceptance conditions. */
 static int required(char *const args[])
@@ -134,6 +137,8 @@ static int contains(const char *s, const char *word)
 
 static int grub(void)
 {
+    /* GRUB is host compatibility for Debian/Mint systems that ship it. */
+    if (access(GRUB_UPDATE, X_OK) != 0) return 0;
     FILE *file = fopen(FILE_GRUB, "r");
     if (!file) return errno == ENOENT ? 0 : -1;
     char *line = NULL, *current = NULL;
@@ -153,20 +158,21 @@ static int grub(void)
     if (!current) current = strdup("");
     if (!current) return -1;
     int quiet = contains(current, "quiet"), splash = contains(current, "splash");
-    if (quiet && splash) { free(current); return 0; }
-    char *value = malloc(strlen(current) + 32);
-    if (!value) { free(current); return -1; }
-    sprintf(value, "\"%s%s%s%s%s\"", current,
-            *current ? " " : "", quiet ? "" : "quiet",
-            !quiet && !splash ? " " : "", splash ? "" : "splash");
-    int changed = 0, result = update(FILE_GRUB, "GRUB_CMDLINE_LINUX_DEFAULT", value, 0, &changed);
-    free(current);
-    free(value);
-    if (!result && changed) {
-        char *const args[] = { "update-grub", NULL };
-        if (required(args) != 0) return -1;
+    if (!quiet || !splash) {
+        char *value = malloc(strlen(current) + 32);
+        if (!value) { free(current); return -1; }
+        sprintf(value, "\"%s%s%s%s%s\"", current,
+                *current ? " " : "", quiet ? "" : "quiet",
+                !quiet && !splash ? " " : "", splash ? "" : "splash");
+        int changed = 0;
+        int result = update(FILE_GRUB, "GRUB_CMDLINE_LINUX_DEFAULT", value, 0, &changed);
+        free(value);
+        if (result) { free(current); return result; }
     }
-    return result;
+    free(current);
+    /* The settings may already have been saved by a failed configuration. */
+    char *const args[] = { GRUB_UPDATE, NULL };
+    return required(args);
 }
 
 int main(int argc, char **argv)
@@ -194,7 +200,10 @@ int main(int argc, char **argv)
         "/usr/share/plymouth/themes/default.plymouth", "default.plymouth", FILE_THEME, "250", NULL };
     char *const select[] = { "update-alternatives", "--set", "default.plymouth", FILE_THEME, NULL };
     if (required(add) != 0 || required(select) != 0) return 1;
-    if (grub()) { perror(FILE_GRUB); return 1; }
+    if (grub()) {
+        fprintf(stderr, "InfiltratorOS could not configure the host GRUB integration.\n");
+        return 1;
+    }
     char *const initramfs[] = { "update-initramfs", "-u", "-k", "all", NULL };
     if (required(initramfs) != 0) return 1;
     return 0;

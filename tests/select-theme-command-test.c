@@ -15,11 +15,13 @@ static char test_png[PATH_MAX];
 static char test_conf_dir[PATH_MAX];
 static char test_conf[PATH_MAX];
 static char test_grub[PATH_MAX];
+static char grub_tool[PATH_MAX];
 #define FILE_THEME test_theme
 #define FILE_PNG test_png
 #define CONF_DIR test_conf_dir
 #define FILE_CONF test_conf
 #define FILE_GRUB test_grub
+#define GRUB_UPDATE grub_tool
 #define main select_theme_program_main
 #include "../packaging/select-theme.c"
 #undef main
@@ -60,7 +62,7 @@ int main(void)
     char root[] = "/tmp/infiltratoros-theme-test-XXXXXX";
     CHECK(mkdtemp(root) != NULL);
     char bin[PATH_MAX], stub[PATH_MAX], log[PATH_MAX], alternatives[PATH_MAX];
-    char grub_tool[PATH_MAX], initramfs_tool[PATH_MAX];
+    char initramfs_tool[PATH_MAX];
 #define PATH_JOIN(buffer, suffix) CHECK(snprintf(buffer, sizeof(buffer), "%s/%s", root, suffix) < (int)sizeof(buffer))
     PATH_JOIN(test_theme, "infiltratoros.plymouth");
     PATH_JOIN(test_png, "infiltratoros.png");
@@ -96,8 +98,9 @@ int main(void)
     CHECK(read_log(log, output, sizeof(output)) == 0);
     char *install = strstr(output, "update-alternatives --install");
     char *select = strstr(output, "update-alternatives --set");
+    char *grub = strstr(output, "update-grub");
     char *rebuild = strstr(output, "update-initramfs -u -k all");
-    CHECK(install && select && rebuild && install < select && select < rebuild);
+    CHECK(install && select && grub && rebuild && install < select && select < grub && grub < rebuild);
     CHECK(strstr(output, "plymouth-set-default-theme") == NULL);
     CHECK(access(test_conf, R_OK) == 0);
 
@@ -111,11 +114,43 @@ int main(void)
     CHECK(setenv("INFILTRATOR_FAIL_CMD", "update-initramfs", 1) == 0);
     CHECK(select_theme_program_main(2, configure) != 0);
 
+    CHECK(touch(log, "", 0600) == 0);
+    CHECK(touch(test_grub, "GRUB_CMDLINE_LINUX_DEFAULT=\"quiet\"\n", 0600) == 0);
+    CHECK(setenv("INFILTRATOR_FAIL_CMD", "update-grub", 1) == 0);
+    CHECK(select_theme_program_main(2, configure) != 0);
+    CHECK(read_log(test_grub, output, sizeof(output)) == 0);
+    CHECK(strstr(output, "\"quiet splash\"") != NULL);
+    CHECK(read_log(log, output, sizeof(output)) == 0);
+    CHECK(strstr(output, "update-initramfs") == NULL);
+    CHECK(touch(log, "", 0600) == 0);
+    CHECK(setenv("INFILTRATOR_FAIL_CMD", "none", 1) == 0);
+    CHECK(select_theme_program_main(2, configure) == 0);
+    CHECK(read_log(log, output, sizeof(output)) == 0);
+    CHECK(strstr(output, "update-grub") != NULL);
+    CHECK(strstr(output, "update-initramfs") != NULL);
+
+    CHECK(unlink(grub_tool) == 0);
+    CHECK(touch(log, "", 0600) == 0);
+    CHECK(touch(test_grub, "GRUB_CMDLINE_LINUX_DEFAULT=\"quiet\"\n", 0600) == 0);
+    CHECK(select_theme_program_main(2, configure) == 0);
+    CHECK(read_log(test_grub, output, sizeof(output)) == 0);
+    CHECK(strcmp(output, "GRUB_CMDLINE_LINUX_DEFAULT=\"quiet\"\n") == 0);
+    CHECK(read_log(log, output, sizeof(output)) == 0);
+    CHECK(strstr(output, "update-grub") == NULL);
+    CHECK(strstr(output, "update-initramfs") != NULL);
+
+    CHECK(unlink(test_grub) == 0);
+    CHECK(symlink(stub, grub_tool) == 0);
+    CHECK(touch(log, "", 0600) == 0);
+    CHECK(select_theme_program_main(2, configure) == 0);
+    CHECK(access(test_grub, F_OK) != 0 && errno == ENOENT);
+    CHECK(read_log(log, output, sizeof(output)) == 0);
+    CHECK(strstr(output, "update-grub") == NULL);
+
     CHECK(unlink(initramfs_tool) == 0);
     CHECK(unlink(grub_tool) == 0);
     CHECK(unlink(alternatives) == 0);
     CHECK(unlink(stub) == 0);
-    CHECK(unlink(test_grub) == 0);
     CHECK(unlink(test_png) == 0);
     CHECK(unlink(test_theme) == 0);
     CHECK(unlink(test_conf) == 0);

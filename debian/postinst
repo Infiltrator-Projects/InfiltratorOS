@@ -46,7 +46,7 @@ fi
 mkdir -p "$STATUS_ROOT"
 chmod 0755 "$STATUS_ROOT"
 # Hold a run-wide lock across the detached monitor lifetime. A reinstall
-# during active native compilation must not spawn 59 duplicate jobs.
+# during active native compilation must not spawn duplicate jobs.
 if ! command -v flock >/dev/null 2>&1; then
     echo 'InfiltratorOS requires util-linux flock to coordinate native setup.' >&2
     exit 1
@@ -81,16 +81,22 @@ bootstrap_on_exit() {
 }
 trap 'bootstrap_on_exit $?' 0
 publish_summary running
+rm -f -- "$STATUS_ROOT/filesystems-pending.list"
 
 /System/Commands/InfiltratorOS/ensure-native-fonts
 /System/Commands/InfiltratorOS/ensure-native-icons
-/System/Commands/InfiltratorOS/select-theme configure
 
 # Progress windows run as the graphical desktop user and need directory access.
 if ! unpack_native_workers "$stage"; then
     echo 'InfiltratorOS could not verify its native installation workers.' >&2
     exit 1
 fi
+
+if ! INFILTRATOROS_PROGRESS_MODE=aggregate INFILTRATOROS_INSTALL_RUNTIME="$stage" \
+        "$stage/start-system-monitor-install" --show-progress; then
+    echo 'Could not start InfiltratorOS graphical progress.' >&2
+fi
+/System/Commands/InfiltratorOS/select-theme configure
 
 # Every run owns its own status and log directory beneath its temporary
 # worker stage. No run may remove shared /Temporary/InfiltratorOS or files
@@ -143,6 +149,10 @@ if [ "$(wc -l < "$stage/filesystems-optional.list")" -gt 18 ]; then
 fi
 if [ -s "$stage/filesystems-pending.list" ]; then
     echo 'Some independent filesystem modules await qualified native installer releases.'
+    pending_tmp="$stage/filesystems-pending.summary"
+    cp -- "$stage/filesystems-pending.list" "$pending_tmp"
+    chmod 0644 "$pending_tmp"
+    mv -f -- "$pending_tmp" "$STATUS_ROOT/filesystems-pending.list"
 fi
 
 # A successful Debian package configuration starts provisioning, not
@@ -155,11 +165,7 @@ record_launch_failure() {
 # Four applications, 54 calendar/clock providers and all eligible filesystems.
 # Each invocation reports to the one aggregate window and verifies its own .run.
 for product in system-monitor calculator files defragmenter; do
-    progress_mode=none
-    if [ "$product" = system-monitor ]; then
-        progress_mode=aggregate
-    fi
-    if ! INFILTRATOROS_PROGRESS_MODE="$progress_mode" INFILTRATOROS_INSTALL_RUNTIME="$stage" "$stage/start-$product-install"; then
+    if ! INFILTRATOROS_PROGRESS_MODE=none INFILTRATOROS_INSTALL_RUNTIME="$stage" "$stage/start-$product-install"; then
         echo "Failed to launch $product installer; see $stage/status." >&2
         record_launch_failure "$product"
     fi
@@ -195,62 +201,22 @@ done < "$stage/filesystems-optional.list"
     trap - 0
     trap '' HUP INT TERM
     status_root="$stage/status"
-    all_terminal() {
-        for product in system-monitor calculator files defragmenter; do
-            status="$status_root/$product-install.status"
-            [ -f "$status" ] && grep -Eq '^state=(complete|failed)$' "$status" || return 1
-        done
-        while IFS= read -r provider; do
-            status="$status_root/$provider-install.status"
-            [ -f "$status" ] && grep -Eq '^state=(complete|failed)$' "$status" || return 1
-        done < "$stage/providers.list"
-        while IFS= read -r filesystem; do
-            status="$status_root/$filesystem-install.status"
-            [ -f "$status" ] && grep -Eq '^state=(complete|failed)$' "$status" || return 1
-        done < "$stage/filesystems.list"
-        while IFS= read -r filesystem; do
-            status="$status_root/$filesystem-install.status"
-            [ -f "$status" ] && grep -Eq '^state=(complete|failed)$' "$status" || return 1
-        done < "$stage/filesystems-optional.list"
-        return 0
-    }
-    all_complete() {
-        for product in system-monitor calculator files defragmenter; do
-            grep -Fxq 'state=complete' "$status_root/$product-install.status" || return 1
-        done
-        while IFS= read -r provider; do
-            grep -Fxq 'state=complete' "$status_root/$provider-install.status" || return 1
-        done < "$stage/providers.list"
-        while IFS= read -r filesystem; do
-            grep -Fxq 'state=complete' "$status_root/$filesystem-install.status" || return 1
-        done < "$stage/filesystems.list"
-        while IFS= read -r filesystem; do
-            grep -Fxq 'state=complete' "$status_root/$filesystem-install.status" || return 1
-        done < "$stage/filesystems-optional.list"
-        return 0
-    }
     elapsed=0
     while [ "$elapsed" -lt 86400 ]; do
-        if all_terminal; then
-            # The single aggregate progress window can observe the final state.
-            sleep 20
-            if all_terminal; then
-                if all_complete; then
-                    if [ -s "$stage/filesystems-pending.list" ]; then
-                        cp -- "$stage/filesystems-pending.list" "$STATUS_ROOT/filesystems-pending.list"
-                        chmod 0644 "$STATUS_ROOT/filesystems-pending.list"
-                    else
-                        rm -f -- "$STATUS_ROOT/filesystems-pending.list"
-                    fi
-                    publish_summary complete
-                    rm -rf -- "$stage"
-                else
-                    printf '%s\n' 'Installation failed; this run retains its logs and statuses.' > "$stage/FAILED"
-                    publish_summary failed
-                fi
+        # The GUI and monitor share the manifest and status parsers.
+        outcome=$("$stage/system-monitor-progress" --run-status "$status_root") || outcome=running
+        case "$outcome" in
+            complete)
+                publish_summary complete
+                rm -rf -- "$stage"
                 exit 0
-            fi
-        fi
+                ;;
+            failed)
+                printf '%s\n' 'Installation failed; this run retains its logs and statuses.' > "$stage/FAILED"
+                publish_summary failed
+                exit 0
+                ;;
+        esac
         sleep 5
         elapsed=$((elapsed + 5))
     done

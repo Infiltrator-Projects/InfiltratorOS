@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
 #include "native-progress-count.h"
+#include "installer-status.h"
 #include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
@@ -81,4 +82,25 @@ int native_progress_total_jobs(const char *status_directory)
 {
     NativeProgressJobs jobs;
     return native_progress_load_jobs(status_directory, &jobs);
+}
+
+const char *native_progress_run_status(const char *status_directory)
+{
+    NativeProgressJobs jobs;
+    if (native_progress_load_jobs(status_directory, &jobs) < 0)
+        return "running";
+    bool failed = false;
+    for (int index = 0; index < jobs.count; ++index) {
+        char path[4096];
+        InstallerStatus status;
+        if (snprintf(path, sizeof(path), "%s/%s-install.status", status_directory,
+                     jobs.slugs[index]) >= (int)sizeof(path) ||
+            !installer_status_read(path, &status))
+            return "running";
+        if (strcmp(status.state, "failed") == 0)
+            failed = true;
+        else if (strcmp(status.state, "complete") != 0)
+            return "running";
+    }
+    return failed ? "failed" : "complete";
 }

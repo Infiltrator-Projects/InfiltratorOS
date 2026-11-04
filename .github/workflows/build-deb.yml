@@ -101,6 +101,19 @@ jobs:
           INFILTRATR_NATIVE_ROOT="$native_root" "$helper"
           grep -Fq '<dir>/System/Resources/Fonts</dir>' "$native_root/etc/fonts/conf.d/90-infiltrator-native-fonts.conf"
           INFILTRATR_NATIVE_ROOT="$native_root" "$helper"
+          progress="$GITHUB_WORKSPACE/.build/infiltratoros_${version}/native-runtime/system-monitor-progress"
+          export FONTCONFIG_FILE="$RUNNER_TEMP/infiltrator-fontconfig.conf"
+          printf '<fontconfig><cachedir>%s/font-cache</cachedir></fontconfig>\n' "$RUNNER_TEMP" > "$FONTCONFIG_FILE"
+          "$progress" --check-fonts "$native_root/System/Resources/Fonts"
+          for required in mb_corpo_s_text_cond_regular.ttf mb_corpo_s_title_bold.ttf; do
+            mv "$native_root/System/Resources/Fonts/$required" "$RUNNER_TEMP/$required"
+            if "$progress" --check-fonts "$native_root/System/Resources/Fonts"; then
+              echo "Installer accepted fallback for $required" >&2
+              exit 1
+            fi
+            mv "$RUNNER_TEMP/$required" "$native_root/System/Resources/Fonts/$required"
+          done
+          unset FONTCONFIG_FILE
           icon_helper="$RUNNER_TEMP/payload/System/Commands/InfiltratorOS/ensure-native-icons"
           test -x "$icon_helper"
           sh -n "$icon_helper"
@@ -126,8 +139,7 @@ jobs:
           ! grep -Eq '^WORKER_PARENT=|^STATUS_ROOT=/run|/var/lib/infiltratoros-native-worker|/run/infiltratoros' "$RUNNER_TEMP/control/postinst"
           # An installation must never delete another run's temporary files.
           grep -Fq 'status_root="$stage/status"' "$RUNNER_TEMP/control/postinst"
-          grep -Fq 'all_terminal()' "$RUNNER_TEMP/control/postinst"
-          grep -Fq 'all_complete()' "$RUNNER_TEMP/control/postinst"
+          grep -Fq -- '--run-status "$status_root"' "$RUNNER_TEMP/control/postinst"
           grep -Fq 'done < "$stage/providers.list"' "$RUNNER_TEMP/control/postinst"
           ! grep -Fq 'rm -rf -- "$STATUS_ROOT"' "$RUNNER_TEMP/control/postinst"
           # A missing/mismatched digest must terminate guarded extraction.

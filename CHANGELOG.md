@@ -2,6 +2,13 @@
 
 This is a concise record of **published changes**, not an alternative copy of the current architecture or a replay of every development commit. The [README](README.md) and [technical documentation](docs/README.md) describe current behaviour. [Immutable release tags](https://github.com/Infiltrator-Projects/InfiltratorOS/releases) and [Git commits](https://github.com/Infiltrator-Projects/InfiltratorOS/commits/main/) preserve detailed historical provenance; the full older changelog is retained at [v1.0.52](https://github.com/Infiltrator-Projects/InfiltratorOS/blob/v1.0.52/CHANGELOG.md).
 
+## 1.0.59 — Repair installer bootstrap and verification
+
+- Verify and register the packaged fonts and icons, then open the aggregate progress window before Plymouth and release discovery. Check the exact font files selected by Pango, including the MB Corpo condensed alias and bold title face.
+- Require the exact source commit in the managed catalogue before launching provider jobs. Keep additional filesystems with unpinned releases pending and qualify the managed catalogue handoff in CI.
+- Use the same manifest and status parsers for the GUI and final monitor. Preserve the pending filesystem list even if an eligible job fails.
+- Keep GRUB integration conditional on the Debian/Mint host having both its defaults file and updater. Retry regeneration after a failed attempt, even if the settings were already saved.
+
 ## 1.0.58 — Repair Ubuntu Plymouth configuration
 
 - Fix a physical-host installation failure: Ubuntu does not ship the Debian-only Plymouth theme selector. Use the supported `update-alternatives` interface on both Ubuntu-derived and Debian systems.

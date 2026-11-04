@@ -54,9 +54,17 @@ with tempfile.TemporaryDirectory(prefix="native-worker.", dir=native) as tempora
         (docs / "docs/README.md").write_text("old engineering notes")
         (docs / "BUILD-INFO").write_text("Source revision: obsolete\n")
         (docs / "SOURCE-MANIFEST.json").write_text("{}\n")
-    # The exact bundled Python worker is invoked independently for all 54
-    # providers, with one status file per provider in this CI installation.
-    env = dict(os.environ, INFILTRATOROS_INSTALL_RUNTIME=str(work))
+    # Qualify the same central release handoff that the real postinst uses.
+    workers = work / "workers"
+    providers = work / "providers.list"
+    filesystems = work / "filesystems.list"
+    snapshot = work / "release-json"
+    for worker, manifest in (("install-temporal-resources", providers),
+                             ("install-filesystem-resources", filesystems)):
+        manifest.write_bytes(subprocess.check_output([workers / worker, "--list"]))
+    subprocess.run([workers / "prepare-native-releases", snapshot, providers, filesystems], check=True)
+    env = dict(os.environ, INFILTRATOROS_INSTALL_RUNTIME=str(work),
+               INFILTRATOROS_RELEASE_DIR=str(snapshot))
     for entry in entries:
         slug = entry["repository"].lower()
         subprocess.run([work / "workers/install-temporal-resources", slug], check=True, env=env)
