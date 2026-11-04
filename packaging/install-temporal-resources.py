@@ -221,7 +221,7 @@ def native_compiler_flags_are_aggressive(flags):
             "-march=native" in tokens and "-flto" in tokens)
 
 
-def verify_installation(entry, version, root=Path("/"), query=True):
+def verify_installation(entry, version, root=Path("/"), query=True, revision=None):
     if query:
         identity = subprocess.check_output(["/usr/bin/dpkg-query", "-W", "-f=${Status}\n${Version}\n", entry["package"]], text=True)
         if identity.splitlines() != ["install ok installed", version + "+native1"]:
@@ -237,6 +237,8 @@ def verify_installation(entry, version, root=Path("/"), query=True):
         raise ValueError("Installed module was not compiled aggressively for this CPU")
     if not re.fullmatch(r"[0-9a-f]{40}", info.get("Source revision", "")):
         raise ValueError("Native build record has no source commit")
+    if revision is not None and info["Source revision"] != revision:
+        raise ValueError("Native source revision differs from the selected published release")
     if hashlib.sha256(library.read_bytes()).hexdigest() != info.get("SHA256"):
         raise ValueError("Installed module differs from its qualified native build")
     module = ctypes.CDLL(str(library))
@@ -314,6 +316,9 @@ def install_entry(entry):
         raise ValueError("Release metadata is too large")
     release = json.loads(data)
     version, url, digest, size = release_installer(entry, release)
+    revision = release.get("target_commitish")
+    if not isinstance(revision, str) or not re.fullmatch(r"[0-9a-f]{40}", revision):
+        raise ValueError("Selected temporal release has no exact source commit identity")
     if native_installed(entry, version, release):
         clean_legacy_documentation(entry)
         print("Already installed and verified: " + entry["repository"], flush=True)
@@ -325,7 +330,7 @@ def install_entry(entry):
         installer = Path(temporary) / "provider.run"
         download_installer(url, installer, digest, size)
         required([installer, "--profile", "aggressive", "--system-package-mode"])
-        verify_installation(entry, version)
+        verify_installation(entry, version, revision=revision)
         clean_legacy_documentation(entry)
     return False
 

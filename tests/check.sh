@@ -8,6 +8,26 @@ python3 "$ROOT/tests/filesystem-install-test.py"
 python3 "$ROOT/tests/filesystem-additional-test.py"
 python3 "$ROOT/tests/postinst-bootstrap-test.py"
 python3 "$ROOT/tests/native-release-test.py"
+cc -std=c11 -O2 -Wall -Wextra -Werror -Wpedantic \
+    "$ROOT/tests/native-release-contract-test.c" -o "$ROOT/.build-native-release-contract-test"
+"$ROOT/.build-native-release-contract-test"
+rm -f "$ROOT/.build-native-release-contract-test"
+# Prevent regression to purging stock monitors before verifying the replacement.
+python3 - "$ROOT" <<'PY'
+from pathlib import Path
+import sys
+root = Path(sys.argv[1])
+monitor = (root / "packaging/install-system-monitor.c").read_text()
+assert monitor.index('native_package_version_matches("/var/lib/dpkg/status"') < monitor.index("purge_stock_monitors();")
+progress = (root / "packaging/native-install-progress.c").read_text()
+assert 'Waiting for the verified final installation result' in progress
+assert progress.index('if (outcome != 0)') < progress.index('if (finished == total_jobs)')
+theme = (root / "packaging/select-theme.c").read_text()
+assert "optional(" not in theme
+assert "required(initramfs)" in theme
+worker = (root / "packaging/start-native-install.c").read_text()
+assert '"--kill-after=30s", "86300s"' in worker
+PY
 sh "$ROOT/tests/native-icons.sh"
 
 # InfiltratorOS-owned install state must live under the native /Temporary.

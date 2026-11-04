@@ -11,6 +11,8 @@
 #include <sys/wait.h>
 #include <unistd.h>
 #include "verify-native-download.h"
+#include "native-release-version.h"
+#include "native-package-version.h"
 
 #define RELEASE_API "https://api.github.com/repos/Infiltrator-Projects/System-Monitor/releases/latest"
 #define RELEASE_PREFIX "https://github.com/Infiltrator-Projects/System-Monitor/releases/download/"
@@ -304,6 +306,13 @@ int main(void)
     bool found = latest_installer_url(json, url, sizeof(url));
     free(json);
     if (!found) fail("latest System Monitor release has no trusted native installer asset");
+    char release_version[128], native_version[160];
+    if (!native_release_version_from_url(url, RELEASE_PREFIX, "system-monitor-",
+                                         "-native-installer.run", release_version,
+                                         sizeof(release_version)) ||
+        snprintf(native_version, sizeof(native_version), "%s+native1", release_version) >=
+            (int)sizeof(native_version))
+        fail("native installer filename and release tag disagree");
 
     write_status("running", 22, "Downloading System Monitor",
                  "Downloading the latest native installer from Infiltrator Projects.");
@@ -326,14 +335,12 @@ int main(void)
     };
     required(install_argv);
 
-    write_status("running", 88, "Removing replaced System Monitor packages",
-                 "Cleaning up distribution System Monitor packages after the native build succeeded.");
-    purge_stock_monitors();
-
-    write_status("running", 95, "Verifying the native installation",
+    write_status("running", 88, "Verifying the native installation",
                  "Checking that the installed build is aggressive, PGO-trained and CPU-native.");
 
-    if (!installed("system-monitor") || access("/Programs/system-monitor", X_OK) != 0)
+    if (!installed("system-monitor") ||
+        !native_package_version_matches("/var/lib/dpkg/status", "system-monitor", native_version) ||
+        access("/Programs/system-monitor", X_OK) != 0)
         fail("native System Monitor package or /Programs executable is not installed after the build");
     const char info[] = "/usr/share/doc/system-monitor/BUILD-INFO";
     if (!file_contains(info, "Profile: aggressive") ||
@@ -341,6 +348,10 @@ int main(void)
         !file_contains(info, "C flags: -O3") ||
         !file_contains(info, "-march=native"))
         fail("installed System Monitor is not an aggressive two-pass native build");
+
+    write_status("running", 95, "Removing replaced System Monitor packages",
+                 "Removing competing distribution monitors only after verifying the exact native release.");
+    purge_stock_monitors();
 
     unlink(installer_path);
     unlink(json_path);

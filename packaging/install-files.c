@@ -11,6 +11,8 @@
 #include <sys/wait.h>
 #include <unistd.h>
 #include "verify-native-download.h"
+#include "native-release-version.h"
+#include "native-package-version.h"
 
 #define RELEASE_API "https://api.github.com/repos/Infiltrator-Projects/Files/releases/latest"
 #define RELEASE_PREFIX "https://github.com/Infiltrator-Projects/Files/releases/download/"
@@ -283,6 +285,13 @@ int main(void)
     bool found = latest_installer_url(json, url, sizeof(url));
     free(json);
     if (!found) fail("latest Files release has no trusted native installer asset");
+    char release_version[128], native_version[160];
+    if (!native_release_version_from_url(url, RELEASE_PREFIX, "files-",
+                                         "-native-installer.run", release_version,
+                                         sizeof(release_version)) ||
+        snprintf(native_version, sizeof(native_version), "%s+native1", release_version) >=
+            (int)sizeof(native_version))
+        fail("native installer filename and release tag disagree");
 
     write_status("running", 22, "Downloading Files",
                  "Downloading the latest native installer from Infiltrator Projects.");
@@ -308,7 +317,9 @@ int main(void)
     write_status("running", 94, "Verifying the native Files installation",
                  "Checking /Programs, build provenance and desktop integration without changing the default file manager.");
 
-    if (!installed("files") || access("/Programs/files", X_OK) != 0)
+    if (!installed("files") ||
+        !native_package_version_matches("/var/lib/dpkg/status", "files", native_version) ||
+        access("/Programs/files", X_OK) != 0)
         fail("native Files package or /Programs executable is not installed after the build");
     if (access("/usr/bin/files", F_OK) == 0)
         fail("obsolete /usr/bin/files path remains after native Files installation");

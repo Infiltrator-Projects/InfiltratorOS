@@ -14,16 +14,23 @@
 #define FILE_CONF "/etc/plymouth/plymouthd.conf"
 #define FILE_GRUB "/etc/default/grub"
 
-static void optional(char *const args[])
+/* Theme activation and initramfs rebuilding are acceptance conditions. */
+static int required(char *const args[])
 {
     pid_t child = fork();
     if (child == 0) {
         execvp(args[0], args);
         _exit(127);
     }
-    if (child < 0) return;
-    int status;
-    while (waitpid(child, &status, 0) < 0 && errno == EINTR) {}
+    if (child < 0) { perror(args[0]); return -1; }
+    int status = 0;
+    pid_t waited;
+    do { waited = waitpid(child, &status, 0); } while (waited < 0 && errno == EINTR);
+    if (waited != child || !WIFEXITED(status) || WEXITSTATUS(status) != 0) {
+        fprintf(stderr, "InfiltratorOS required system command failed: %s\n", args[0]);
+        return -1;
+    }
+    return 0;
 }
 
 /* Atomically update a key. For Plymouth, insert it inside [Daemon]. */
@@ -134,7 +141,7 @@ static int grub(void)
     free(value);
     if (!result && changed) {
         char *const args[] = { "update-grub", NULL };
-        optional(args);
+        if (required(args) != 0) return -1;
     }
     return result;
 }
@@ -143,8 +150,7 @@ int main(int argc, char **argv)
 {
     if (argc == 2 && (!strcmp(argv[1], "remove") || !strcmp(argv[1], "deconfigure"))) {
         char *const args[] = { "update-alternatives", "--remove", "default.plymouth", FILE_THEME, NULL };
-        optional(args);
-        return 0;
+        return required(args) == 0 ? 0 : 1;
     }
     if (argc != 2 || strcmp(argv[1], "configure")) return 2;
     if (access(FILE_THEME, R_OK) || access(FILE_PNG, R_OK)) {
@@ -158,11 +164,10 @@ int main(int argc, char **argv)
     char *const add[] = { "update-alternatives", "--install",
         "/usr/share/plymouth/themes/default.plymouth", "default.plymouth", FILE_THEME, "250", NULL };
     char *const select[] = { "update-alternatives", "--set", "default.plymouth", FILE_THEME, NULL };
-    optional(debian);
-    optional(add);
-    optional(select);
+    if (required(debian) != 0 || required(add) != 0 ||
+        required(select) != 0) return 1;
     if (grub()) { perror(FILE_GRUB); return 1; }
     char *const initramfs[] = { "update-initramfs", "-u", "-k", "all", NULL };
-    optional(initramfs);
+    if (required(initramfs) != 0) return 1;
     return 0;
 }

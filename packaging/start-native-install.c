@@ -322,12 +322,18 @@ int main(int argc, char **argv)
         die("run status or log path is too long");
     write_initial_status();
     DesktopSession session = find_desktop_session();
+    /* Bound every native worker before the run monitor's 24-hour timeout.
+     * GNU timeout signals the complete installer process group and escalates
+     * to SIGKILL, preventing new batches from racing old unbounded workers. */
+    char *const bounded[] = {
+        "/usr/bin/timeout", "--signal=TERM", "--kill-after=30s", "86300s",
+        runtime_worker,
 #if defined(INSTALL_TEMPORAL_RESOURCES) || defined(INSTALL_FILESYSTEM_RESOURCES)
-    char *const arguments[] = { runtime_worker, provider_slug, NULL };
-#else
-    char *const arguments[] = { runtime_worker, NULL };
+        provider_slug,
 #endif
-    if (installer_spawn_detached(runtime_worker, arguments, prepare_worker, NULL) != 0) {
+        NULL
+    };
+    if (installer_spawn_detached(bounded[0], bounded, prepare_worker, NULL) != 0) {
         report_start_failure(errno);
         spawn_progress_ui(&session);
         return EXIT_FAILURE;
