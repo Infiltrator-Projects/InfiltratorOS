@@ -2,6 +2,13 @@
 
 This is a concise record of **published changes**, not an alternative copy of the current architecture or a replay of every development commit. The [README](README.md) and [technical documentation](docs/README.md) describe current behaviour. [Immutable release tags](https://github.com/Infiltrator-Projects/InfiltratorOS/releases) and [Git commits](https://github.com/Infiltrator-Projects/InfiltratorOS/commits/main/) preserve detailed historical provenance; the full older changelog is retained at [v1.0.52](https://github.com/Infiltrator-Projects/InfiltratorOS/blob/v1.0.52/CHANGELOG.md).
 
+## 1.0.57 — Clean single-main qualified release
+
+- Archive and remove the four superseded development branches, preserving all reviewed branch-tip commits in immutable archive tags.
+- Close superseded pull request #21 after its relevant native ABI and verification changes were integrated in main.
+- Remove the one-shot branch reconciliation workflow. Product code retains all qualified 1.0.56 native installer, Common visual, filesystem ABI, package version and fault-handling fixes.
+- Rebuild and publish exact 1.0.57 source/DEB bytes from the single main branch; previous release tags remain immutable.
+
 ## 1.0.56 — Reconcile native contracts and stale branches
 
 - Correct System Monitor's installed native Debian identity to its actual unsuffixed release version; keep Files' `+native1` policy.
