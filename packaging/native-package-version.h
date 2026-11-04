@@ -14,10 +14,10 @@ static bool native_package_version_matches(const char *status_path,
     size_t capacity = 0U;
     bool matching = false, installed = false, exact = false, found = false;
     while (getline(&line, &capacity, file) >= 0) {
-        const size_t length = strlen(line);
-        while (length > 0U && (line[strlen(line)-1] == '\n' ||
-                               line[strlen(line)-1] == '\r'))
-            line[strlen(line)-1] = '\0';
+        size_t length = strlen(line);
+        while (length > 0U && (line[length - 1U] == '\n' ||
+                               line[length - 1U] == '\r'))
+            line[--length] = '\0';
         if (line[0] == '\0') {
             if (matching && installed && exact) { found = true; break; }
             matching = installed = exact = false;
