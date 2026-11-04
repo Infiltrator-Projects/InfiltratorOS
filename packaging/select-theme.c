@@ -9,10 +9,21 @@
 #include <unistd.h>
 
 #define THEME "infiltratoros"
+#ifndef FILE_THEME
 #define FILE_THEME "/usr/share/plymouth/themes/infiltratoros/infiltratoros.plymouth"
+#endif
+#ifndef FILE_PNG
 #define FILE_PNG "/usr/share/plymouth/themes/infiltratoros/infiltratoros.png"
+#endif
+#ifndef CONF_DIR
+#define CONF_DIR "/etc/plymouth"
+#endif
+#ifndef FILE_CONF
 #define FILE_CONF "/etc/plymouth/plymouthd.conf"
+#endif
+#ifndef FILE_GRUB
 #define FILE_GRUB "/etc/default/grub"
+#endif
 
 /* Theme activation and initramfs rebuilding are acceptance conditions. */
 static int required(char *const args[])
@@ -20,14 +31,26 @@ static int required(char *const args[])
     pid_t child = fork();
     if (child == 0) {
         execvp(args[0], args);
+        fprintf(stderr, "InfiltratorOS cannot execute %s: %s\n",
+                args[0], strerror(errno));
         _exit(127);
     }
     if (child < 0) { perror(args[0]); return -1; }
     int status = 0;
     pid_t waited;
     do { waited = waitpid(child, &status, 0); } while (waited < 0 && errno == EINTR);
-    if (waited != child || !WIFEXITED(status) || WEXITSTATUS(status) != 0) {
-        fprintf(stderr, "InfiltratorOS required system command failed: %s\n", args[0]);
+    if (waited != child) {
+        perror(args[0]);
+        return -1;
+    }
+    if (!WIFEXITED(status)) {
+        fprintf(stderr, "InfiltratorOS required command terminated by signal: %s\n",
+                args[0]);
+        return -1;
+    }
+    if (WEXITSTATUS(status) != 0) {
+        fprintf(stderr, "InfiltratorOS required command failed: %s (exit %d)\n",
+                args[0], WEXITSTATUS(status));
         return -1;
     }
     return 0;
@@ -160,15 +183,17 @@ int main(int argc, char **argv)
         fprintf(stderr, "InfiltratorOS theme or picture is missing\n");
         return 1;
     }
-    if (mkdir("/etc/plymouth", 0755) && errno != EEXIST) return 1;
+    if (mkdir(CONF_DIR, 0755) && errno != EEXIST) return 1;
     int changed = 0;
     if (update(FILE_CONF, "Theme", THEME, 1, &changed)) { perror(FILE_CONF); return 1; }
-    char *const debian[] = { "plymouth-set-default-theme", THEME, NULL };
+    /* Ubuntu uses the default.plymouth alternatives interface instead of
+     * Debian's separate theme-selection utility. Both distributions support
+     * this verified alternatives path. The theme configuration above and
+     * explicit initramfs rebuild below complete activation. */
     char *const add[] = { "update-alternatives", "--install",
         "/usr/share/plymouth/themes/default.plymouth", "default.plymouth", FILE_THEME, "250", NULL };
     char *const select[] = { "update-alternatives", "--set", "default.plymouth", FILE_THEME, NULL };
-    if (required(debian) != 0 || required(add) != 0 ||
-        required(select) != 0) return 1;
+    if (required(add) != 0 || required(select) != 0) return 1;
     if (grub()) { perror(FILE_GRUB); return 1; }
     char *const initramfs[] = { "update-initramfs", "-u", "-k", "all", NULL };
     if (required(initramfs) != 0) return 1;

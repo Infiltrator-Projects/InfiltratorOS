@@ -37,6 +37,8 @@ assert 'Waiting for the verified final installation result' in progress
 assert progress.index('if (outcome != 0)') < progress.index('if (finished == total_jobs)')
 theme = (root / "packaging/select-theme.c").read_text()
 assert "optional(" not in theme
+assert '"plymouth-set-default-theme"' not in theme
+assert 'required(add) != 0 || required(select) != 0' in theme
 assert "required(initramfs)" in theme
 worker = (root / "packaging/start-native-install.c").read_text()
 assert '"--kill-after=30s", "86300s"' in worker

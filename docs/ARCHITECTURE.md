@@ -4,7 +4,7 @@ This document describes **current implementation and ownership boundaries**. The
 
 ## Package and resource ownership
 
-`VERSION` supplies package identity. `scripts/build-deb.sh` validates the target host, approved artwork and package membership, and builds a deterministic amd64 Debian package. The approved Plymouth theme is installed and selected through the package's maintainer scripts. Plymouth, GRUB and initramfs command failures now fail configuration rather than being silently ignored.
+`VERSION` supplies package identity. `scripts/build-deb.sh` validates the target host, approved artwork and package membership, and builds a deterministic amd64 Debian package. The approved Plymouth theme is installed and selected through the package's maintainer scripts. Both Ubuntu-derived and Debian systems use Plymouth's `default.plymouth` `update-alternatives` registration/selection: InfiltratorOS does not require the Debian-specific `plymouth-set-default-theme` utility absent from Ubuntu. Theme selection, GRUB changes when needed and the initramfs rebuild remain required; their failures fail configuration with actionable exit diagnostics.
 
 The InfiltratorOS package creates the native [filesystem skeleton](FILESYSTEM.md) and owns its OS resources: 23 verified TTFs directly under `/System/Resources/Fonts`, 1,233 verified icons directly under `/System/Resources/Icons`, and two integrity manifests in `/System/Resources/Documentation/InfiltratorOS`. The source icon archive is reassembled and checked **during packaging**, not left on the installed system. No permanent resource seeds, archive copies or native application binaries are installed by this OS package.
 
