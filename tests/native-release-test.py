@@ -27,6 +27,7 @@ def sample():
         url = f"https://github.com/Infiltrator-Projects/{repo}/releases/download/v{version}/{name}"
         releases[repo] = {
             "tag_name": "v" + version, "draft": False, "prerelease": False,
+            "target_commitish": "b" * 40,
             "assets": [{"name": name, "browser_download_url": url,
                         "digest": "sha256:" + "a" * 64, "size": 200}]
         }
@@ -52,6 +53,18 @@ class NativeSnapshotTest(unittest.TestCase):
             self.assertEqual(len(list((root / "release-json").glob("*.json"))), 63)
             self.assertEqual(len(list((root / "release-json").glob("*.sha256"))), 63)
             self.assertEqual((root / "release-json" / "Calculator.sha256").read_text().split()[0], "a" * 64)
+            fat = json.loads((root / "release-json" / "Filesystem-FAT12.json").read_text())
+            self.assertEqual(fat["target_commitish"], "b" * 40)
+
+    def test_snapshot_rejects_unpinned_provider_before_launch(self):
+        payload = json.loads(sample())
+        expected = {name.lower() for name in payload["releases"]}
+        for name in ("Filesystem-FAT12", "Calendar-Armenian-Traditional", "Clock-Binary"):
+            with self.subTest(name=name):
+                broken = copy.deepcopy(payload)
+                broken["releases"][name].pop("target_commitish")
+                with self.assertRaisesRegex(ValueError, name + ": provider release"):
+                    worker.verify_snapshot(json.dumps(broken).encode(), expected)
 
     def test_snapshot_rejects_known_broken_exfat_012(self):
         payload = json.loads(sample())

@@ -1,5 +1,7 @@
 #include <gtk/gtk.h>
 #include <pango/pangocairo.h>
+#include <pango/pangofc-font.h>
+#include <pango/pangofc-fontmap.h>
 #include <fontconfig/fontconfig.h>
 #include "infiltratr/design.h"
 #include "installer-profile.h"
@@ -226,54 +228,51 @@ static void close_clicked(GtkButton *button, gpointer data)
 }
 
 
-/* Require the real installed font families; do not accept Pango fallback. */
-static bool required_fonts_visible(void)
+/* Check the files that Pango actually selects for the roles in the GTK CSS. */
+static bool required_fonts_visible(const char *directory)
 {
-    static const char *const names[] = {
-        "MB Corpo A Title Cond WEB", "MB Corpo S Title WEB",
-        "MB Corpo S Text WEB", "MB Corpo S Text WEB Cond",
-        "MB Corpo A Screen2 Cond WEB"
+    static const struct {
+        const char *family;
+        const char *file;
+        PangoWeight weight;
+    } roles[] = {
+        {"MB Corpo A Title Cond WEB", "mb_corpo_a_title_cond_regular.ttf", PANGO_WEIGHT_NORMAL},
+        {"MB Corpo S Title WEB", "mb_corpo_s_title_bold.ttf", PANGO_WEIGHT_BOLD},
+        {"MB Corpo S Text WEB", "mb_corpo_s_text_regular.ttf", PANGO_WEIGHT_NORMAL},
+        {"MB Corpo S Text WEB Cond", "mb_corpo_s_text_cond_regular.ttf", PANGO_WEIGHT_NORMAL},
+        {"MB Corpo A Screen2 Cond WEB", "mb_corpo_a_screen_2_cond_regular.ttf", PANGO_WEIGHT_NORMAL}
     };
-    /* Fontconfig must select each real face, not a visually plausible
-     * substitute. Register the verified package's native directory directly
-     * so the graphical user's cache refresh timing cannot hide it. */
     FcConfig *config = FcConfigGetCurrent();
-    if (!config || !FcConfigAppFontAddDir(config,
-            (const FcChar8 *)"/System/Resources/Fonts")) return false;
-    for (size_t i = 0; i < sizeof(names) / sizeof(names[0]); ++i) {
-        FcPattern *request = FcPatternCreate();
-        if (!request) return false;
-        bool ok = FcPatternAddString(request, FC_FAMILY, (const FcChar8 *)names[i]);
-        if (ok) {
-            FcConfigSubstitute(config, request, FcMatchPattern);
-            FcDefaultSubstitute(request);
-            FcResult result = FcResultNoMatch;
-            FcPattern *match = FcFontMatch(config, request, &result);
-            FcChar8 *resolved = NULL;
-            ok = match && result == FcResultMatch &&
-                 FcPatternGetString(match, FC_FAMILY, 0, &resolved) == FcResultMatch &&
-                 resolved && strcmp((const char *)resolved, names[i]) == 0;
-            if (match) FcPatternDestroy(match);
-        }
-        FcPatternDestroy(request);
-        if (!ok) return false;
-    }
-    bool present[sizeof(names) / sizeof(names[0])] = {false};
-    PangoFontFamily **families = NULL;
-    int count = 0;
     PangoFontMap *map = pango_cairo_font_map_get_default();
-    if (!map) return false;
-    pango_font_map_list_families(map, &families, &count);
-    for (int index = 0; index < count; ++index) {
-        const char *name = pango_font_family_get_name(families[index]);
-        for (size_t role = 0; role < sizeof(names) / sizeof(names[0]); ++role)
-            if (g_ascii_strcasecmp(name, names[role]) == 0)
-                present[role] = true;
+    if (!config || !PANGO_IS_FC_FONT_MAP(map) ||
+        !FcConfigAppFontAddDir(config, (const FcChar8 *)directory))
+        return false;
+    pango_fc_font_map_config_changed(PANGO_FC_FONT_MAP(map));
+    PangoContext *context = pango_font_map_create_context(map);
+    PangoFontDescription *description = pango_font_description_new();
+    pango_font_description_set_size(description, 12 * PANGO_SCALE);
+    bool valid = true;
+    for (size_t i = 0; i < G_N_ELEMENTS(roles); ++i) {
+        pango_font_description_set_family(description, roles[i].family);
+        pango_font_description_set_weight(description, roles[i].weight);
+        PangoFont *font = pango_font_map_load_font(map, context, description);
+        FcChar8 *file = NULL;
+        char *expected = g_build_filename(directory, roles[i].file, NULL);
+        valid = PANGO_IS_FC_FONT(font) &&
+                FcPatternGetString(pango_fc_font_get_pattern(PANGO_FC_FONT(font)),
+                                   FC_FILE, 0, &file) == FcResultMatch &&
+                strcmp((const char *)file, expected) == 0;
+        g_free(expected);
+        if (font) g_object_unref(font);
+        if (!valid) {
+            fprintf(stderr, "InfiltratorOS: %s did not resolve to %s.\n",
+                    roles[i].family, roles[i].file);
+            break;
+        }
     }
-    g_free(families);
-    for (size_t role = 0; role < sizeof(present) / sizeof(present[0]); ++role)
-        if (!present[role]) return false;
-    return true;
+    pango_font_description_free(description);
+    g_object_unref(context);
+    return valid;
 }
 
 static bool system_prefers_dark(void)
@@ -362,6 +361,12 @@ static bool install_common_theme(void)
 
 int main(int argc, char **argv)
 {
+    if (argc == 3 && strcmp(argv[1], "--check-fonts") == 0)
+        return required_fonts_visible(argv[2]) ? EXIT_SUCCESS : EXIT_FAILURE;
+    if (argc == 3 && strcmp(argv[1], "--run-status") == 0) {
+        puts(native_progress_run_status(argv[2]));
+        return EXIT_SUCCESS;
+    }
     const gboolean aggregate = argc == 3 && strcmp(argv[1], "--aggregate") == 0;
 #if defined(INSTALL_TEMPORAL_RESOURCES) || defined(INSTALL_FILESYSTEM_RESOURCES)
     if (!aggregate && (argc != 3 ||
@@ -374,7 +379,7 @@ int main(int argc, char **argv)
     gtk_init(&argc, &argv);
 
     /* Common owns semantic colours, and unresolved fonts are an error. */
-    if (!required_fonts_visible() || !install_common_theme()) {
+    if (!required_fonts_visible("/System/Resources/Fonts") || !install_common_theme()) {
         fprintf(stderr, "InfiltratorOS: verified fonts or Common theme unavailable.\n");
         GtkWidget *error = gtk_message_dialog_new(NULL, GTK_DIALOG_MODAL,
             GTK_MESSAGE_ERROR, GTK_BUTTONS_CLOSE,

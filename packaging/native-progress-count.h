@@ -13,4 +13,5 @@ typedef struct {
 
 int native_progress_load_jobs(const char *status_directory, NativeProgressJobs *jobs);
 int native_progress_total_jobs(const char *status_directory);
+const char *native_progress_run_status(const char *status_directory);
 #endif

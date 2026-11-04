@@ -70,6 +70,10 @@ def verify_snapshot(data: bytes, expected: set[str]) -> dict[str, dict]:
         tag = release.get("tag_name")
         if not isinstance(tag, str) or not VERSION.fullmatch(tag):
             raise ValueError(repository + ": invalid version tag")
+        if repository.lower().startswith(("calendar-", "clock-", "filesystem-")):
+            revision = release.get("target_commitish")
+            if not isinstance(revision, str) or not re.fullmatch(r"[0-9a-f]{40}", revision):
+                raise ValueError(repository + ": provider release has no exact source commit identity")
         if repository.lower() == "filesystem-exfat":
             parts = tag[1:].split("-", 1)[0].split(".")
             if tuple(map(int, parts)) < (0, 1, 3):

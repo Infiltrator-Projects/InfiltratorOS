@@ -10,6 +10,9 @@ SOURCE = (ROOT / "debian/postinst").read_text()
 assert "trap 'bootstrap_on_exit $?' 0" in SOURCE
 assert SOURCE.index("publish_summary running") < SOURCE.index("ensure-native-fonts")
 assert SOURCE.index("publish_summary running") < SOURCE.index('"$stage/prepare-native-releases" "$stage/release-json"')
+show_progress = SOURCE.index('"$stage/start-system-monitor-install" --show-progress')
+assert SOURCE.index("ensure-native-fonts") < SOURCE.index("ensure-native-icons") < show_progress
+assert show_progress < SOURCE.index("select-theme configure") < SOURCE.index('"$stage/prepare-native-releases" "$stage/release-json"')
 
 for case in ("early-prerequisite", "worker-unpack"):
     with tempfile.TemporaryDirectory(prefix="infiltrator-bootstrap-test-") as temp:

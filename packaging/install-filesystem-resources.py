@@ -108,6 +108,9 @@ def open_url(url):
 def release_installer(entry, release):
     if not isinstance(release, dict) or release.get("draft") or release.get("prerelease"):
         raise ValueError("Not a published stable filesystem release")
+    revision = release.get("target_commitish")
+    if not isinstance(revision, str) or not re.fullmatch(r"[0-9a-f]{40}", revision):
+        raise ValueError("Filesystem release has no exact source commit identity")
     tag = release.get("tag_name", "")
     if not isinstance(tag, str) or not re.fullmatch(r"v[0-9]+\.[0-9]+\.[0-9]+", tag):
         raise ValueError("Not a canonical version tag")
@@ -388,9 +391,7 @@ def install(entry):
         raise ValueError("Oversized GitHub release metadata")
     release = json.loads(payload)
     version, location, digest, length = release_installer(entry, release)
-    revision = release.get("target_commitish")
-    if not isinstance(revision, str) or not re.fullmatch(r"[0-9a-f]{40}", revision):
-        raise ValueError("Filesystem release has no exact source commit identity")
+    revision = release["target_commitish"]
     if native_installed(entry, version, revision):
         cleanup_legacy_docs(entry)
         print("Already installed and verified: " + entry["repository"], flush=True)

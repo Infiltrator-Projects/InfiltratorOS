@@ -6,9 +6,9 @@ sh -n "$ROOT/packaging/ensure-native-fonts.sh"
 grep -Fq 'fc-cache -f "$FONT_DIR"' "$ROOT/packaging/ensure-native-fonts.sh"
 ! grep -Fq 'fc-cache -f "$FONT_DIR" >/dev/null 2>&1 || true' "$ROOT/packaging/ensure-native-fonts.sh"
 grep -Fq 'infiltratr_theme_resolve(' "$ROOT/packaging/native-install-progress.c"
-grep -Fq 'required_fonts_visible()' "$ROOT/packaging/native-install-progress.c"
-grep -Fq 'FcFontMatch(' "$ROOT/packaging/native-install-progress.c"
-grep -Fq 'pkg-config --libs gtk+-3.0 fontconfig' "$ROOT/scripts/build-deb.sh"
+grep -Fq 'required_fonts_visible("/System/Resources/Fonts")' "$ROOT/packaging/native-install-progress.c"
+grep -Fq 'pango_font_map_load_font(' "$ROOT/packaging/native-install-progress.c"
+grep -Fq 'pkg-config --libs gtk+-3.0 pangoft2 fontconfig' "$ROOT/scripts/build-deb.sh"
 grep -Fq 'snprintf(native_version, sizeof(native_version), "%s", release_version)' "$ROOT/packaging/install-system-monitor.c"
 grep -Fq 'infiltratr-common/src/design.c' "$ROOT/scripts/build-deb.sh"
 python3 "$ROOT/tests/calendar-switch-test.py"
@@ -109,7 +109,7 @@ grep -Fq 'DPkg::Lock::Timeout=-1' "$ROOT/packaging/install-filesystem-resources.
 # installers in v1.0.51 (81 jobs total), without a fixed 16-job ceiling.
 cc -std=c11 -O2 -DNDEBUG -Wall -Wextra -Werror -Wpedantic \
     "$ROOT/tests/native-progress-count-test.c" \
-    "$ROOT/packaging/native-progress-count.c" \
+    "$ROOT/packaging/native-progress-count.c" "$ROOT/packaging/installer-status.c" \
     -o "$WORK/native-progress-count-test"
 "$WORK/native-progress-count-test"
 ! grep -Fq 'additional_filesystem_jobs' "$ROOT/packaging/native-install-progress.c"
@@ -119,7 +119,7 @@ cc -std=c11 -O2 -DNDEBUG -Wall -Wextra -Werror -Wpedantic \
 grep -Fq 'refresh_aggregate' "$ROOT/packaging/native-install-progress.c"
 grep -Fq 'INFILTRATOROS_PROGRESS_MODE' "$ROOT/packaging/start-native-install.c"
 grep -Fq 'INFILTRATOROS_PROGRESS_MODE=none' "$ROOT/debian/postinst"
-grep -Fq 'progress_mode=aggregate' "$ROOT/debian/postinst"
+grep -Fq 'INFILTRATOROS_PROGRESS_MODE=aggregate' "$ROOT/debian/postinst"
 grep -Fq 'provision.lock' "$ROOT/debian/postinst"
 grep -Fq 'flock -n 9' "$ROOT/debian/postinst"
 sh -n "$ROOT/debian/postinst"

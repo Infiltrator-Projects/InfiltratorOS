@@ -22,6 +22,7 @@ class InstallerTests(unittest.TestCase):
         url = f"https://github.com/Infiltrator-Projects/{repo}/releases/download/v{version}/"
         self.release = {
             "tag_name": "v" + version, "draft": False, "prerelease": False,
+            "target_commitish": "b" * 40,
             "target_commitish": "1"*40,
             "assets": [
                 {"name": f"{repo.lower()}-{version}-native-installer.run",
@@ -77,7 +78,7 @@ class InstallerTests(unittest.TestCase):
         names = [f"filesystem-ofs-{version}-native-installer.run",
                  f"infiltrator-filesystem-ofs_{version}_amd64.deb", "OFS.so", "SHA256SUMS",
                  "ofs-linux-6.12.107.ko"]
-        release = {"tag_name": "v" + version, "assets": [
+        release = {"tag_name": "v" + version, "target_commitish": "b" * 40, "assets": [
             {"name": name, "browser_download_url": prefix + name,
              "digest": "sha256:" + "c" * 64, "size": 100} for name in names]}
         self.assertEqual(worker.release_installer(entry, release)[0], version)
@@ -94,7 +95,7 @@ class InstallerTests(unittest.TestCase):
                  f"infiltrator-filesystem-exfat_{version}_amd64.deb",
                  "exFAT.so", "exfat-linux-6.12.107.ko", "SHA256SUMS"]
         prefix = f"https://github.com/Infiltrator-Projects/Filesystem-exFAT/releases/download/v{version}/"
-        release = {"tag_name": "v" + version, "assets": [
+        release = {"tag_name": "v" + version, "target_commitish": "b" * 40, "assets": [
             {"name": name, "browser_download_url": prefix + name,
              "digest": "sha256:" + "a" * 64, "size": 123} for name in names]}
         self.assertEqual(worker.release_installer(entry, release)[0], version)
