@@ -189,7 +189,7 @@ def required_interface_symbols(entry):
         symbols = ["infiltrator_filesystem_module_v3",
                    "infiltrator_filesystem_module_v4",
                    "infiltrator_filesystem_module_v5",
-                   "infiltrator_filesystem_defrag_v1"]
+                   "infiltrator_filesystem_exfat_defrag_v1"]
     if entry["id"] == "ofs":
         symbols = ["infiltrator_filesystem_module_v1", "infiltrator_filesystem_module_v2",
                    "infiltrator_filesystem_module_v3", "infiltrator_filesystem_boot_v1",

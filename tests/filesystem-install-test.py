@@ -148,7 +148,7 @@ class InstallerTests(unittest.TestCase):
             self.assertIn("infiltrator_filesystem_boot_v1", formats[format_id])
             self.assertIn("infiltrator_filesystem_defrag_v1", formats[format_id])
         self.assertIn("infiltrator_filesystem_module_v5", formats["fat16"])
-        self.assertIn("infiltrator_filesystem_defrag_v1", formats["exfat"])
+        self.assertIn("infiltrator_filesystem_exfat_defrag_v1", formats["exfat"])
         self.assertIn("infiltrator_filesystem_defrag_v2", formats["ofs"])
 
     def test_abi_matching_rejects_substrings_and_undefined_exports(self):
