@@ -43,12 +43,15 @@ jobs:
             current=$(gh api "repos/$repo/git/ref/heads/$branch" --jq '.object.sha // empty' 2>/dev/null || :)
             [[ -n "$current" ]] || continue
             [[ "$current" == "$expected" ]] || { echo "::error::$branch moved"; exit 1; }
-            archived=$(gh api "repos/$repo/git/ref/tags/$archive" --jq '.object.sha // empty' 2>/dev/null || :)
-            if [[ -z "$archived" ]]; then
-              gh api -X POST "repos/$repo/git/refs" -f "ref=refs/tags/$archive" -f "sha=$current" >/dev/null
-            elif [[ "$archived" != "$current" ]]; then
-              echo "::error::Unexpected archive target for $archive"
-              exit 1
+            # A missing Git ref can be serialized inconsistently by the
+            # client; create first, then verify only if GitHub reports 422.
+            if ! gh api -X POST "repos/$repo/git/refs" \
+                -f "ref=refs/tags/$archive" -f "sha=$current" >/dev/null; then
+              archived=$(gh api "repos/$repo/git/ref/tags/$archive" --jq '.object.sha // empty' 2>/dev/null || :)
+              if [[ "$archived" != "$current" ]]; then
+                echo "::error::Could not preserve $branch at $current"
+                exit 1
+              fi
             fi
             echo "Archived $branch at $current"
           done <<'BRANCHES'
