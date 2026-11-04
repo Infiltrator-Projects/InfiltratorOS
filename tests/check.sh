@@ -96,6 +96,10 @@ grep -Fq 'provision.lock' "$ROOT/debian/postinst"
 grep -Fq 'flock -n 9' "$ROOT/debian/postinst"
 sh -n "$ROOT/debian/postinst"
 ! grep -Fq 'rm -rf -- "$STATUS_ROOT"' "$ROOT/debian/postinst"
+grep -Fq 'while ! all_terminal; do' "$ROOT/debian/postinst"
+cc -std=c11 -O2 -Wall -Wextra -Werror -Wpedantic \
+    "$ROOT/tests/select-theme-command-test.c" -o "$WORK/select-theme-command-test"
+"$WORK/select-theme-command-test"
 for contract in process status; do
     cc -std=c11 -O2 -DNDEBUG -Wall -Wextra -Werror -Wpedantic \
         "$ROOT/tests/installer-$contract-test.c" "$ROOT/packaging/installer-$contract.c" \

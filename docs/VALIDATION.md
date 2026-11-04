@@ -34,13 +34,15 @@ Calendar/clock and filesystem two-file packages have the `.so` and one illustrat
 
 Calculator likewise requires its one PDF manual, exact package version, executable and desktop integration, but no retired `BUILD-INFO`. Files retains its separate recorded two-pass PGO contract. Defragmenter's OS worker currently claims CPU-native optimisation and LTO, **not** demonstrated two-pass PGO.
 
+The System Monitor and Files OS workers now verify their installed native Debian package version against the selected published installer version before reporting success; System Monitor additionally defers competing-package removal until its own verification passes. Fresh temporal installs must satisfy the same pinned source-revision, ownership, path and ABI checks as cached packages. Boot-theme configuration helpers now report failed Plymouth, GRUB and initramfs updates instead of suppressing them. The GTK progress UI checks resolved MB Corpo fonts and uses semantic host colours; complete Common Day/Night visual parity still needs real-screen qualification.
+
 For native-performance claims, record exact source and toolchain, target CPU, measured trained PGO when asserted, build flags, package hashes, functional parity and a repeatable benchmark workload. Flags or a `+native` package suffix alone are not evidence of performance improvement.
 
 ## Defragmenter private-helper path verification
 
 The InfiltratorOS worker in `packaging/install-defragmenter.c` requires `/System/Commands/Defragmenter/defragmenter-operation-engine`, `defragmenter-mapper`, the EXT metadata worker and privileged helper. This is **consistent** with Defragmenter's `defragger/cmake/project.cmake`, `defragger/cmake/ext_metadata_map.cmake` and `defragger/packaging/build-deb.sh`. The package builder actively rejects the historical `/System/Filesystems/Defragmenter` private-executable layout. An earlier InfiltratorOS document incorrectly described that old directory; the defect was documentation-only, not a confirmed integration fault. Source/path consistency does not by itself prove that a particular installed host has all required executables.
 
-The OS's Debian package configuration starts the detached native jobs; it does not itself establish their success because builds must wait for APT transactions. The final run outcome is atomically recorded at `/Temporary/InfiltratorOS/last-provision.status`. The status monitor reports `complete`, `failed` or `timeout`; failed-launch records terminate immediately, but physical-machine recovery and automatic retries are not established by CI.
+The OS's Debian package configuration starts the detached native jobs; it does not itself establish their success because builds must wait for APT transactions. The final run outcome is atomically recorded at `/Temporary/InfiltratorOS/last-provision.status`. The status monitor reports `complete`, `failed` or `timeout`; failed-launch records terminate immediately. A timeout does not kill detached native workers: the monitor retains the OS provisioning lock until their statuses become terminal, preventing a second overlapping installation. Physical-machine recovery and automatic retries are not established by CI.
 
 ## Evidence still required on real systems
 

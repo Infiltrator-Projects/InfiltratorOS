@@ -1,4 +1,5 @@
 #include <gtk/gtk.h>
+#include <fontconfig/fontconfig.h>
 #include "installer-profile.h"
 #include "installer-status.h"
 #include "native-progress-count.h"
@@ -20,6 +21,28 @@ typedef struct {
     gboolean aggregate;
     guint close_timer_id;
 } Ui;
+
+/* A Pango fallback is visually plausible but violates the native font
+ * contract. Check the resolved family rather than just the bundled files. */
+static bool resolve_native_font(const char *family)
+{
+    FcPattern *request = FcPatternCreate();
+    if (!request) return false;
+    bool valid = FcPatternAddString(request, FC_FAMILY, (const FcChar8 *)family);
+    if (valid) {
+        FcConfigSubstitute(NULL, request, FcMatchPattern);
+        FcDefaultSubstitute(request);
+        FcResult result = FcResultNoMatch;
+        FcPattern *matched = FcFontMatch(NULL, request, &result);
+        FcChar8 *resolved = NULL;
+        valid = matched && result == FcResultMatch &&
+                FcPatternGetString(matched, FC_FAMILY, 0, &resolved) == FcResultMatch &&
+                resolved && strcmp((const char *)resolved, family) == 0;
+        if (matched) FcPatternDestroy(matched);
+    }
+    FcPatternDestroy(request);
+    return valid;
+}
 
 static void cancel_success_close(Ui *ui)
 {
@@ -154,8 +177,7 @@ static gboolean refresh_aggregate(Ui *ui)
     gtk_label_set_text(GTK_LABEL(ui->stage), stage);
     gtk_label_set_text(GTK_LABEL(ui->detail), detail);
     if (finished == total_jobs) {
-        /* Individual job completion is not the OS run's final commit.
-         * Only last-provision.status can authorise a success/close UI. */
+        /* Individual jobs are not the final OS run's committed outcome. */
         cancel_success_close(ui);
         gtk_label_set_text(GTK_LABEL(ui->title), failed ?
             "Native jobs finished with failures; recording outcome" :
@@ -234,15 +256,50 @@ int main(int argc, char **argv)
         return EXIT_FAILURE;
     gtk_init(&argc, &argv);
 
-    /* Product typography, resolved by Fontconfig from the verified shared
-     * /System/Resources/Fonts cache. Retained Title faces keep a standalone
-     * host readable if the newer Text/Screen faces are not yet present. */
+    FcConfig *font_config = FcInitLoadConfigAndFonts();
+    if (!font_config ||
+        !FcConfigAppFontAddDir(font_config,
+            (const FcChar8 *)"/System/Resources/Fonts")) {
+        GtkWidget *dialog = gtk_message_dialog_new(NULL, GTK_DIALOG_MODAL,
+            GTK_MESSAGE_ERROR, GTK_BUTTONS_CLOSE,
+            "InfiltratorOS could not load its verified native fonts.");
+        gtk_dialog_run(GTK_DIALOG(dialog));
+        gtk_widget_destroy(dialog);
+        if (font_config) FcConfigDestroy(font_config);
+        return EXIT_FAILURE;
+    }
+    FcConfigSetCurrent(font_config);
+    const char *required_fonts[] = {
+        "MB Corpo S Text WEB", "MB Corpo S Title WEB",
+        "MB Corpo S Text WEB Cond", "MB Corpo A Title Cond WEB",
+        "MB Corpo A Screen2 Cond WEB"
+    };
+    bool native_fonts_ready = true;
+    for (size_t i = 0U; i < G_N_ELEMENTS(required_fonts); ++i)
+        if (!resolve_native_font(required_fonts[i])) native_fonts_ready = false;
+    if (!native_fonts_ready) {
+        GtkWidget *dialog = gtk_message_dialog_new(NULL, GTK_DIALOG_MODAL,
+            GTK_MESSAGE_ERROR, GTK_BUTTONS_CLOSE,
+            "InfiltratorOS native font families cannot be resolved. "
+            "Installation progress cannot use substituted fonts.");
+        gtk_dialog_run(GTK_DIALOG(dialog));
+        gtk_widget_destroy(dialog);
+        FcConfigDestroy(font_config);
+        return EXIT_FAILURE;
+    }
+
+    /* Use host semantic GTK colour roles rather than a rival hardcoded palette;
+     * Fontconfig guarantees the exact Infiltrator family faces above. */
     GtkCssProvider *typography = gtk_css_provider_new();
     gtk_css_provider_load_from_data(typography,
+        "window { background-color: @theme_bg_color; color: @theme_fg_color; }"
         "window, label, button, progressbar {"
         " font-family: 'MB Corpo S Text WEB', 'MB Corpo S Title WEB';"
         " font-weight: 400;"
+        " color: @theme_fg_color;"
         "}"
+        "button { background-color: @theme_bg_color; }"
+        "progressbar progress { background-color: @theme_selected_bg_color; }"
         "#installer-title {"
         " font-family: 'MB Corpo S Title WEB', 'MB Corpo S Text WEB';"
         " font-size: 19px; font-weight: 700;"
@@ -254,7 +311,7 @@ int main(int argc, char **argv)
         "#installer-detail { font-size: 13px; }"
         "#installer-progress text {"
         " font-family: 'MB Corpo A Screen2 Cond WEB', 'MB Corpo A Title Cond WEB';"
-        " font-size: 14px; font-weight: 400;"
+        " font-size: 22px; font-weight: 400;"
         "}", -1, NULL);
     gtk_style_context_add_provider_for_screen(
         gdk_screen_get_default(), GTK_STYLE_PROVIDER(typography),
@@ -276,7 +333,7 @@ int main(int argc, char **argv)
     ui.window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
     gtk_window_set_title(GTK_WINDOW(ui.window), "InfiltratorOS");
     gtk_window_set_default_size(GTK_WINDOW(ui.window), 520, 190);
-    gtk_window_set_resizable(GTK_WINDOW(ui.window), FALSE);
+    gtk_window_set_resizable(GTK_WINDOW(ui.window), TRUE);
     gtk_container_set_border_width(GTK_CONTAINER(ui.window), 18);
 
     GtkWidget *box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 10);
@@ -319,5 +376,6 @@ int main(int argc, char **argv)
     g_timeout_add(250U, refresh_status, &ui);
     (void)refresh_status(&ui);
     gtk_main();
+    FcConfigDestroy(font_config);
     return EXIT_SUCCESS;
 }
