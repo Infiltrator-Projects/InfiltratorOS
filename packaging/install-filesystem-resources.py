@@ -176,8 +176,11 @@ def required_interface_symbols(entry):
                ["infiltrator_filesystem_module_v1",
                 "infiltrator_filesystem_module_v3",
                 "infiltrator_filesystem_module_v4"])
-    if entry["id"] in {"fat12", "fat16"}:
+    if entry["id"] in {"fat12", "fat16", "fat32"}:
+        symbols.append("infiltrator_filesystem_boot_v1")
         symbols.append("infiltrator_filesystem_defrag_v1")
+    if entry["id"] == "fat16":
+        symbols.append("infiltrator_filesystem_module_v5")
     if entry["id"] == "ext2":
         # The original freestanding drop-in ABI is not sufficient for
         # Defragmenter Test Media, which needs fixture/create/verify support.
@@ -185,7 +188,8 @@ def required_interface_symbols(entry):
     if entry["id"] == "exfat":
         symbols = ["infiltrator_filesystem_module_v3",
                    "infiltrator_filesystem_module_v4",
-                   "infiltrator_filesystem_module_v5"]
+                   "infiltrator_filesystem_module_v5",
+                   "infiltrator_filesystem_exfat_defrag_v1"]
     if entry["id"] == "ofs":
         symbols = ["infiltrator_filesystem_module_v1", "infiltrator_filesystem_module_v2",
                    "infiltrator_filesystem_module_v3", "infiltrator_filesystem_boot_v1",

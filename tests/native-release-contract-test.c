@@ -28,6 +28,16 @@ int main(void)
     int result = native_package_version_matches(path, "files", "1.2.3+native1") ? 7 : 0;
     if (!native_package_version_matches(path, "files", "1.2.2+native1")) result = 8;
     if (native_package_version_matches(path, "not-installed", "1.2.2+native1")) result = 9;
+    /* System Monitor's native installer retains the unsuffixed Debian version,
+     * unlike Files. Reject a fabricated +native1 requirement for that product. */
+    char monitor_version[128];
+    const char *monitor_prefix =
+        "https://github.com/Infiltrator-Projects/System-Monitor/releases/download/";
+    if (!native_release_version_from_url(
+            "https://github.com/Infiltrator-Projects/System-Monitor/releases/download/v1.0.241/system-monitor-1.0.241-native-installer.run",
+            monitor_prefix, "system-monitor-", "-native-installer.run",
+            monitor_version, sizeof(monitor_version)) ||
+        strcmp(monitor_version, "1.0.241") != 0) result = 10;
     unlink(path);
     return result;
 }

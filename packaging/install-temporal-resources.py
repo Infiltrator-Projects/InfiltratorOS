@@ -331,6 +331,10 @@ def install_entry(entry):
         download_installer(url, installer, digest, size)
         required([installer, "--profile", "aggressive", "--system-package-mode"])
         verify_installation(entry, version, revision=revision)
+        # Fresh installs must pass the same Debian ownership, symlink and
+        # pinned-source qualification required before reusing a cached module.
+        if not native_installed(entry, version, release):
+            raise ValueError("Fresh temporal release/ownership verification failed")
         clean_legacy_documentation(entry)
     return False
 

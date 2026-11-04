@@ -2,6 +2,15 @@
 
 This is a concise record of **published changes**, not an alternative copy of the current architecture or a replay of every development commit. The [README](README.md) and [technical documentation](docs/README.md) describe current behaviour. [Immutable release tags](https://github.com/Infiltrator-Projects/InfiltratorOS/releases) and [Git commits](https://github.com/Infiltrator-Projects/InfiltratorOS/commits/main/) preserve detailed historical provenance; the full older changelog is retained at [v1.0.52](https://github.com/Infiltrator-Projects/InfiltratorOS/blob/v1.0.52/CHANGELOG.md).
 
+## 1.0.56 — Reconcile native contracts and stale branches
+
+- Correct System Monitor's installed native Debian identity to its actual unsuffixed release version; keep Files' `+native1` policy.
+- Require all established FAT Boot/Defragmenter entry points, FAT16 V5 and exFAT Defragmenter ABI; retain EXT2's dual-ABI requirement.
+- Requalify freshly installed calendar/clock modules for package ownership, safe installed paths and the selected source revision; add failure regressions.
+- Verify actual Fontconfig matches for all required UI families, not just the visible Pango family list.
+- Preserve removable Debian package cleanup when Plymouth has already gone, while retaining strict configuration failure reporting.
+- Integrate reviewed work from stale branches into main, archive historical branch tips and close superseded PRs before pruning branches.
+
 ## 1.0.55 — Native verification and Common installer integration
 
 - Verify System Monitor and Files against the exact selected native package version; remove stock System Monitor tools only after replacement qualification.

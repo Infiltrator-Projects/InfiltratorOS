@@ -1,5 +1,6 @@
 #include <gtk/gtk.h>
 #include <pango/pangocairo.h>
+#include <fontconfig/fontconfig.h>
 #include "infiltratr/design.h"
 #include "installer-profile.h"
 #include "installer-status.h"
@@ -233,6 +234,30 @@ static bool required_fonts_visible(void)
         "MB Corpo S Text WEB", "MB Corpo S Text WEB Cond",
         "MB Corpo A Screen2 Cond WEB"
     };
+    /* Fontconfig must select each real face, not a visually plausible
+     * substitute. Register the verified package's native directory directly
+     * so the graphical user's cache refresh timing cannot hide it. */
+    FcConfig *config = FcConfigGetCurrent();
+    if (!config || !FcConfigAppFontAddDir(config,
+            (const FcChar8 *)"/System/Resources/Fonts")) return false;
+    for (size_t i = 0; i < sizeof(names) / sizeof(names[0]); ++i) {
+        FcPattern *request = FcPatternCreate();
+        if (!request) return false;
+        bool ok = FcPatternAddString(request, FC_FAMILY, (const FcChar8 *)names[i]);
+        if (ok) {
+            FcConfigSubstitute(config, request, FcMatchPattern);
+            FcDefaultSubstitute(request);
+            FcResult result = FcResultNoMatch;
+            FcPattern *match = FcFontMatch(config, request, &result);
+            FcChar8 *resolved = NULL;
+            ok = match && result == FcResultMatch &&
+                 FcPatternGetString(match, FC_FAMILY, 0, &resolved) == FcResultMatch &&
+                 resolved && strcmp((const char *)resolved, names[i]) == 0;
+            if (match) FcPatternDestroy(match);
+        }
+        FcPatternDestroy(request);
+        if (!ok) return false;
+    }
     bool present[sizeof(names) / sizeof(names[0])] = {false};
     PangoFontFamily **families = NULL;
     int count = 0;

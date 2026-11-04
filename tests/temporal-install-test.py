@@ -203,7 +203,7 @@ class InstallationContract(unittest.TestCase):
             with patch.dict(worker.os.environ, {"INFILTRATOROS_RELEASE_DIR": str(root)}), \
                  patch.object(worker, "STATUS_DIR", root), \
                  patch.object(worker, "STATUS_PATH", root / "test.status"), \
-                 patch.object(worker, "native_installed", return_value=False), \
+                 patch.object(worker, "native_installed", side_effect=[False, True]) as native_check, \
                  patch.object(worker, "ensure_dependencies") as dependencies, \
                  patch.object(worker, "download_installer") as download, \
                  patch.object(worker, "required") as compile_install, \
@@ -215,7 +215,25 @@ class InstallationContract(unittest.TestCase):
                 download.assert_called_once()
                 compile_install.assert_called_once()
                 verify.assert_called_once()
+                self.assertEqual(native_check.call_count, 2)
 
+    def test_fresh_install_fails_if_ownership_or_source_qualification_fails(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / (self.entry["repository"] + ".json")).write_text(json.dumps(self.release))
+            with patch.dict(worker.os.environ, {"INFILTRATOROS_RELEASE_DIR": str(root)}), \
+                 patch.object(worker, "STATUS_DIR", root), \
+                 patch.object(worker, "STATUS_PATH", root / "test.status"), \
+                 patch.object(worker, "native_installed", side_effect=[False, False]) as checks, \
+                 patch.object(worker, "ensure_dependencies"), \
+                 patch.object(worker, "download_installer"), \
+                 patch.object(worker, "required"), \
+                 patch.object(worker, "verify_installation"), \
+                 patch.object(worker, "clean_legacy_documentation") as cleanup:
+                with self.assertRaisesRegex(ValueError, "release/ownership"):
+                    worker.install_entry(self.entry)
+                self.assertEqual(checks.call_count, 2)
+                cleanup.assert_not_called()
 
     def test_rejects_unpinned_temporal_source(self):
         release = dict(self.release, target_commitish="main")

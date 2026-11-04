@@ -7,6 +7,9 @@ grep -Fq 'fc-cache -f "$FONT_DIR"' "$ROOT/packaging/ensure-native-fonts.sh"
 ! grep -Fq 'fc-cache -f "$FONT_DIR" >/dev/null 2>&1 || true' "$ROOT/packaging/ensure-native-fonts.sh"
 grep -Fq 'infiltratr_theme_resolve(' "$ROOT/packaging/native-install-progress.c"
 grep -Fq 'required_fonts_visible()' "$ROOT/packaging/native-install-progress.c"
+grep -Fq 'FcFontMatch(' "$ROOT/packaging/native-install-progress.c"
+grep -Fq 'pkg-config --libs gtk+-3.0 fontconfig' "$ROOT/scripts/build-deb.sh"
+grep -Fq 'snprintf(native_version, sizeof(native_version), "%s", release_version)' "$ROOT/packaging/install-system-monitor.c"
 grep -Fq 'infiltratr-common/src/design.c' "$ROOT/scripts/build-deb.sh"
 python3 "$ROOT/tests/calendar-switch-test.py"
 python3 "$ROOT/tests/temporal-install-test.py"
@@ -18,6 +21,10 @@ cc -std=c11 -O2 -Wall -Wextra -Werror -Wpedantic \
     "$ROOT/tests/native-release-contract-test.c" -o "$ROOT/.build-native-release-contract-test"
 "$ROOT/.build-native-release-contract-test"
 rm -f "$ROOT/.build-native-release-contract-test"
+cc -std=c11 -O2 -Wall -Wextra -Werror -Wpedantic \
+    "$ROOT/tests/select-theme-command-test.c" -o "$ROOT/.build-select-theme-test"
+"$ROOT/.build-select-theme-test"
+rm -f "$ROOT/.build-select-theme-test"
 # Prevent regression to purging stock monitors before verifying the replacement.
 python3 - "$ROOT" <<'PY'
 from pathlib import Path

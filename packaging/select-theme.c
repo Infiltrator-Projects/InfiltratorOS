@@ -150,7 +150,10 @@ int main(int argc, char **argv)
 {
     if (argc == 2 && (!strcmp(argv[1], "remove") || !strcmp(argv[1], "deconfigure"))) {
         char *const args[] = { "update-alternatives", "--remove", "default.plymouth", FILE_THEME, NULL };
-        return required(args) == 0 ? 0 : 1;
+        /* Package removal remains possible even if Plymouth is already
+         * absent or another package has replaced the active alternative. */
+        (void)required(args);
+        return 0;
     }
     if (argc != 2 || strcmp(argv[1], "configure")) return 2;
     if (access(FILE_THEME, R_OK) || access(FILE_PNG, R_OK)) {

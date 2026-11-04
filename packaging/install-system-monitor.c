@@ -310,7 +310,7 @@ int main(void)
     if (!native_release_version_from_url(url, RELEASE_PREFIX, "system-monitor-",
                                          "-native-installer.run", release_version,
                                          sizeof(release_version)) ||
-        snprintf(native_version, sizeof(native_version), "%s+native1", release_version) >=
+        snprintf(native_version, sizeof(native_version), "%s", release_version) >=
             (int)sizeof(native_version))
         fail("native installer filename and release tag disagree");
 
