@@ -42,9 +42,9 @@ cc -std=c11 -O2 -Wall -Wextra -Werror -Wpedantic \
 cc -std=c11 -O2 -Wall -Wextra -Werror -Wpedantic \
     "$ROOT/tests/native-package-version-test.c" -o "$WORK/native-package-version-test"
 "$WORK/native-package-version-test"
-grep -Fq 'native_package_matches_release(url, "system-monitor-", "system-monitor")' \
+grep -Fq 'native_package_matches_release(url, "system-monitor-", "system-monitor", "")' \
     "$ROOT/packaging/install-system-monitor.c"
-grep -Fq 'native_package_matches_release(url, "files-", "files")' \
+grep -Fq 'native_package_matches_release(url, "files-", "files", "+native1")' \
     "$ROOT/packaging/install-files.c"
 cc -std=c11 -O2 -Wall -Wextra -Werror -Wpedantic -DINSTALL_TEMPORAL_RESOURCES \
     "$ROOT/packaging/start-native-install.c" "$ROOT/packaging/installer-process.c" \

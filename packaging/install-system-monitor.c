@@ -338,7 +338,7 @@ int main(void)
         !file_contains(info, "C flags: -O3") ||
         !file_contains(info, "-march=native"))
         fail("installed System Monitor is not an aggressive two-pass native build");
-    if (!native_package_matches_release(url, "system-monitor-", "system-monitor"))
+    if (!native_package_matches_release(url, "system-monitor-", "system-monitor", ""))
         fail("installed System Monitor Debian version differs from the selected native release");
 
     write_status("running", 96, "Removing replaced System Monitor packages",

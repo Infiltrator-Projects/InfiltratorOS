@@ -15,9 +15,12 @@
 
 static bool native_package_identity_matches(const char *url,
                                              const char *asset_prefix,
-                                             const char *dpkg_record)
+                                             const char *dpkg_record,
+                                             const char *native_suffix)
 {
-    if (!url || !asset_prefix || !dpkg_record) return false;
+    if (!url || !asset_prefix || !dpkg_record || !native_suffix ||
+        (strcmp(native_suffix, "") != 0 &&
+         strcmp(native_suffix, "+native1") != 0)) return false;
     const char *name = strrchr(url, '/');
     if (!name) return false;
     ++name;
@@ -42,15 +45,16 @@ static bool native_package_identity_matches(const char *url,
     if (dots != 2) return false;
     char expected[256];
     const int written = snprintf(expected, sizeof(expected),
-                                 "install ok installed\n%.*s+native1\n",
-                                 (int)count, version);
+                                 "install ok installed\n%.*s%s\n",
+                                 (int)count, version, native_suffix);
     return written > 0 && (size_t)written < sizeof(expected) &&
            strcmp(expected, dpkg_record) == 0;
 }
 
 static bool native_package_matches_release(const char *url,
                                            const char *asset_prefix,
-                                           const char *package)
+                                           const char *package,
+                                           const char *native_suffix)
 {
     int channel[2];
     if (pipe(channel) != 0) return false;
@@ -86,6 +90,7 @@ static bool native_package_matches_release(const char *url,
     while (waited < 0 && errno == EINTR);
     return valid && waited == pid && WIFEXITED(status) &&
            WEXITSTATUS(status) == 0 &&
-           native_package_identity_matches(url, asset_prefix, record);
+           native_package_identity_matches(url, asset_prefix, record,
+                                           native_suffix);
 }
 #endif

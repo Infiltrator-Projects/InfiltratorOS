@@ -311,7 +311,7 @@ int main(void)
 
     if (!installed("files") || access("/Programs/files", X_OK) != 0)
         fail("native Files package or /Programs executable is not installed after the build");
-    if (!native_package_matches_release(url, "files-", "files"))
+    if (!native_package_matches_release(url, "files-", "files", "+native1"))
         fail("installed Files Debian version differs from the selected native release");
     if (access("/usr/bin/files", F_OK) == 0)
         fail("obsolete /usr/bin/files path remains after native Files installation");
