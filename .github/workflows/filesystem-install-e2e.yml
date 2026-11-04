@@ -16,6 +16,8 @@ jobs:
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: true
       - name: Native bundle build prerequisites
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends build-essential pkg-config libgtk-3-dev wget fontconfig binutils python3
       - name: Validate filesystem workers and build exact OS Debian

@@ -59,6 +59,11 @@ if [ -f "$FONTCONFIG_FILE" ] && cmp -s "$conf_tmp" "$FONTCONFIG_FILE"; then
 else
     mv -f -- "$conf_tmp" "$FONTCONFIG_FILE"
 fi
-if [ -z "$ROOT" ] && command -v fc-cache >/dev/null 2>&1; then
-    fc-cache -f "$FONT_DIR" >/dev/null 2>&1 || true
+if [ -z "$ROOT" ]; then
+    command -v fc-cache >/dev/null 2>&1 || {
+        echo 'Fontconfig cache updater is unavailable' >&2; exit 5;
+    }
+    fc-cache -f "$FONT_DIR" >/dev/null 2>&1 || {
+        echo 'Verified fonts could not be registered with Fontconfig' >&2; exit 5;
+    }
 fi

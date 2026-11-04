@@ -7,6 +7,9 @@ VERSION="$(tr -d '\r\n' < "$ROOT/VERSION")"
 printf '%s\n' "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'
 test -f "$ROOT/debian/control.in"
 test -x "$ROOT/packaging/ensure-native-fonts.sh"
+# Compile the pinned first-party Common implementation, never copy its colours.
+test -f "$ROOT/src/infiltratr-common/include/infiltratr/design.h"
+test -f "$ROOT/src/infiltratr-common/src/design.c"
 test "$(dpkg --print-architecture)" = amd64
 SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH:-$(git -C "$ROOT" log -1 --format=%ct 2>/dev/null || printf 0)}"
 case "$SOURCE_DATE_EPOCH" in ""|*[!0-9]*) echo "Invalid SOURCE_DATE_EPOCH" >&2; exit 1 ;; esac
@@ -188,8 +191,9 @@ PY
     # shellcheck disable=SC2086
     cc -std=c11 -O2 -Wall -Wextra -Werror -Wpedantic "-D$profile" \
         $(pkg-config --cflags gtk+-3.0) \
+        -I"$ROOT/src/infiltratr-common/include" \
         "$ROOT/packaging/native-install-progress.c" "$ROOT/packaging/native-progress-count.c" \
-        "$ROOT/packaging/installer-status.c" \
+        "$ROOT/packaging/installer-status.c" "$ROOT/src/infiltratr-common/src/design.c" \
         -o "$RUNTIME_BUILD/$product-progress" $(pkg-config --libs gtk+-3.0)
 done
 

@@ -2,6 +2,12 @@
 set -eu
 ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
 sh -n "$ROOT/packaging/ensure-native-icons.sh"
+sh -n "$ROOT/packaging/ensure-native-fonts.sh"
+grep -Fq 'fc-cache -f "$FONT_DIR"' "$ROOT/packaging/ensure-native-fonts.sh"
+! grep -Fq 'fc-cache -f "$FONT_DIR" >/dev/null 2>&1 || true' "$ROOT/packaging/ensure-native-fonts.sh"
+grep -Fq 'infiltratr_theme_resolve(' "$ROOT/packaging/native-install-progress.c"
+grep -Fq 'required_fonts_visible()' "$ROOT/packaging/native-install-progress.c"
+grep -Fq 'infiltratr-common/src/design.c' "$ROOT/scripts/build-deb.sh"
 python3 "$ROOT/tests/calendar-switch-test.py"
 python3 "$ROOT/tests/temporal-install-test.py"
 python3 "$ROOT/tests/filesystem-install-test.py"
