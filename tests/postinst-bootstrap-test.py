@@ -9,7 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SOURCE = (ROOT / "debian/postinst").read_text()
 assert "trap 'bootstrap_on_exit $?' 0" in SOURCE
 assert SOURCE.index("publish_summary running") < SOURCE.index("ensure-native-fonts")
-assert SOURCE.index("publish_summary running") < SOURCE.index("prepare-native-releases")
+assert SOURCE.index("publish_summary running") < SOURCE.index('"$stage/prepare-native-releases" "$stage/release-json"')
 
 for case in ("early-prerequisite", "worker-unpack"):
     with tempfile.TemporaryDirectory(prefix="infiltrator-bootstrap-test-") as temp:
