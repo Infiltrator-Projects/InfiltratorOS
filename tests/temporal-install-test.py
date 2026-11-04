@@ -223,6 +223,7 @@ class InstallationContract(unittest.TestCase):
             (root / (self.entry["repository"] + ".json")).write_text(json.dumps(self.release))
             with patch.dict(worker.os.environ, {"INFILTRATOROS_RELEASE_DIR": str(root)}), \
                  patch.object(worker, "STATUS_DIR", root), \
+                 patch.object(worker, "STATUS_PATH", root / "test.status"), \
                  patch.object(worker, "native_installed", side_effect=[False, False]) as verify_native, \
                  patch.object(worker, "ensure_dependencies"), \
                  patch.object(worker, "download_installer"), \
