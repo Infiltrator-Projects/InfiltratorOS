@@ -2,6 +2,15 @@
 
 This is a concise record of **published changes**, not an alternative copy of the current architecture or a replay of every development commit. The [README](README.md) and [technical documentation](docs/README.md) describe current behaviour. [Immutable release tags](https://github.com/Infiltrator-Projects/InfiltratorOS/releases) and [Git commits](https://github.com/Infiltrator-Projects/InfiltratorOS/commits/main/) preserve detailed historical provenance; the full older changelog is retained at [v1.0.52](https://github.com/Infiltrator-Projects/InfiltratorOS/blob/v1.0.52/CHANGELOG.md).
 
+## 1.0.55 — Native verification and Common installer integration
+
+- Verify System Monitor and Files against the exact selected native package version; remove stock System Monitor tools only after replacement qualification.
+- Require fresh temporal provider installs to match their published source commit.
+- Show aggregate installation success only after the authoritative run summary, and bound detached native workers ahead of the 24-hour watchdog.
+- Fail visibly on Plymouth, GRUB and initramfs command errors and failed font-cache registration.
+- Build the graphical installer against pinned Libraries/Common semantic colours, typography identity and metrics, with an explicit missing-font failure; release source archives include pinned Common files.
+- Add regressions for native installer version parsing and verification ordering. Physical-machine, boot, recovery and UI accessibility qualification remain separate.
+
 ## 1.0.54 — Bootstrap failure safety and historical-document preservation
 
 - Publish a fresh run status before fallible installation bootstrap, so failures in fonts, icons, sealed worker verification and release preparation cannot leave an earlier success record visible.

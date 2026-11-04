@@ -28,7 +28,7 @@ Five filesystem releases are resolved through the [central 63-component release 
 - `/System/Resources/Fonts` contains 23 verified MB Corpo/Daimler fonts; `/System/Resources/Icons` contains 1,233 verified named icons. InfiltratorOS owns these shared files, which are placed directly in the native directories without permanent `Seed` folders or duplicate installed archives.
 - `/Temporary/InfiltratorOS` holds run-scoped workers, downloads, progress, logs and locks. Successful provisioning cleans up temporary installers; failure diagnostics are retained. Installation does not clear `/Volumes`.
 
-A single aggregate GTK window reports installer progress when a desktop session is available. Jobs retain separate status records and logs; package-manager operations use a shared build lock and wait for existing APT transactions. Debian package configuration starts this detached work and **does not certify its eventual success**. The separate, atomically updated `/Temporary/InfiltratorOS/last-provision.status` records whether the eligible run ultimately completed, failed or timed out. Failed-run diagnostics remain available in the run stage. Application packages and format-specific providers remain independently owned.
+A single aggregate GTK window, built against the pinned Common design contract, reports installer progress when a desktop session is available. The font cache must register successfully, and the progress window refuses missing required UI families. Jobs retain separate status records and logs; package-manager operations use a shared build lock and wait for existing APT transactions. Debian package configuration starts this detached work and **does not certify its eventual success**. The separate, atomically updated `/Temporary/InfiltratorOS/last-provision.status` records whether the eligible run ultimately completed, failed or timed out. Failed-run diagnostics remain available in the run stage. Application packages and format-specific providers remain independently owned.
 
 The stock Cinnamon Calendar panel applet is changed only through reversible per-user integration, not by removing Cinnamon. Files remains alongside Nemo and does not replace the system default file manager. System Monitor and Calculator have their own post-verification replacement policies.
 
@@ -36,7 +36,7 @@ See the [native filesystem hierarchy](docs/FILESYSTEM.md), [implementation archi
 
 ## Build and verification
 
-On a supported Linux build host, install the C toolchain, GTK 3 development headers, `pkg-config` and Debian packaging tools, then run:
+On a supported Linux build host, obtain this repository with its pinned first-party Common submodule (`git clone --recurse-submodules`, or `git submodule update --init` after an existing clone). The published source ZIP includes the exact pinned Common sources. Install the C toolchain, GTK 3 development headers, `pkg-config` and Debian packaging tools, then run:
 
 ```sh
 sh tests/check.sh

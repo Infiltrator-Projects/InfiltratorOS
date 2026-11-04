@@ -21,7 +21,7 @@ Application names remain **System Monitor**, **Calculator**, **Files** and **Def
 
 For every app, compare a real Day and Night window with its siblings. Verify title, body, bold/selected states, modal and context surfaces, toolbar/sidebar/navigation, buttons, hover/focus, disabled/failed/warning/success states, density, resizing, keyboard access and visibility of long labels. A screenshot is visual evidence, not a substitute for accessibility and behaviour tests. Verify a standalone installation as well as installation under InfiltratorOS. Avoid claiming parity from mere consumption of a shared header.
 
-The InfiltratorOS graphical native-install progress window is also part of this family surface; its eventual Common-aligned typography, colours and control treatment are an explicit integration requirement, not a licence to copy independent palette literals.
+The InfiltratorOS graphical native-install progress window is part of this family surface; it now links the pinned Common implementation and uses Common's host-following Day/Night semantic palette and design metrics rather than copying independent colour constants. Real Day/Night screenshots, font scaling and accessibility still require qualification.
 
 ## Repository and documentation interface
 

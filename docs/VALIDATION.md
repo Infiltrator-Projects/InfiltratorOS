@@ -9,7 +9,7 @@ sh tests/check.sh
 sh scripts/build-deb.sh
 ```
 
-`tests/check.sh` compiles and exercises production C launcher and status logic with warnings treated as errors, checks exact worker/package contracts, and runs temporal, filesystem, release, icon and native-progress regression tests. The exact job inventory now rejects duplicate or overlapping entries, incomplete fixed catalogues, oversized optional lists and malformed provider identifiers. Process cases include failed or detached exec, closed standard streams and high-numbered file descriptors. Status cases include malformed records, overflows, duplicate/unknown fields and incomplete writes. Invalid input must not create a false success state.
+`tests/check.sh` compiles and exercises production C launcher and status logic with warnings treated as errors, checks exact worker/package contracts, and runs temporal, filesystem, release, icon and native-progress regression tests. Native release regressions additionally validate the published installer filename/version pairing, exact installed System Monitor/Files package versions, and verification before removing stock System Monitor packages. The exact job inventory now rejects duplicate or overlapping entries, incomplete fixed catalogues, oversized optional lists and malformed provider identifiers. Process cases include failed or detached exec, closed standard streams and high-numbered file descriptors. Status cases include malformed records, overflows, duplicate/unknown fields and incomplete writes. Invalid input must not create a false success state.
 
 ## Package and published release
 
@@ -32,7 +32,7 @@ Each independently installed product must match its exact published native relea
 
 Calendar/clock and filesystem two-file packages have the `.so` and one illustrated PDF as their expected installed provider files, with native source, optimisation and SHA-256 attestations held in Debian metadata. Obsolete persistent `BUILD-INFO` files are not required for these providers. A verified cached build may skip recompilation only if it still satisfies the exact release and installed-state checks. Pre-existing unowned legacy documents are preserved: a familiar filename and missing dpkg ownership cannot prove origin. New packages still own only one illustrated PDF. Removing older files requires independently established provenance.
 
-Calculator likewise requires its one PDF manual, exact package version, executable and desktop integration, but no retired `BUILD-INFO`. Files retains its separate recorded two-pass PGO contract. Defragmenter's OS worker currently claims CPU-native optimisation and LTO, **not** demonstrated two-pass PGO.
+Calculator likewise requires its one PDF manual, exact package version, executable and desktop integration, but no retired `BUILD-INFO`. Files retains its separate recorded two-pass PGO contract. Defragmenter's OS worker currently claims CPU-native optimisation and LTO, **not** demonstrated two-pass PGO. Fresh calendar/clock installs also require their recorded source revision to match the exact published release commit, not just a correctly formatted SHA.
 
 For native-performance claims, record exact source and toolchain, target CPU, measured trained PGO when asserted, build flags, package hashes, functional parity and a repeatable benchmark workload. Flags or a `+native` package suffix alone are not evidence of performance improvement.
 
@@ -41,6 +41,8 @@ For native-performance claims, record exact source and toolchain, target CPU, me
 The InfiltratorOS worker in `packaging/install-defragmenter.c` requires `/System/Commands/Defragmenter/defragmenter-operation-engine`, `defragmenter-mapper`, the EXT metadata worker and privileged helper. This is **consistent** with Defragmenter's `defragger/cmake/project.cmake`, `defragger/cmake/ext_metadata_map.cmake` and `defragger/packaging/build-deb.sh`. The package builder actively rejects the historical `/System/Filesystems/Defragmenter` private-executable layout. An earlier InfiltratorOS document incorrectly described that old directory; the defect was documentation-only, not a confirmed integration fault. Source/path consistency does not by itself prove that a particular installed host has all required executables.
 
 The OS's Debian package configuration starts the detached native jobs; it does not itself establish their success because builds must wait for APT transactions. The final run outcome is atomically recorded at `/Temporary/InfiltratorOS/last-provision.status`. The status monitor reports `complete`, `failed` or `timeout`; failed-launch records terminate immediately, but physical-machine recovery and automatic retries are not established by CI.
+
+The GTK installer is built with pinned Common design source and the font helper fails on registration errors; a graphical runtime check also rejects unavailable required families. The aggregate window waits for the monitor's final status before claiming success. The Plymouth selector reports failure if required external activation, GRUB or initramfs steps fail. These CI/source checks still do not replace real-system font rendering, Day/Night accessibility or boot tests.
 
 ## Evidence still required on real systems
 

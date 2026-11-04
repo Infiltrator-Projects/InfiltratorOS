@@ -350,7 +350,7 @@ int main(int argc, char **argv)
 
     /* Common owns semantic colours, and unresolved fonts are an error. */
     if (!required_fonts_visible() || !install_common_theme()) {
-        fprintf(stderr, "InfiltratorOS: verified fonts or Common theme unavailable.\\n");
+        fprintf(stderr, "InfiltratorOS: verified fonts or Common theme unavailable.\n");
         GtkWidget *error = gtk_message_dialog_new(NULL, GTK_DIALOG_MODAL,
             GTK_MESSAGE_ERROR, GTK_BUTTONS_CLOSE,
             "InfiltratorOS cannot resolve its verified fonts or Common theme. "
