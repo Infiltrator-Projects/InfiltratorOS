@@ -11,6 +11,7 @@
 #include <sys/wait.h>
 #include <unistd.h>
 #include "verify-native-download.h"
+#include "verify-native-package.h"
 
 #define RELEASE_API "https://api.github.com/repos/Infiltrator-Projects/Files/releases/latest"
 #define RELEASE_PREFIX "https://github.com/Infiltrator-Projects/Files/releases/download/"
@@ -310,6 +311,8 @@ int main(void)
 
     if (!installed("files") || access("/Programs/files", X_OK) != 0)
         fail("native Files package or /Programs executable is not installed after the build");
+    if (!native_package_matches_release(url, "files-", "files"))
+        fail("installed Files Debian version differs from the selected native release");
     if (access("/usr/bin/files", F_OK) == 0)
         fail("obsolete /usr/bin/files path remains after native Files installation");
 

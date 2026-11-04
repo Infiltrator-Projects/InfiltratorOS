@@ -14,16 +14,25 @@
 #define FILE_CONF "/etc/plymouth/plymouthd.conf"
 #define FILE_GRUB "/etc/default/grub"
 
-static void optional(char *const args[])
+/* Configuration-changing commands must report failure to the Debian
+ * post-install script. Removal remains best-effort so purge is never blocked
+ * by an already missing Plymouth tool. */
+static int run_system_command(char *const args[])
 {
     pid_t child = fork();
     if (child == 0) {
         execvp(args[0], args);
         _exit(127);
     }
-    if (child < 0) return;
-    int status;
-    while (waitpid(child, &status, 0) < 0 && errno == EINTR) {}
+    if (child < 0) { perror("fork"); return -1; }
+    int status = 0;
+    pid_t waited;
+    do { waited = waitpid(child, &status, 0); }
+    while (waited < 0 && errno == EINTR);
+    if (waited == child && WIFEXITED(status) && WEXITSTATUS(status) == 0)
+        return 0;
+    fprintf(stderr, "Required system update failed: %s\n", args[0]);
+    return -1;
 }
 
 /* Atomically update a key. For Plymouth, insert it inside [Daemon]. */
@@ -134,7 +143,7 @@ static int grub(void)
     free(value);
     if (!result && changed) {
         char *const args[] = { "update-grub", NULL };
-        optional(args);
+        if (run_system_command(args) != 0) result = -1;
     }
     return result;
 }
@@ -143,7 +152,7 @@ int main(int argc, char **argv)
 {
     if (argc == 2 && (!strcmp(argv[1], "remove") || !strcmp(argv[1], "deconfigure"))) {
         char *const args[] = { "update-alternatives", "--remove", "default.plymouth", FILE_THEME, NULL };
-        optional(args);
+        (void)run_system_command(args);
         return 0;
     }
     if (argc != 2 || strcmp(argv[1], "configure")) return 2;
@@ -158,11 +167,10 @@ int main(int argc, char **argv)
     char *const add[] = { "update-alternatives", "--install",
         "/usr/share/plymouth/themes/default.plymouth", "default.plymouth", FILE_THEME, "250", NULL };
     char *const select[] = { "update-alternatives", "--set", "default.plymouth", FILE_THEME, NULL };
-    optional(debian);
-    optional(add);
-    optional(select);
-    if (grub()) { perror(FILE_GRUB); return 1; }
+    if (run_system_command(debian) || run_system_command(add) ||
+        run_system_command(select)) return 1;
+    if (grub()) { fprintf(stderr, "GRUB configuration/update failed\n"); return 1; }
     char *const initramfs[] = { "update-initramfs", "-u", "-k", "all", NULL };
-    optional(initramfs);
+    if (run_system_command(initramfs) != 0) return 1;
     return 0;
 }

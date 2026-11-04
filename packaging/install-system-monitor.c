@@ -11,6 +11,7 @@
 #include <sys/wait.h>
 #include <unistd.h>
 #include "verify-native-download.h"
+#include "verify-native-package.h"
 
 #define RELEASE_API "https://api.github.com/repos/Infiltrator-Projects/System-Monitor/releases/latest"
 #define RELEASE_PREFIX "https://github.com/Infiltrator-Projects/System-Monitor/releases/download/"
@@ -326,12 +327,8 @@ int main(void)
     };
     required(install_argv);
 
-    write_status("running", 88, "Removing replaced System Monitor packages",
-                 "Cleaning up distribution System Monitor packages after the native build succeeded.");
-    purge_stock_monitors();
-
-    write_status("running", 95, "Verifying the native installation",
-                 "Checking that the installed build is aggressive, PGO-trained and CPU-native.");
+    write_status("running", 90, "Verifying the native installation",
+                 "Checking release identity and the CPU-native build before replacing anything.");
 
     if (!installed("system-monitor") || access("/Programs/system-monitor", X_OK) != 0)
         fail("native System Monitor package or /Programs executable is not installed after the build");
@@ -341,6 +338,12 @@ int main(void)
         !file_contains(info, "C flags: -O3") ||
         !file_contains(info, "-march=native"))
         fail("installed System Monitor is not an aggressive two-pass native build");
+    if (!native_package_matches_release(url, "system-monitor-", "system-monitor"))
+        fail("installed System Monitor Debian version differs from the selected native release");
+
+    write_status("running", 96, "Removing replaced System Monitor packages",
+                 "Native replacement is verified; removing only the authorised competing packages.");
+    purge_stock_monitors();
 
     unlink(installer_path);
     unlink(json_path);

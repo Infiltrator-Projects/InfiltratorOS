@@ -154,12 +154,13 @@ static gboolean refresh_aggregate(Ui *ui)
     gtk_label_set_text(GTK_LABEL(ui->stage), stage);
     gtk_label_set_text(GTK_LABEL(ui->detail), detail);
     if (finished == total_jobs) {
+        /* Individual job completion is not the OS run's final commit.
+         * Only last-provision.status can authorise a success/close UI. */
+        cancel_success_close(ui);
         gtk_label_set_text(GTK_LABEL(ui->title), failed ?
-            "InfiltratorOS installation finished with failures" :
-            "InfiltratorOS native installation is complete");
-        gtk_widget_show(ui->close_button);
-        if (!failed && ui->close_timer_id == 0U)
-            ui->close_timer_id = g_timeout_add_seconds(8U, close_after_success, ui);
+            "Native jobs finished with failures; recording outcome" :
+            "All native jobs finished; verifying final run outcome");
+        gtk_widget_hide(ui->close_button);
     } else {
         cancel_success_close(ui);
         gtk_label_set_text(GTK_LABEL(ui->title),

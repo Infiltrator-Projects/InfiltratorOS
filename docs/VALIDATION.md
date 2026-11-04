@@ -9,7 +9,7 @@ sh tests/check.sh
 sh scripts/build-deb.sh
 ```
 
-`tests/check.sh` compiles and exercises production C launcher and status logic with warnings treated as errors, checks exact worker/package contracts, and runs temporal, filesystem, release, icon and native-progress regression tests. The exact job inventory now rejects duplicate or overlapping entries, incomplete fixed catalogues, oversized optional lists and malformed provider identifiers. Process cases include failed or detached exec, closed standard streams and high-numbered file descriptors. Status cases include malformed records, overflows, duplicate/unknown fields and incomplete writes. Invalid input must not create a false success state.
+`tests/check.sh` compiles and exercises production C launcher and status logic with warnings treated as errors, checks exact worker/package contracts, and runs temporal, filesystem, release, icon and native-progress regression tests. The exact job inventory now rejects duplicate or overlapping entries, incomplete fixed catalogues, oversized optional lists and malformed provider identifiers. Process cases include failed or detached exec, closed standard streams and high-numbered file descriptors. Status cases include malformed records, overflows, duplicate required fields and incomplete writes. Unknown extension fields are intentionally ignored for forward compatibility once all required fields are valid. Invalid input must not create a false success state.
 
 ## Package and published release
 

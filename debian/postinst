@@ -186,8 +186,9 @@ done < "$stage/filesystems-optional.list"
 # The monitor must only inspect statuses for this exact installation. A
 # subsequent package upgrade has another stage and cannot overwrite these.
 # The subshell inherits FD 9 and holds provision.lock until all launched jobs
-# reach a terminal state (or the existing 24-hour diagnostic timeout). This
-# prevents a second apt reinstall from launching a duplicate native run.
+# reach a terminal state. The 24-hour diagnostic timeout marks the run as timed
+# out but MUST NOT release the provision lock while workers are still active.
+# This prevents a second apt reinstall from launching a duplicate native run.
 # All statuses are terminal before this run's binaries can be removed.
 (
     # The background monitor, not the parent's bootstrap handler, now owns
@@ -256,6 +257,12 @@ done < "$stage/filesystems-optional.list"
     done
     printf '%s\n' 'Installation monitor timed out; worker files and diagnostics retained.' > "$stage/TIMEOUT"
     publish_summary timeout
+    # Diagnostic timeout is not worker cancellation. Retain FD 9 and all run
+    # files until every detached worker reports a terminal result, so a new
+    # OS batch cannot overlap surviving native installers.
+    while ! all_terminal; do
+        sleep 30
+    done
 ) </dev/null >/dev/null 2>&1 &
 
 # Disable the bootstrap handler only after spawning the terminal monitor.

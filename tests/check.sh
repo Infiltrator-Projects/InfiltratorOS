@@ -39,6 +39,13 @@ cc -std=c11 -O2 -Wall -Wextra -Werror -Wpedantic \
 "$WORK/native-download-test" "$WORK/native-checks" \
     "https://github.com/Infiltrator-Projects/Calculator/releases/download/v1.2.3/test-native-installer.run" \
     "$WORK/native.run"
+cc -std=c11 -O2 -Wall -Wextra -Werror -Wpedantic \
+    "$ROOT/tests/native-package-version-test.c" -o "$WORK/native-package-version-test"
+"$WORK/native-package-version-test"
+grep -Fq 'native_package_matches_release(url, "system-monitor-", "system-monitor")' \
+    "$ROOT/packaging/install-system-monitor.c"
+grep -Fq 'native_package_matches_release(url, "files-", "files")' \
+    "$ROOT/packaging/install-files.c"
 cc -std=c11 -O2 -Wall -Wextra -Werror -Wpedantic -DINSTALL_TEMPORAL_RESOURCES \
     "$ROOT/packaging/start-native-install.c" "$ROOT/packaging/installer-process.c" \
     -o "$WORK/start-temporal-resources-install"

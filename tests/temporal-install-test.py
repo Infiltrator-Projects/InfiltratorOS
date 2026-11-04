@@ -22,6 +22,7 @@ class InstallationContract(unittest.TestCase):
         names = [f"{slug}-{version}-native-installer.run", f"{slug}-{version}-source.zip", f"{self.entry['package']}_{version}_amd64.deb"]
         prefix = f"https://github.com/Infiltrator-Projects/{self.entry['repository']}/releases/download/v{version}/"
         self.release = {"tag_name": "v" + version, "draft": False, "prerelease": False,
+                        "target_commitish": "a" * 40,
                         "assets": [{"name": name, "browser_download_url": prefix + name,
                                     "digest": "sha256:" + "a" * 64, "size": 123} for name in names]}
 
@@ -202,7 +203,7 @@ class InstallationContract(unittest.TestCase):
             with patch.dict(worker.os.environ, {"INFILTRATOROS_RELEASE_DIR": str(root)}), \
                  patch.object(worker, "STATUS_DIR", root), \
                  patch.object(worker, "STATUS_PATH", root / "test.status"), \
-                 patch.object(worker, "native_installed", return_value=False), \
+                 patch.object(worker, "native_installed", side_effect=[False, True]), \
                  patch.object(worker, "ensure_dependencies") as dependencies, \
                  patch.object(worker, "download_installer") as download, \
                  patch.object(worker, "required") as compile_install, \
@@ -215,6 +216,35 @@ class InstallationContract(unittest.TestCase):
                 compile_install.assert_called_once()
                 verify.assert_called_once()
 
+
+    def test_fresh_install_rejects_source_or_ownership_mismatch(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / (self.entry["repository"] + ".json")).write_text(json.dumps(self.release))
+            with patch.dict(worker.os.environ, {"INFILTRATOROS_RELEASE_DIR": str(root)}), \
+                 patch.object(worker, "STATUS_DIR", root), \
+                 patch.object(worker, "native_installed", side_effect=[False, False]) as verify_native, \
+                 patch.object(worker, "ensure_dependencies"), \
+                 patch.object(worker, "download_installer"), \
+                 patch.object(worker, "required"), \
+                 patch.object(worker, "verify_installation"), \
+                 patch.object(worker, "clean_legacy_documentation") as cleanup:
+                with self.assertRaisesRegex(ValueError, "release/ownership"):
+                    worker.install_entry(self.entry)
+                self.assertEqual(verify_native.call_count, 2)
+                cleanup.assert_not_called()
+
+    def test_missing_source_commit_is_rejected_before_build(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            release = dict(self.release)
+            release.pop("target_commitish")
+            (root / (self.entry["repository"] + ".json")).write_text(json.dumps(release))
+            with patch.dict(worker.os.environ, {"INFILTRATOROS_RELEASE_DIR": str(root)}), \
+                 patch.object(worker, "ensure_dependencies",
+                              side_effect=AssertionError("no build on unpinned source")):
+                with self.assertRaisesRegex(ValueError, "exact published source commit"):
+                    worker.install_entry(self.entry)
 
     def test_failed_provider_does_not_mark_other_provider_complete(self):
         entry = worker.catalogue()[0]

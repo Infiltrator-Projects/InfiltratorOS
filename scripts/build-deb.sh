@@ -187,10 +187,10 @@ PY
     # pkg-config emits compiler arguments, intentionally split by the shell.
     # shellcheck disable=SC2086
     cc -std=c11 -O2 -Wall -Wextra -Werror -Wpedantic "-D$profile" \
-        $(pkg-config --cflags gtk+-3.0) \
+        $(pkg-config --cflags gtk+-3.0 fontconfig) \
         "$ROOT/packaging/native-install-progress.c" "$ROOT/packaging/native-progress-count.c" \
         "$ROOT/packaging/installer-status.c" \
-        -o "$RUNTIME_BUILD/$product-progress" $(pkg-config --libs gtk+-3.0)
+        -o "$RUNTIME_BUILD/$product-progress" $(pkg-config --libs gtk+-3.0 fontconfig)
 done
 
 install -m 0755 "$ROOT/packaging/prepare-native-releases.py" "$RUNTIME_BUILD/prepare-native-releases"

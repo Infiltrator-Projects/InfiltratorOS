@@ -141,6 +141,16 @@ class InstallerTests(unittest.TestCase):
             worker.validate_runtime_dependencies(exfat, allowed +
                 " 0x0000000000000001 (NEEDED) Shared library: [libbad.so.1]\n")
 
+    def test_established_consumer_abis_are_all_required(self):
+        formats = {entry["id"]: set(worker.required_interface_symbols(entry))
+                   for entry in self.entries}
+        for format_id in ("fat12", "fat16", "fat32"):
+            self.assertIn("infiltrator_filesystem_boot_v1", formats[format_id])
+            self.assertIn("infiltrator_filesystem_defrag_v1", formats[format_id])
+        self.assertIn("infiltrator_filesystem_module_v5", formats["fat16"])
+        self.assertIn("infiltrator_filesystem_defrag_v1", formats["exfat"])
+        self.assertIn("infiltrator_filesystem_defrag_v2", formats["ofs"])
+
     def test_abi_matching_rejects_substrings_and_undefined_exports(self):
         row = lambda number, binding, visibility, section, name: (
             f"    {number}: 0000000000000000    32 FUNC    "

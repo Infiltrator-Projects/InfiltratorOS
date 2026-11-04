@@ -2,6 +2,15 @@
 
 This is a concise record of **published changes**, not an alternative copy of the current architecture or a replay of every development commit. The [README](README.md) and [technical documentation](docs/README.md) describe current behaviour. [Immutable release tags](https://github.com/Infiltrator-Projects/InfiltratorOS/releases) and [Git commits](https://github.com/Infiltrator-Projects/InfiltratorOS/commits/main/) preserve detailed historical provenance; the full older changelog is retained at [v1.0.52](https://github.com/Infiltrator-Projects/InfiltratorOS/blob/v1.0.52/CHANGELOG.md).
 
+## 1.0.55 — Forensic document-to-code contract repairs
+
+- Verify System Monitor before removing competing packages; check exact installed native Debian versions for System Monitor and Files.
+- Qualify newly installed calendar/clock modules against pinned source revision, path trust and package ownership, not only reused installations.
+- Require the complete established filesystem consumer interfaces during native ELF verification.
+- Retain the OS provisioning lock past a diagnostic timeout until detached workers finish; propagate failed Plymouth/GRUB/initramfs operations.
+- Verify actual resolved native GUI font families, use semantic host colours and enable progress-window resizing.
+- Correct the status-extension documentation and extend negative regression coverage.
+
 ## 1.0.54 — Bootstrap failure safety and historical-document preservation
 
 - Publish a fresh run status before fallible installation bootstrap, so failures in fonts, icons, sealed worker verification and release preparation cannot leave an earlier success record visible.

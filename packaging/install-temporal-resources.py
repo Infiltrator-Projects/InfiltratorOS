@@ -314,6 +314,9 @@ def install_entry(entry):
         raise ValueError("Release metadata is too large")
     release = json.loads(data)
     version, url, digest, size = release_installer(entry, release)
+    revision = release.get("target_commitish")
+    if not isinstance(revision, str) or not re.fullmatch(r"[0-9a-f]{40}", revision):
+        raise ValueError("Temporal release has no exact published source commit identity")
     if native_installed(entry, version, release):
         clean_legacy_documentation(entry)
         print("Already installed and verified: " + entry["repository"], flush=True)
@@ -326,6 +329,10 @@ def install_entry(entry):
         download_installer(url, installer, digest, size)
         required([installer, "--profile", "aggressive", "--system-package-mode"])
         verify_installation(entry, version)
+        # A fresh install must pass the same ownership, path and pinned-source
+        # qualification as a cached install before it can report success.
+        if not native_installed(entry, version, release):
+            raise ValueError("Fresh native temporal installation failed release/ownership verification")
         clean_legacy_documentation(entry)
     return False
 
