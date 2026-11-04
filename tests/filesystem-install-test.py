@@ -22,6 +22,7 @@ class InstallerTests(unittest.TestCase):
         url = f"https://github.com/Infiltrator-Projects/{repo}/releases/download/v{version}/"
         self.release = {
             "tag_name": "v" + version, "draft": False, "prerelease": False,
+            "target_commitish": "1"*40,
             "assets": [
                 {"name": f"{repo.lower()}-{version}-native-installer.run",
                  "browser_download_url": url + f"{repo.lower()}-{version}-native-installer.run",
@@ -140,6 +141,25 @@ class InstallerTests(unittest.TestCase):
             worker.validate_runtime_dependencies(exfat, allowed +
                 " 0x0000000000000001 (NEEDED) Shared library: [libbad.so.1]\n")
 
+    def test_abi_matching_rejects_substrings_and_undefined_exports(self):
+        row = lambda number, binding, visibility, section, name: (
+            f"    {number}: 0000000000000000    32 FUNC    "
+            f"{binding} {visibility} {section} {name}\n")
+        forged = (
+            row(1, "GLOBAL", "DEFAULT", "UND", "infiltrator_filesystem_module_v1") +
+            row(2, "GLOBAL", "DEFAULT", "12", "infiltrator_filesystem_module_v1_suffix") +
+            row(3, "LOCAL", "DEFAULT", "12", "infiltrator_filesystem_module_v3") +
+            row(4, "GLOBAL", "HIDDEN", "12", "infiltrator_filesystem_module_v4"))
+        self.assertEqual(worker.exported_interface_symbols(forged),
+                         {"infiltrator_filesystem_module_v1_suffix"})
+        published = forged + row(5, "GLOBAL", "DEFAULT", "12",
+                                 "infiltrator_filesystem_module_v1@@IFS_1")
+        self.assertIn("infiltrator_filesystem_module_v1",
+                      worker.exported_interface_symbols(published))
+        spoofed_object = "  6: 0000000000000000 8 OBJECT GLOBAL DEFAULT 12 infiltrator_filesystem_module_v2\n"
+        self.assertNotIn("infiltrator_filesystem_module_v2",
+                         worker.exported_interface_symbols(spoofed_object))
+
     def test_native_fat_requires_pdf_and_pgo_in_debian_metadata(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
@@ -186,6 +206,18 @@ class InstallerTests(unittest.TestCase):
                  patch.object(worker, "cleanup_legacy_docs") as cleanup:
                 self.assertTrue(worker.install(self.entry))
                 cleanup.assert_called_once_with(self.entry)
+
+    def test_source_commit_required_before_reusing_or_installing(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            release = dict(self.release)
+            release.pop("target_commitish")
+            (root / (self.entry["repository"] + ".json")).write_text(json.dumps(release))
+            with patch.dict(worker.os.environ, {"INFILTRATOROS_RELEASE_DIR": str(root)}), \
+                 patch.object(worker, "ensure_dependencies",
+                              side_effect=AssertionError("no build on invalid release")):
+                with self.assertRaisesRegex(ValueError, "exact source commit"):
+                    worker.install(self.entry)
 
     def test_stale_native_fat_rebuilds(self):
         with tempfile.TemporaryDirectory() as temporary:

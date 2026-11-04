@@ -9,7 +9,7 @@ sh tests/check.sh
 sh scripts/build-deb.sh
 ```
 
-`tests/check.sh` compiles and exercises production C launcher and status logic with warnings treated as errors, checks exact worker/package contracts, and runs temporal, filesystem, release, icon and native-progress regression tests. Process cases include failed or detached exec, closed standard streams and high-numbered file descriptors. Status cases include malformed records, overflows, duplicate/unknown fields and incomplete writes. Invalid input must not create a false success state.
+`tests/check.sh` compiles and exercises production C launcher and status logic with warnings treated as errors, checks exact worker/package contracts, and runs temporal, filesystem, release, icon and native-progress regression tests. The exact job inventory now rejects duplicate or overlapping entries, incomplete fixed catalogues, oversized optional lists and malformed provider identifiers. Process cases include failed or detached exec, closed standard streams and high-numbered file descriptors. Status cases include malformed records, overflows, duplicate/unknown fields and incomplete writes. Invalid input must not create a false success state.
 
 ## Package and published release
 
@@ -28,7 +28,7 @@ The first 63 jobs (four applications, 54 temporal providers, five established fi
 
 ## Installed-state acceptance rules
 
-Each independently installed product must match its exact published native release and package ownership; required executable or `.so` paths, companion PDF where specified, release/source identity, build provenance, checksum and ABI must be checked by the owning worker.
+Each independently installed product must match its exact published native release and package ownership; required executable or `.so` paths, companion PDF where specified, release/source identity, build provenance, checksum and ABI must be checked by the owning worker. Filesystem verification now requires the exact published source commit in Debian metadata and checks exact defined ELF dynamic exports rather than permissive text-substring matches.
 
 Calendar/clock and filesystem two-file packages have the `.so` and one illustrated PDF as their expected installed provider files, with native source, optimisation and SHA-256 attestations held in Debian metadata. Obsolete persistent `BUILD-INFO` files are not required for these providers. A verified cached build may skip recompilation only if it still satisfies the exact release and installed-state checks. Unknown or package-owned legacy documents are not silently removed.
 
@@ -40,7 +40,7 @@ For native-performance claims, record exact source and toolchain, target CPU, me
 
 The InfiltratorOS worker in `packaging/install-defragmenter.c` requires `/System/Commands/Defragmenter/defragmenter-operation-engine`, `defragmenter-mapper`, the EXT metadata worker and privileged helper. This is **consistent** with Defragmenter's `defragger/cmake/project.cmake`, `defragger/cmake/ext_metadata_map.cmake` and `defragger/packaging/build-deb.sh`. The package builder actively rejects the historical `/System/Filesystems/Defragmenter` private-executable layout. An earlier InfiltratorOS document incorrectly described that old directory; the defect was documentation-only, not a confirmed integration fault. Source/path consistency does not by itself prove that a particular installed host has all required executables.
 
-The post-install script retains historical “63 jobs” comments despite permitting 18 independently discovered extra filesystem jobs; runtime progress now uses actual manifests. This is a source-comment inconsistency, not evidence that all 81 installers were actually launched on a particular machine.
+The OS's Debian package configuration starts the detached native jobs; it does not itself establish their success because builds must wait for APT transactions. The final run outcome is atomically recorded at `/Temporary/InfiltratorOS/last-provision.status`. The status monitor reports `complete`, `failed` or `timeout`; failed-launch records terminate immediately, but physical-machine recovery and automatic retries are not established by CI.
 
 ## Evidence still required on real systems
 

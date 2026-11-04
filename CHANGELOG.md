@@ -2,6 +2,13 @@
 
 This is a concise record of **published changes**, not an alternative copy of the current architecture or a replay of every development commit. The [README](README.md) and [technical documentation](docs/README.md) describe current behaviour. [Immutable release tags](https://github.com/Infiltrator-Projects/InfiltratorOS/releases) and [Git commits](https://github.com/Infiltrator-Projects/InfiltratorOS/commits/main/) preserve detailed historical provenance; the full older changelog is retained at [v1.0.52](https://github.com/Infiltrator-Projects/InfiltratorOS/blob/v1.0.52/CHANGELOG.md).
 
+## 1.0.53 — Native provisioning integrity
+
+- Reject duplicated, incomplete or overlapping native job manifests and ignore unexpected status files when reporting aggregate installation progress.
+- Record terminal failures for failed worker launches, retain a separate final run outcome after Debian package configuration, and display success/failure/timeout after staging cleanup.
+- Require exact published source commit identity and exported ELF ABI symbols for filesystem packages.
+- Correct Debian package descriptions and strengthen regression tests.
+
 ## 1.0.52 — Actual native-job progress totals
 
 - Compute aggregate GUI progress from the current run's provider manifests instead of hard-coded additional filesystem counts.
