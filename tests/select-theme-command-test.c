@@ -90,7 +90,7 @@ int main(void)
     CHECK(setenv("INFILTRATOR_TEST_LOG", log, 1) == 0);
     CHECK(setenv("INFILTRATOR_FAIL_CMD", "none", 1) == 0);
 
-    char *const configure[] = {"select-theme", "configure", NULL};
+    char *configure[] = {"select-theme", "configure", NULL};
     CHECK(select_theme_program_main(2, configure) == 0);
     char output[4096];
     CHECK(read_log(log, output, sizeof(output)) == 0);
