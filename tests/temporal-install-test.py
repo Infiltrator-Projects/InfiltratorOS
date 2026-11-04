@@ -22,6 +22,7 @@ class InstallationContract(unittest.TestCase):
         names = [f"{slug}-{version}-native-installer.run", f"{slug}-{version}-source.zip", f"{self.entry['package']}_{version}_amd64.deb"]
         prefix = f"https://github.com/Infiltrator-Projects/{self.entry['repository']}/releases/download/v{version}/"
         self.release = {"tag_name": "v" + version, "draft": False, "prerelease": False,
+                        "target_commitish": "a" * 40,
                         "assets": [{"name": name, "browser_download_url": prefix + name,
                                     "digest": "sha256:" + "a" * 64, "size": 123} for name in names]}
 
@@ -215,6 +216,15 @@ class InstallationContract(unittest.TestCase):
                 compile_install.assert_called_once()
                 verify.assert_called_once()
 
+
+    def test_rejects_unpinned_temporal_source(self):
+        release = dict(self.release, target_commitish="main")
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            (directory / (self.entry["repository"] + ".json")).write_text(json.dumps(release))
+            with patch.dict(worker.os.environ, {"INFILTRATOROS_RELEASE_DIR": str(directory)}):
+                with self.assertRaisesRegex(ValueError, "exact source commit"):
+                    worker.install_entry(self.entry)
 
     def test_failed_provider_does_not_mark_other_provider_complete(self):
         entry = worker.catalogue()[0]
