@@ -244,6 +244,142 @@ def install(entry):
     return False
 
 
+
+# Only FAT12/FAT16 may build simultaneously. The standard global native lock
+# remains held throughout, so all other components retain serial behaviour.
+FAT_PILOT = ("filesystem-fat12", "filesystem-fat16")
+
+
+def pilot_status(slug, state, progress, stage, detail):
+    global STATUS_PATH
+    previous = STATUS_PATH
+    STATUS_PATH = STATUS_DIR / (slug + "-install.status")
+    try:
+        status(state, progress, stage, detail)
+    finally:
+        STATUS_PATH = previous
+
+
+def pilot_build(job):
+    entry, installer, target, version = job
+    run([installer, "--profile", "aggressive", "--system-package-mode",
+         "--build-only", "--output", target])
+    results = list(target.glob("*.deb"))
+    if len(results) != 1:
+        raise RuntimeError(entry["repository"] + ": build-only produced no unique DEB")
+    package = results[0]
+    identity = subprocess.check_output(
+        ["/usr/bin/dpkg-deb", "-f", str(package),
+         "Package", "Version", "Architecture"], text=True).splitlines()
+    if identity != [entry["package"], version + "+native1", "amd64"]:
+        raise RuntimeError(entry["repository"] + ": unexpected native package identity")
+    return package
+
+
+def pilot_can_build():
+    # Keep component-owned prerequisite resolution out of the two-build phase:
+    # on an unprepared host use the existing serial RUN path instead.
+    for name in ("build-essential", "binutils", "python3", "dpkg-dev"):
+        result = subprocess.run(
+            ["/usr/bin/dpkg-query", "-W", "-f=" + "$" + "{Status}", name],
+            capture_output=True, text=True, check=False)
+        if result.returncode or result.stdout.strip() != "install ok installed":
+            return False
+    return all(__import__("shutil").which(name) for name in
+               ("cc", "readelf", "dpkg-deb", "dpkg-query"))
+
+
+def install_fat_pilot(entries):
+    """Two independently built DEBs; one globally serial dpkg transaction."""
+    global STATUS_PATH
+    release_dir = os.environ.get("INFILTRATOROS_RELEASE_DIR")
+    if not release_dir:
+        raise ValueError("FAT pilot requires the sealed release snapshot")
+    manifest = (STATUS_DIR.parent / "selected.list").read_text().splitlines()
+    if not set(FAT_PILOT) <= set(manifest):
+        raise ValueError("Both FAT components must belong to this run")
+    pair = [next(x for x in entries if x["repository"].lower() == slug)
+            for slug in FAT_PILOT]
+    completed = set()
+    try:
+        from contextlib import ExitStack
+        with ExitStack() as stack:
+            for slug in FAT_PILOT:
+                lock = stack.enter_context((STATUS_ROOT / (slug + ".lock")).open("a"))
+                fcntl.flock(lock, fcntl.LOCK_EX)
+                pilot_status(slug, "queued", 2, "FAT parallel pilot queued",
+                             "Waiting for the native installation lock")
+            global_lock = stack.enter_context(
+                (STATUS_ROOT / "native-install.lock").open("a"))
+            fcntl.flock(global_lock, fcntl.LOCK_EX)
+            os.environ["DEBIAN_FRONTEND"] = "noninteractive"
+            os.environ["TMPDIR"] = str(STATUS_DIR)
+            if not pilot_can_build():
+                for entry in pair:
+                    slug = entry["repository"].lower()
+                    STATUS_PATH = STATUS_DIR / (slug + "-install.status")
+                    was_current = install(entry)
+                    pilot_status(slug, "complete", 100, "Serial fallback completed",
+                                 "Native package verified; build prerequisites were missing"
+                                 if not was_current else "Existing native package verified")
+                    completed.add(slug)
+                return
+            with tempfile.TemporaryDirectory(dir=STATUS_DIR, prefix="fat-pilot-") as tmp:
+                root = Path(tmp)
+                jobs = []
+                release_info = {}
+                for entry in pair:
+                    slug = entry["repository"].lower()
+                    metadata = (Path(release_dir) / (entry["repository"] + ".json")).read_bytes()
+                    if len(metadata) > 4 * 1024 * 1024:
+                        raise ValueError(slug + ": oversized release snapshot")
+                    release = json.loads(metadata)
+                    version, url, digest, length = release_installer(entry, release)
+                    if native_current(entry, version, release):
+                        pilot_status(slug, "complete", 100, "Already installed",
+                                     "Verified native filesystem; rebuild skipped")
+                        completed.add(slug)
+                        continue
+                    pilot_status(slug, "running", 15, "Downloading native RUN",
+                                 "Checking independently published SHA-256")
+                    installer = root / (slug + ".run")
+                    download(url, installer, digest, length)
+                    target = root / slug
+                    target.mkdir()
+                    jobs.append((entry, installer, target, version))
+                    release_info[slug] = release
+                for entry, _, _, _ in jobs:
+                    pilot_status(entry["repository"].lower(), "running", 35,
+                                 "Compiling in parallel",
+                                 "Independent native RUN, maximum two builds")
+                packages = {}
+                with ThreadPoolExecutor(max_workers=2) as pool:
+                    futures = {pool.submit(pilot_build, job): job[0]
+                               for job in jobs}
+                    for task in as_completed(futures):
+                        entry = futures[task]
+                        packages[entry["repository"].lower()] = task.result()
+                for entry, _, _, version in jobs:
+                    slug = entry["repository"].lower()
+                    pilot_status(slug, "running", 85, "Installing native package",
+                                 "Single serial Debian package transaction")
+                    run(["/usr/bin/dpkg", "--install", packages[slug]])
+                    if not native_current(entry, version, release_info[slug]):
+                        raise RuntimeError(slug + ": installed SO or PDF verification failed")
+                    pilot_status(slug, "complete", 100, "Native installation complete",
+                                 "Independently built and verified native package")
+                    completed.add(slug)
+    except (OSError, RuntimeError, ValueError, subprocess.SubprocessError) as error:
+        for slug in FAT_PILOT:
+            if slug not in completed:
+                pilot_status(slug, "failed", 100, "Parallel FAT pilot failed", error)
+        STATUS_PATH = None  # Do not overwrite a separately completed job.
+        raise
+    finally:
+        if STATUS_PATH is not None:
+            STATUS_PATH = STATUS_DIR / (FAT_PILOT[0] + "-install.status")
+
+
 def discover_additional(release_dir):
     """Admit extra drivers only with real, complete SHA-256-bound releases.
 
@@ -343,6 +479,9 @@ def main():
     STATUS_PATH = STATUS_DIR / (slug + "-install.status")
     STATUS_ROOT.mkdir(mode=0o755, parents=True, exist_ok=True)
     STATUS_DIR.mkdir(mode=0o755, parents=True, exist_ok=True)
+    if slug == FAT_PILOT[0] and os.environ.get("INFILTRATOROS_FAT_PAIR") == "1":
+        install_fat_pilot(entries)
+        return
     with (STATUS_ROOT / (slug + ".lock")).open("a") as own:
         fcntl.flock(own, fcntl.LOCK_EX)
         with (STATUS_ROOT / "native-install.lock").open("a") as global_lock:
