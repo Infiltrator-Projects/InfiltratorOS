@@ -105,7 +105,9 @@ def main():
     if not optional_path.is_file() or not pending_path.is_file():
         raise ValueError("Filesystem discovery did not produce its manifests")
     optional = optional_path.read_text().splitlines()
-    if len(optional) > 18 or len(set(optional)) != len(optional):
+    if (len(optional) > 18 or len(set(optional)) != len(optional) or
+            set(optional) & set(filesystems) or
+            any(not item.startswith("filesystem-") for item in optional)) :
         raise ValueError("Invalid optional filesystem list")
     if pending_path.stat().st_size:
         print("Some independent filesystem modules await qualified native releases.")
