@@ -24,6 +24,7 @@ unpack_native_workers() {
         test -x "$stage/$product-progress" || return 1
     done
     test -x "$stage/prepare-native-releases" || return 1
+    test -x "$stage/orchestrate-native-install" || return 1
 }
 
 # CI inspection never mutates the installed system or launches applications.
@@ -34,7 +35,7 @@ if [ "${1:-}" = "--verify-installer-bundle" ]; then
         echo 'Invalid embedded InfiltratorOS native installer bundle.' >&2
         exit 1
     fi
-    test "$(find "$inspect" -maxdepth 1 -type f | wc -l)" -eq 19
+    test "$(find "$inspect" -maxdepth 1 -type f | wc -l)" -eq 20
     exit 0
 fi
 
@@ -102,92 +103,12 @@ fi
 # worker stage. No run may remove shared /Temporary/InfiltratorOS or files
 # belonging to a previous or concurrent installation.
 mkdir -p "$stage/status"
-if ! "$stage/install-temporal-resources" --list > "$stage/providers.list"; then
-    echo 'Cannot enumerate the signed calendar and clock catalogue.' >&2
+# One dispatcher owns enumeration, release preparation and component launches.
+# Individual component workers remain responsible for their own installations.
+if ! INFILTRATOROS_INSTALL_RUNTIME="$stage" "$stage/orchestrate-native-install" "$stage"; then
+    echo 'InfiltratorOS native installation dispatch failed.' >&2
     exit 1
 fi
-if [ "$(wc -l < "$stage/providers.list")" -ne 54 ]; then
-    echo 'The bundled native worker did not list all 54 providers.' >&2
-    exit 1
-fi
-
-if ! "$stage/install-filesystem-resources" --list > "$stage/filesystems.list"; then
-    echo 'Cannot enumerate independent FAT12/FAT16/FAT32/OFS/exFAT installers.' >&2
-    exit 1
-fi
-if [ "$(wc -l < "$stage/filesystems.list")" -ne 5 ]; then
-    echo 'Expected precisely five independent filesystem installers.' >&2
-    exit 1
-fi
-
-# Fetch one 63-component release snapshot over authenticated HTTPS and
-# provide independent workers with locally validated release metadata.
-# Never issue 63 separate REST API lookups during managed installation.
-if ! "$stage/prepare-native-releases" "$stage/release-json" "$stage/providers.list" "$stage/filesystems.list" \
-        > "$stage/native-release-preparation.log" 2>&1; then
-    cat "$stage/native-release-preparation.log" >&2
-    echo 'Native release metadata preparation failed; no workers were launched.' >&2
-    exit 1
-fi
-export INFILTRATOROS_RELEASE_DIR="$stage/release-json"
-# The five published filesystem providers remain in the verified central
-# release snapshot. Probe the remaining eighteen independently and only admit
-# complete published native RUN/DEB/SO releases. CI artifacts are not releases.
-if ! "$stage/install-filesystem-resources" --discover-additional "$stage/release-json" \
-        > "$stage/optional-filesystem-discovery.log" 2>&1; then
-    printf '%s\n' 'Additional filesystem release discovery failed; the five established drivers remain enabled.' \
-        >> "$stage/optional-filesystem-discovery.log"
-    : > "$stage/filesystems-optional.list"
-    "$stage/install-filesystem-resources" --list-all |
-        grep -Fvx -f "$stage/filesystems.list" > "$stage/filesystems-pending.list" || :
-fi
-test -f "$stage/filesystems-optional.list"
-test -f "$stage/filesystems-pending.list"
-if [ "$(wc -l < "$stage/filesystems-optional.list")" -gt 18 ]; then
-    echo 'Refusing an oversized additional filesystem list.' >&2
-    exit 1
-fi
-if [ -s "$stage/filesystems-pending.list" ]; then
-    echo 'Some independent filesystem modules await qualified native installer releases.'
-    pending_tmp="$stage/filesystems-pending.summary"
-    cp -- "$stage/filesystems-pending.list" "$pending_tmp"
-    chmod 0644 "$pending_tmp"
-    mv -f -- "$pending_tmp" "$STATUS_ROOT/filesystems-pending.list"
-fi
-
-# A successful Debian package configuration starts provisioning, not
-# confirmation that its detached workers finished.
-record_launch_failure() {
-    printf 'state=failed\nprogress=100\nstage=Native installer could not start\ndetail=See the run logs.\n' \
-        > "$stage/status/$1-install.status"
-}
-
-# Four applications, 54 calendar/clock providers and all eligible filesystems.
-# Each invocation reports to the one aggregate window and verifies its own .run.
-for product in system-monitor calculator files defragmenter; do
-    if ! INFILTRATOROS_PROGRESS_MODE=none INFILTRATOROS_INSTALL_RUNTIME="$stage" "$stage/start-$product-install"; then
-        echo "Failed to launch $product installer; see $stage/status." >&2
-        record_launch_failure "$product"
-    fi
-done
-while IFS= read -r provider; do
-    if ! INFILTRATOROS_PROGRESS_MODE=none INFILTRATOROS_INSTALL_RUNTIME="$stage" "$stage/start-temporal-resources-install" "$provider"; then
-        echo "Failed to launch $provider installer; see $stage/status." >&2
-        record_launch_failure "$provider"
-    fi
-done < "$stage/providers.list"
-while IFS= read -r filesystem; do
-    if ! INFILTRATOROS_PROGRESS_MODE=none INFILTRATOROS_INSTALL_RUNTIME="$stage" "$stage/start-filesystem-resources-install" "$filesystem"; then
-        echo "Failed to launch $filesystem installer; see $stage/status." >&2
-        record_launch_failure "$filesystem"
-    fi
-done < "$stage/filesystems.list"
-while IFS= read -r filesystem; do
-    if ! INFILTRATOROS_PROGRESS_MODE=none INFILTRATOROS_INSTALL_RUNTIME="$stage" "$stage/start-filesystem-resources-install" "$filesystem"; then
-        echo "Failed to launch $filesystem installer; see $stage/status." >&2
-        record_launch_failure "$filesystem"
-    fi
-done < "$stage/filesystems-optional.list"
 
 # The monitor must only inspect statuses for this exact installation. A
 # subsequent package upgrade has another stage and cannot overwrite these.
