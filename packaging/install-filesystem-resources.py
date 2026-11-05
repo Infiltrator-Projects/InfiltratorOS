@@ -723,20 +723,18 @@ def discover_additional(release_dir):
 
 def main():
     entries = all_catalogue()
-    if sys.argv[1:] == ["--list-all"]:
-        for entry in entries:
-            print(entry["repository"].lower())
-        return
-    if sys.argv[1:] == ["--list-selected"]:
-        # No selection means install everything. A future checkbox UI can
-        # supply a comma-separated set of catalogue IDs without changing
-        # individual filesystem installers or their release contracts.
+    if sys.argv[1:] in (["--list"], ["--list-all"]):
+        # A single catalogue drives today's install-all mode and future
+        # checkbox selections. Individual installers own their build details.
         requested = os.environ.get("INFILTRATOROS_SELECTED_FILESYSTEMS")
-        selected = None if requested is None else {part.strip().lower() for part in requested.split(",") if part.strip()}
+        selected = None if requested is None else {
+            value.strip().lower() for value in requested.split(",") if value.strip()
+        }
         known = {entry["id"] for entry in entries}
         if selected is not None and not selected <= known:
             raise ValueError("Unknown selected filesystem: " + ", ".join(sorted(selected - known)))
-        for entry in entries:
+        visible = entries if sys.argv[1] == "--list-all" else catalogue()
+        for entry in visible:
             if selected is None or entry["id"] in selected:
                 print(entry["repository"].lower())
         return
@@ -744,10 +742,6 @@ def main():
         if os.geteuid() != 0:
             raise RuntimeError("Native release discovery requires root")
         discover_additional(Path(sys.argv[2]))
-        return
-    if sys.argv[1:] == ["--list"]:
-        for entry in catalogue():
-            print(entry["repository"].lower())
         return
     if len(sys.argv) != 2:
         raise ValueError("Usage: --list | --list-all | --discover-additional RELEASE_DIR | filesystem-provider")
