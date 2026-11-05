@@ -143,7 +143,7 @@ jobs:
           # An installation must never delete another run's temporary files.
           grep -Fq 'status_root="$stage/status"' "$RUNNER_TEMP/control/postinst"
           grep -Fq -- '--run-status "$status_root"' "$RUNNER_TEMP/control/postinst"
-          grep -Fq 'done < "$stage/providers.list"' "$RUNNER_TEMP/control/postinst"
+          grep -Fq 'orchestrate-native-install" "$stage"' "$RUNNER_TEMP/control/postinst"
           ! grep -Fq 'rm -rf -- "$STATUS_ROOT"' "$RUNNER_TEMP/control/postinst"
           # A missing/mismatched digest must terminate guarded extraction.
           cp "$RUNNER_TEMP/control/postinst" "$RUNNER_TEMP/tampered-postinst"

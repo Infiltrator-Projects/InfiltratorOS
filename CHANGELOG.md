@@ -2,6 +2,13 @@
 
 This is a concise record of **published changes**, not an alternative copy of the current architecture or a replay of every development commit. The [README](README.md) and [technical documentation](docs/README.md) describe current behaviour. [Immutable release tags](https://github.com/Infiltrator-Projects/InfiltratorOS/releases) and [Git commits](https://github.com/Infiltrator-Projects/InfiltratorOS/commits/main/) preserve detailed historical provenance; the full older changelog is retained at [v1.0.52](https://github.com/Infiltrator-Projects/InfiltratorOS/blob/v1.0.52/CHANGELOG.md).
 
+## 1.0.62 — Independent native installation dispatch
+
+- Delegate calendar, clock and filesystem source compilation, package building and documentation to independently published, checksum-verified native RUN installers.
+- Track exactly the selected installation jobs, rather than reporting unlaunched components as pending for 24 hours.
+- Align integration coverage with the component-owned system-package mode, which installs the native SO and PDF without automatically staging optional kernel modules.
+- Preserve real end-to-end package, ownership and documentation qualification before publication.
+
 ## 1.0.61 — Support flat documentation upgrades
 
 - Install the OS font and icon checksum manifests directly in the documentation directory. An upgrade removes the old OS-owned directory when empty.

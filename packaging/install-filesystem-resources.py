@@ -22,7 +22,6 @@ STATUS_PATH = None
 CATALOGUE = []  # @EMBED_FILESYSTEM_CATALOGUE@
 ADDITIONAL = []  # @EMBED_FILESYSTEM_ADDITIONAL@
 KERNEL_TARGET = "6.12.107"
-KERNEL_DIR = Path("/System/Kernel/Filesystems")
 
 def catalogue():
     entries = CATALOGUE or json.loads((Path(__file__).parent / "filesystem-resources.json").read_text())
@@ -58,39 +57,6 @@ def additional_catalogue():
     if len(actual) != 18 or actual != expected:
         raise ValueError("Incomplete or modified eighteen-provider filesystem catalogue")
     return entries
-
-
-    """Only format-specific names from the sealed catalogue are accepted."""
-    return entry.get("pdf") or (entry["resource"].rsplit("/", 1)[1].removesuffix(".so") + ".pdf")
-
-
-
-    directory = root / "System/Resources/Documentation"
-    flat = directory / (entry["repository"] + ".pdf")
-    legacy = directory / entry["repository"] / pdf_name(entry)
-    if flat.exists() or flat.is_symlink():
-        return flat
-    if legacy.exists() or legacy.is_symlink():
-        return legacy
-    return flat
-
-
-
-    """Use Debian ownership to locate even a missing PDF during repair."""
-    if root != Path("/"):
-        return manual_path(entry, root)
-    directory = root / "System/Resources/Documentation"
-    paths = (directory / (entry["repository"] + ".pdf"),
-             directory / entry["repository"] / pdf_name(entry))
-    for path in paths:
-        try:
-            owner = subprocess.check_output(["/usr/bin/dpkg-query", "-S", str(path)],
-                                            text=True, stderr=subprocess.DEVNULL)
-        except subprocess.CalledProcessError:
-            continue
-        if owner.strip() == f"{entry['package']}: {path}":
-            return path
-    return manual_path(entry, root)
 
 
 def all_catalogue():
