@@ -61,12 +61,12 @@ def additional_catalogue():
         raise ValueError("Incomplete or modified eighteen-provider filesystem catalogue")
     return entries
 
-def pdf_name(entry):
+
     """Only format-specific names from the sealed catalogue are accepted."""
     return entry.get("pdf") or (entry["resource"].rsplit("/", 1)[1].removesuffix(".so") + ".pdf")
 
 
-def manual_path(entry, root=Path("/")):
+
     directory = root / "System/Resources/Documentation"
     flat = directory / (entry["repository"] + ".pdf")
     legacy = directory / entry["repository"] / pdf_name(entry)
@@ -77,7 +77,7 @@ def manual_path(entry, root=Path("/")):
     return flat
 
 
-def installed_manual_path(entry, root=Path("/")):
+
     """Use Debian ownership to locate even a missing PDF during repair."""
     if root != Path("/"):
         return manual_path(entry, root)
@@ -215,7 +215,7 @@ def download(url, path, digest, length):
     path.chmod(0o700)
 
 
-def stored_kernel_matches(path, asset, entry, metadata):
+
     owner = os.geteuid()
     for directory in (KERNEL_DIR.parent.parent, KERNEL_DIR.parent, KERNEL_DIR):
         info = directory.lstat()
@@ -247,7 +247,7 @@ def stored_kernel_matches(path, asset, entry, metadata):
     return True
 
 
-def validate_kernel_module(path, release=KERNEL_TARGET):
+
     report = subprocess.check_output(["/usr/bin/readelf", "-W", "-h", "-p", ".modinfo", str(path)],
                                      text=True, env={**os.environ, "LC_ALL": "C"})
     if (not re.search(r"^\s*Class:\s+ELF64\s*$", report, re.M)
@@ -257,7 +257,7 @@ def validate_kernel_module(path, release=KERNEL_TARGET):
         raise ValueError("Filesystem kernel module does not match its declared build target")
 
 
-def stage_file(source, destination):
+
     with tempfile.NamedTemporaryFile(dir=destination.parent, prefix=".filesystem-", delete=False) as file:
         temporary = Path(file.name)
         try:
@@ -270,7 +270,7 @@ def stage_file(source, destination):
         finally:
             temporary.unlink(missing_ok=True)
 
-def required_interface_symbols(entry):
+
     """The installed module must expose every ABI used by its consumers."""
     symbols = ([entry["abi"]] if entry.get("abi") else
                ["infiltrator_filesystem_module_v1",
@@ -297,7 +297,7 @@ def required_interface_symbols(entry):
     return symbols
 
 
-def exported_interface_symbols(table):
+
     """Return only exact, defined, publicly exported ELF dynamic symbols.
 
     A substring match can be fooled by unrelated or undefined symbol names.
@@ -313,7 +313,7 @@ def exported_interface_symbols(table):
     return result
 
 
-def package_version(entry):
+
     expression = "-f=" + chr(36) + "{Status}\n" + chr(36) + "{Version}\n"
     identity = subprocess.check_output(
         ["/usr/bin/dpkg-query", "-W", expression, entry["package"]], text=True).splitlines()
@@ -322,7 +322,7 @@ def package_version(entry):
     return identity[1]
 
 
-def installed_kernel_metadata(entry, version, revision):
+
     """Read kernel provenance independently when the SO needs rebuilding."""
     try:
         report = subprocess.check_output(
@@ -338,7 +338,7 @@ def installed_kernel_metadata(entry, version, revision):
     return metadata
 
 
-def package_kernel(entry, package, module, kernel_release, identity, root=Path("/")):
+
     """Keep all three files and their checksums in the installed Debian package."""
     with tempfile.TemporaryDirectory(dir=STATUS_DIR, prefix="filesystem-package-") as folder:
         image = Path(folder) / "root"
@@ -396,7 +396,7 @@ def package_kernel(entry, package, module, kernel_release, identity, root=Path("
         bundled.replace(package)
 
 
-def verify_owned_path(entry, path, root):
+
     for parent in reversed(path.relative_to(root).parents):
         directory = root / parent
         try:
@@ -414,7 +414,7 @@ def verify_owned_path(entry, path, root):
         raise ValueError("Filesystem payload owned by wrong package")
 
 
-def verify(entry, version, root=Path("/"), query=True, revision=None, profile="aggressive"):
+
     """Verify the SO independently and return the installed package metadata."""
     native = profile == "aggressive"
     deb_version = version + ("+native1" if native else "")
@@ -465,7 +465,7 @@ def verify(entry, version, root=Path("/"), query=True, revision=None, profile="a
     return data
 
 
-def validate_runtime_dependencies(entry, dynamic_section):
+
     """Allow only exFAT's declared Linux runtime dependencies.
 
     FAT and OFS remain independently freestanding. Never use ldd or execute
@@ -501,7 +501,7 @@ def validate_runtime_dependencies(entry, dynamic_section):
             raise ValueError("Unexpected exFAT runtime dependency: " + ", ".join(sorted(unknown)))
 
 
-def verified_current_version(entry, selected, revision, root=Path("/")):
+
     module = root / entry["resource"].lstrip("/")
     if not module.exists() and not module.is_symlink():
         return None
@@ -517,7 +517,7 @@ def verified_current_version(entry, selected, revision, root=Path("/")):
     return installed, metadata
 
 
-def manual_matches(path, digest):
+
     if path.is_symlink() or not path.is_file():
         return False
     with path.open("rb") as file:
@@ -527,7 +527,7 @@ def manual_matches(path, digest):
         return hashlib.file_digest(file, "sha256").hexdigest() == digest
 
 
-def repair_manual(entry, release, version, metadata, root=Path("/")):
+
     """Restore just the verified provider manual from its matching portable DEB."""
     path = installed_manual_path(entry, root)
     expected = metadata.get("X-Infiltrator-PDF-SHA256", "")
@@ -562,7 +562,7 @@ def repair_manual(entry, release, version, metadata, root=Path("/")):
     return True
 
 
-def ensure_dependencies(entry):
+
     ready_name = ("filesystem-extended-dependencies-ready" if entry.get("abi") else
                   "filesystem-exfat-dependencies-ready" if entry["id"] == "exfat" else
                   "filesystem-dependencies-ready")
