@@ -16,6 +16,7 @@ python3 "$ROOT/tests/temporal-install-test.py"
 python3 "$ROOT/tests/filesystem-install-test.py"
 python3 "$ROOT/tests/filesystem-additional-test.py"
 python3 "$ROOT/tests/postinst-bootstrap-test.py"
+python3 "$ROOT/tests/orchestrate-native-install-test.py"
 python3 "$ROOT/tests/native-release-test.py"
 cc -std=c11 -O2 -Wall -Wextra -Werror -Wpedantic \
     "$ROOT/tests/native-release-contract-test.c" -o "$ROOT/.build-native-release-contract-test"

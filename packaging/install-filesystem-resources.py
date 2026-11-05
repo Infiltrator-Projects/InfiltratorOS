@@ -1,6 +1,6 @@
 #!/usr/bin/python3 -u
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Install native filesystem packages and store their published Linux modules."""
+"""Verify and invoke independently released native filesystem installers."""
 import fcntl
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import hashlib

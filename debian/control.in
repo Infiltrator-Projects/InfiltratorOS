@@ -35,8 +35,9 @@ Description: InfiltratorOS branding and native application integration
  checksum-verified CPU-native source packages, with distinct FAT12.so,
  FAT16.so, FAT32.so, OFS.so and exFAT.so ownership under /System/Filesystems. Up to 18 other independent
  filesystem modules may be installed when their native releases qualify.
- The OS installer stores verified Linux filesystem modules under
- /System/Kernel/Filesystems for manual use when supplied by the same release.
+ Kernel modules and EFI drivers remain independently published, optional
+ provider artifacts. System-package mode installs each CPU-native SO and its
+ illustrated PDF; it does not automatically build or stage kernel modules.
  .
  Heavy native application builds are serialised so they do not compete
  for package locks or CPU.
