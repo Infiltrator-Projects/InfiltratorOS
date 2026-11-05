@@ -6,6 +6,7 @@ import importlib.util
 import io
 import json
 from pathlib import Path
+import subprocess
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -192,34 +193,110 @@ class InstallerTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "X-Infiltrator-PGO"):
                     worker.verify(self.entry, "0.1.2", root=root, query=False)
 
-    def test_safe_cleanup_all_five_filesystems(self):
+    def test_packages_use_a_single_flat_manual_and_keep_installed_so_bytes(self):
+        with tempfile.TemporaryDirectory() as temp:
+            work = Path(temp)
+            image = work / "old-image"
+            module = image / self.entry["resource"].lstrip("/")
+            module.parent.mkdir(parents=True)
+            module.write_bytes(b"existing SO fixture")
+            flat, legacy = worker.manual_paths(self.entry, image)
+            legacy.parent.mkdir(parents=True)
+            legacy.write_bytes(b"%PDF-1.4\n")
+            control = image / "DEBIAN"
+            control.mkdir()
+            report = (f"Package: {self.entry['package']}\nVersion: 1.0.2\nArchitecture: amd64\n"
+                      "Maintainer: Fixture <test@example.invalid>\nDescription: Manual migration fixture\n")
+            (control / "control").write_text(report)
+            package = work / "legacy.deb"
+            subprocess.run(["dpkg-deb", "-b", image, package], check=True, stdout=subprocess.DEVNULL)
+
+            def assert_flat(entry, deb):
+                with tempfile.TemporaryDirectory(dir=work) as destination:
+                    dest = Path(destination)
+                    subprocess.run(["dpkg-deb", "-x", deb, dest], check=True)
+                    current, old = worker.manual_paths(entry, dest)
+                    self.assertEqual(current.read_bytes(), b"%PDF-1.4\n")
+                    self.assertFalse(current.is_symlink())
+                    self.assertFalse(old.parent.exists())
+                    self.assertEqual((dest / entry["resource"].lstrip("/")).read_bytes(), module.read_bytes())
+
+            with patch.object(worker, "install_deb", side_effect=assert_flat):
+                worker.install_flat_package(self.entry, package, work)
+
+            # Feed the same verified installed bytes through the migration path.
+            def install_migrated(entry, deb):
+                assert_flat(entry, deb)
+                flat.write_bytes(legacy.read_bytes())
+                legacy.unlink()
+
+            listed = "/.\n" + "/" + module.relative_to(image).as_posix() + "\n/" + legacy.relative_to(image).as_posix() + "\n"
+            with patch.object(worker, "STATUS_DIR", work), \
+                 patch.object(worker.subprocess, "check_output", side_effect=[listed, "md5sums\n", report]), \
+                 patch.object(worker, "install_deb", side_effect=install_migrated):
+                worker.migrate_verified_manual(self.entry, root=image)
+            self.assertEqual(worker.package_manual(self.entry, image), flat)
+
+    def test_flat_manual_can_be_owned_directly_by_a_new_package(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
-            for entry in self.entries:
-                docs = root / "System/Resources/Documentation" / entry["repository"]
-                docs.mkdir(parents=True)
-                name = entry["resource"].rsplit("/", 1)[1].removesuffix(".so") + ".pdf"
-                (docs / name).write_bytes(b"%PDF-1.4\n")
-                for legacy in ("BUILD-INFO", "README.md", "MIGRATION-PROVENANCE.md", "LICENSE"):
-                    (docs / legacy).write_text("obsolete")
-                (docs / "personal.txt").write_text("keep")
-                self.assertEqual(worker.cleanup_legacy_docs(
-                    entry, root=root, owner_lookup=lambda path: path.name == "LICENSE"), 0)
-                self.assertEqual({p.name for p in docs.iterdir()},
-                                 {name, "BUILD-INFO", "README.md",
-                                  "MIGRATION-PROVENANCE.md", "LICENSE", "personal.txt"})
+            flat, legacy = worker.manual_paths(self.entry, root)
+            flat.parent.mkdir(parents=True)
+            flat.write_bytes(b"%PDF-1.4\n")
+            self.assertEqual(worker.package_manual(self.entry, root), flat)
+            self.assertFalse(flat.is_symlink())
+            self.assertFalse(legacy.exists())
+            flat.unlink()
+            flat.symlink_to("personal.pdf")
+            with self.assertRaisesRegex(ValueError, "Unexpected filesystem manual link"):
+                worker.package_manual(self.entry, root)
+
+    def test_only_a_missing_or_older_so_requires_a_build(self):
+        revision = "a" * 40
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            module = root / self.entry["resource"].lstrip("/")
+            self.assertIsNone(worker.verified_current_version(self.entry, "1.0.2", revision, root))
+            module.parent.mkdir(parents=True)
+            module.write_bytes(b"installed SO fixture")
+            with patch.object(worker, "package_version", return_value="1.0.1+native1"), \
+                 patch.object(worker, "verify") as verify:
+                self.assertIsNone(worker.verified_current_version(self.entry, "1.0.2", revision, root))
+                verify.assert_not_called()
+            for version, profile, expected_revision in (("1.0.2", "portable", revision),
+                                                        ("1.0.2+native1", "aggressive", revision),
+                                                        ("1.0.10", "portable", None)):
+                with patch.object(worker, "package_version", return_value=version), \
+                     patch.object(worker, "verify") as verify:
+                    provider = version.removesuffix("+native1")
+                    self.assertEqual(worker.verified_current_version(self.entry, "1.0.2", revision, root), provider)
+                    verify.assert_called_once_with(self.entry, provider, root=root,
+                                                   revision=expected_revision, profile=profile)
 
     def test_current_native_fat_skips_download_and_build(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             (root / (self.entry["repository"] + ".json")).write_text(json.dumps(self.release))
             with patch.dict(worker.os.environ, {"INFILTRATOROS_RELEASE_DIR": str(root)}), \
-                 patch.object(worker, "native_installed", return_value=True), \
+                 patch.object(worker, "verified_current_version", return_value="0.1.0"), \
                  patch.object(worker, "ensure_dependencies", side_effect=AssertionError("unnecessary apt")), \
                  patch.object(worker, "download", side_effect=AssertionError("unnecessary download")), \
-                 patch.object(worker, "cleanup_legacy_docs") as cleanup:
+                 patch.object(worker, "migrate_verified_manual") as manual:
                 self.assertTrue(worker.install(self.entry))
-                cleanup.assert_called_once_with(self.entry)
+                manual.assert_called_once_with(self.entry)
+
+    def test_newer_so_skips_build_and_older_kernel_download(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / (self.entry["repository"] + ".json")).write_text(json.dumps(self.release))
+            with patch.dict(worker.os.environ, {"INFILTRATOROS_RELEASE_DIR": str(root)}), \
+                 patch.object(worker, "verified_current_version", return_value="0.1.1"), \
+                 patch.object(worker, "stored_kernel_matches", side_effect=AssertionError("older KO check")), \
+                 patch.object(worker, "ensure_dependencies", side_effect=AssertionError("unnecessary apt")), \
+                 patch.object(worker, "download", side_effect=AssertionError("unnecessary download")), \
+                 patch.object(worker, "migrate_verified_manual") as manual:
+                self.assertTrue(worker.install(self.entry))
+                manual.assert_called_once_with(self.entry)
 
     def test_store_one_current_kernel_module_without_rebuilding_current_so(self):
         entry = next(e for e in worker.additional_catalogue() if e["id"] == "ffs")
@@ -235,7 +312,7 @@ class InstallerTests(unittest.TestCase):
         release = {"tag_name": "v" + version, "target_commitish": "a" * 40, "assets": assets}
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
-            directory = root / "System/Kernel/Modules"
+            directory = root / "System/Kernel/Filesystems"
             directory.mkdir(parents=True)
             (root / (repo + ".json")).write_text(json.dumps(release))
             target = directory / "ffs.ko"
@@ -244,10 +321,10 @@ class InstallerTests(unittest.TestCase):
                  patch.object(worker, "KERNEL_DIR", directory), \
                  patch.object(worker, "STATUS_DIR", root), \
                  patch.object(worker, "STATUS_PATH", root / "test.status"), \
-                 patch.object(worker, "native_installed", return_value=True), \
+                 patch.object(worker, "verified_current_version", return_value=version), \
                  patch.object(worker, "ensure_dependencies", side_effect=AssertionError("unnecessary apt")), \
                  patch.object(worker, "run", side_effect=AssertionError("unnecessary build or load")), \
-                 patch.object(worker, "cleanup_legacy_docs"), \
+                 patch.object(worker, "migrate_verified_manual"), \
                  patch.object(worker, "validate_kernel_module"), \
                  patch.object(worker, "open_url") as fetch:
                 fetch.return_value = io.BytesIO(b"bad bytes")
@@ -297,14 +374,14 @@ class InstallerTests(unittest.TestCase):
             with patch.dict(worker.os.environ, {"INFILTRATOROS_RELEASE_DIR": str(root)}), \
                  patch.object(worker, "STATUS_DIR", root), \
                  patch.object(worker, "STATUS_PATH", root / "test.status"), \
-                 patch.object(worker, "native_installed", return_value=False), \
+                 patch.object(worker, "verified_current_version", return_value=None), \
                  patch.object(worker, "ensure_dependencies") as dependencies, \
                  patch.object(worker, "download") as download, \
                  patch.object(worker, "run") as compile_install, \
                  patch.object(worker, "verify") as verify, \
-                 patch.object(worker, "cleanup_legacy_docs") as cleanup:
+                 patch.object(worker, "install_flat_package") as install:
                 self.assertFalse(worker.install(self.entry))
-                cleanup.assert_called_once_with(self.entry)
+                install.assert_called_once()
                 dependencies.assert_called_once()
                 download.assert_called_once()
                 compile_install.assert_called_once()

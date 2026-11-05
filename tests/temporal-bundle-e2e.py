@@ -87,8 +87,8 @@ with tempfile.TemporaryDirectory(prefix="native-worker.", dir=native) as tempora
         assert owner == entry["package"] + ": " + str(guide), owner
 
     # Qualify all five filesystem jobs from the exact sealed maintainer bundle.
-    kernel_dir = Path("/System/Kernel/Modules")
-    assert "./System/Kernel/Modules/" in subprocess.check_output(["dpkg-deb", "-c", package], text=True)
+    kernel_dir = Path("/System/Kernel/Filesystems")
+    assert "./System/Kernel/Filesystems/" in subprocess.check_output(["dpkg-deb", "-c", package], text=True)
     kernel_dir.mkdir(parents=True, exist_ok=True)
     filesystem_entries = json.loads((ROOT / "packaging/filesystem-resources.json").read_text())
     assert [e["id"] for e in filesystem_entries] == ["fat12", "fat16", "fat32", "ofs", "exfat"]
@@ -104,6 +104,8 @@ with tempfile.TemporaryDirectory(prefix="native-worker.", dir=native) as tempora
         version = subprocess.check_output(["dpkg-query", "-W", "-f=${Version}", entry["package"]], text=True)
         assert version.endswith("+native1")
         assert module.stat().st_size > 10000
+        manual = Path("/System/Resources/Documentation") / (entry["repository"] + ".pdf")
+        assert not manual.is_symlink() and manual.read_bytes().startswith(b"%PDF-")
         release = json.loads((snapshot / (entry["repository"] + ".json")).read_text())
         name = entry["id"] + "-linux-6.12.107.ko"
         asset = next(item for item in release["assets"] if item["name"] == name)

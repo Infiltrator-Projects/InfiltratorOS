@@ -36,7 +36,7 @@ Description: InfiltratorOS branding and native application integration
  FAT16.so, FAT32.so, OFS.so and exFAT.so ownership under /System/Filesystems. Up to 18 other independent
  filesystem modules may be installed when their native releases qualify.
  The OS installer stores verified Linux filesystem modules under
- /System/Kernel/Modules for manual use when supplied by the same release.
+ /System/Kernel/Filesystems for manual use when supplied by the same release.
  .
  Heavy native application builds are serialised so they do not compete
  for package locks or CPU.

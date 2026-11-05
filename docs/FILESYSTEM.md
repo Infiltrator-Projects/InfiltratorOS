@@ -16,6 +16,7 @@ The native skeleton is:
 │   ├── Kernel/
 │   │   ├── Images/
 │   │   ├── Modules/
+│   │   ├── Filesystems/
 │   │   └── Firmware/
 │   ├── Resources/
 │   │   ├── Calendars/
@@ -38,7 +39,7 @@ The native skeleton is:
 
 `/System` is reserved for operating-system capabilities and implementation components. `/System/Commands` is for genuine command helpers rather than GUI applications; `/System/Libraries`, `/System/Devices` and `/System/Filesystems` identify their corresponding infrastructure roles. There is deliberately no `/System/Programs`.
 
-`/System/Kernel` is the native namespace for kernel-owned material. `Images` is reserved for kernel images and associated boot artefacts, `Firmware` for kernel-managed hardware firmware, and `Modules` for stored `.ko` files. Filesystem `.ko` files go directly in `Modules` under a single filename per provider.
+`/System/Kernel` is the native namespace for kernel-owned material. `Images` is reserved for kernel images and associated boot artefacts, `Firmware` for kernel-managed hardware firmware, and `Modules` for general kernel modules. Filesystem `.ko` files go directly in `Filesystems` under a single filename per provider.
 
 `/System/Resources` contains discoverable capabilities and shared presentation resources. Calendars and clocks belong under `Resources`, not under `Preferences`: a calendar or clock implementation is a capability, while selecting one is a preference. `/System/Preferences` is reserved for system-wide policy and configuration.
 
@@ -58,10 +59,13 @@ These destinations apply to every provider in the [established](../packaging/fil
 
 | Release output | Installed destination | Example |
 | --- | --- | --- |
+| PDF manual | `/System/Resources/Documentation/<provider-repository>.pdf` | `/System/Resources/Documentation/Filesystem-OFS.pdf` |
 | Format shared object | `/System/Filesystems/<catalogue filename>.so` | `/System/Filesystems/OFS.so` |
-| Linux kernel module | `/System/Kernel/Modules/<provider-id>.ko` | `/System/Kernel/Modules/ofs.ko` |
+| Linux kernel module | `/System/Kernel/Filesystems/<provider-id>.ko` | `/System/Kernel/Filesystems/ofs.ko` |
 
-Build the `.so` and the Linux adapter from the same provider release. The release job builds and qualifies one amd64 `.ko` against the project Linux `6.12.107` target and publishes it as `<provider-id>-linux-6.12.107.ko` with the release SHA-256. The native RUN builds the `.so` locally. The InfiltratorOS worker stages the kernel asset from that same release after verifying its SHA-256, ELF type, architecture and kernel release. The stored filename stays the same across provider upgrades. The module is available for manual use from this directory, outside Linux's active module tree.
+Build the `.so` and the Linux adapter from the same provider release. The release job builds and qualifies one amd64 `.ko` against the project Linux `6.12.107` target and publishes it as `<provider-id>-linux-6.12.107.ko` with the release SHA-256. InfiltratorOS calls the native build when the installed `.so` is missing or older than the selected release. It verifies current or newer copies in place, including portable packages. The installer moves legacy package-owned PDFs to the flat path and preserves the exact installed `.so` bytes during that migration.
+
+The worker stages the matching kernel asset after verifying its SHA-256, ELF type, architecture and kernel release. The stored filename stays the same across provider upgrades. The module is available for manual use from this directory, outside Linux's active module tree.
 
 FAT12, FAT16, FAT32, OFS and exFAT already publish the kernel asset. Other providers can use the same contract as their kernel builds qualify. Once a provider stages a `.ko`, later upgrades require its matching asset. SWAP uses the Linux kernel's built-in swap support.
 

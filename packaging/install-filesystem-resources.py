@@ -24,7 +24,7 @@ STATUS_PATH = None
 CATALOGUE = []  # @EMBED_FILESYSTEM_CATALOGUE@
 ADDITIONAL = []  # @EMBED_FILESYSTEM_ADDITIONAL@
 KERNEL_TARGET = "6.12.107"
-KERNEL_DIR = Path("/System/Kernel/Modules")
+KERNEL_DIR = Path("/System/Kernel/Filesystems")
 
 def catalogue():
     entries = CATALOGUE or json.loads((Path(__file__).parent / "filesystem-resources.json").read_text())
@@ -64,6 +64,19 @@ def additional_catalogue():
 def pdf_name(entry):
     """Only format-specific names from the sealed catalogue are accepted."""
     return entry.get("pdf") or (entry["resource"].rsplit("/", 1)[1].removesuffix(".so") + ".pdf")
+
+
+def manual_paths(entry, root):
+    docs = root / "System/Resources/Documentation"
+    return docs / (entry["repository"] + ".pdf"), docs / entry["repository"] / pdf_name(entry)
+
+
+def package_manual(entry, root):
+    flat, legacy = manual_paths(entry, root)
+    if flat.is_symlink():
+        raise ValueError("Unexpected filesystem manual link: " + str(flat))
+    return flat if flat.exists() else legacy
+
 
 def all_catalogue():
     entries = catalogue() + additional_catalogue()
@@ -269,16 +282,25 @@ def exported_interface_symbols(table):
     return result
 
 
-def verify(entry, version, root=Path("/"), query=True, revision=None):
-    """Verify an installed SO + PDF against Debian-native source/build data."""
-    if query:
-        expression = "-f=" + chr(36) + "{Status}\n" + chr(36) + "{Version}\n"
-        identity = subprocess.check_output(
-            ["/usr/bin/dpkg-query", "-W", expression, entry["package"]], text=True)
-        if identity.splitlines() != ["install ok installed", version + "+native1"]:
-            raise ValueError("Expected native filesystem package missing or wrong version")
+def package_version(entry):
+    expression = "-f=" + chr(36) + "{Status}\n" + chr(36) + "{Version}\n"
+    identity = subprocess.check_output(
+        ["/usr/bin/dpkg-query", "-W", expression, entry["package"]], text=True).splitlines()
+    if len(identity) != 2 or identity[0] != "install ok installed":
+        raise ValueError("Expected filesystem package is not fully installed")
+    return identity[1]
+
+
+def verify(entry, version, root=Path("/"), query=True, revision=None, profile="aggressive"):
+    """Verify an installed SO and package-owned PDF against the build data."""
+    native = profile == "aggressive"
+    deb_version = version + ("+native1" if native else "")
+    if query and package_version(entry) != deb_version:
+        raise ValueError("Installed filesystem package has the wrong version")
     module = root / entry["resource"].lstrip("/")
-    guide = root / "System/Resources/Documentation" / entry["repository"] / pdf_name(entry)
+    if not module.is_file() or module.is_symlink():
+        raise ValueError("Installed filesystem SO must be a regular file")
+    guide = package_manual(entry, root)
     if guide.is_symlink() or not guide.is_file():
         raise ValueError("Required filesystem illustrated PDF is missing")
     with guide.open("rb") as file:
@@ -288,18 +310,18 @@ def verify(entry, version, root=Path("/"), query=True, revision=None):
         ["/usr/bin/dpkg-query", "-s", entry["package"]], text=True)
     data = dict(line.split(": ", 1) for line in report.splitlines() if ": " in line)
     expected = {
-        "Version": version + "+native1",
-        "X-Infiltrator-Native-Profile": "aggressive",
-        "X-Infiltrator-LTO": "enabled",
-        "X-Infiltrator-PGO": "trained-two-pass",
+        "Version": deb_version,
+        "X-Infiltrator-Native-Profile": profile,
+        "X-Infiltrator-LTO": "enabled" if native else "disabled",
+        "X-Infiltrator-PGO": "trained-two-pass" if native else "disabled",
     }
     for key, expected_value in expected.items():
         if data.get(key) != expected_value:
             raise ValueError("Native filesystem build metadata mismatch: " + key)
     flags = data.get("X-Infiltrator-Cflags", "").split()
     optimisations = [x for x in flags if re.fullmatch(r"-O(?:[0-9]+|s|g|fast)", x)]
-    if not optimisations or optimisations[-1] != "-O3" or "-march=native" not in flags or not any(
-            item == "-flto" or item.startswith("-flto=") for item in flags):
+    if native and (not optimisations or optimisations[-1] != "-O3" or "-march=native" not in flags or not any(
+            item == "-flto" or item.startswith("-flto=") for item in flags)):
         raise ValueError("Module not compiled with the advertised native flags")
     source = data.get("X-Infiltrator-Source-Revision", "")
     if not re.fullmatch(r"[0-9a-f]{40}", source):
@@ -311,8 +333,8 @@ def verify(entry, version, root=Path("/"), query=True, revision=None):
     if hashlib.sha256(guide.read_bytes()).hexdigest() != data.get("X-Infiltrator-PDF-SHA256"):
         raise ValueError("Installed filesystem PDF differs from Debian package hash")
     if query:
-        for p in (root / "System", root / "System/Filesystems", module,
-                  root / "System/Resources", guide.parent, guide):
+        for p in (root / "System", root / "System/Filesystems", module, root / "System/Resources",
+                  root / "System/Resources/Documentation", guide.parent, guide):
             metadata = p.lstat()
             if metadata.st_uid != 0 or metadata.st_mode & 0o022 or p.is_symlink():
                 raise ValueError("Untrusted native filesystem path: " + str(p))
@@ -371,43 +393,89 @@ def validate_runtime_dependencies(entry, dynamic_section):
             raise ValueError("Unexpected exFAT runtime dependency: " + ", ".join(sorted(unknown)))
 
 
-def native_installed(entry, version, revision):
-    """Verify the actual two-file package, without executing the driver."""
-    try:
-        verify(entry, version, revision=revision)
-        return True
-    except (OSError, ValueError, subprocess.SubprocessError) as error:
-        print("Native cache miss for " + entry["repository"] + ": " + str(error), flush=True)
-        return False
+def verified_current_version(entry, selected, revision, root=Path("/")):
+    module = root / entry["resource"].lstrip("/")
+    if not module.exists() and not module.is_symlink():
+        return None
+    deb_version = package_version(entry)
+    installed = deb_version.removesuffix("+native1")
+    if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", installed):
+        raise ValueError("Unrecognised installed filesystem release: " + deb_version)
+    if tuple(map(int, installed.split("."))) < tuple(map(int, selected.split("."))):
+        return None
+    profile = "aggressive" if deb_version.endswith("+native1") else "portable"
+    verify(entry, installed, root=root, revision=revision if installed == selected else None,
+           profile=profile)
+    return installed
 
 
-def cleanup_legacy_docs(entry, root=Path("/"), owner_lookup=None):
-    """Preserve documents whose obsolete-installer provenance cannot be proved.
+def install_flat_package(entry, package, work):
+    """Put a newly built package's manual at the flat path before installation."""
+    image = work / "package-image"
+    run(["/usr/bin/dpkg-deb", "--raw-extract", package, image])
+    flat, legacy = manual_paths(entry, image)
+    module = image / entry["resource"].lstrip("/")
+    guide = package_manual(entry, image)
+    allowed = {module, guide, *module.parents, *guide.parents}
+    control = image / "DEBIAN"
+    if any(p not in allowed or p.is_symlink() for p in image.rglob("*")
+           if p != control and control not in p.parents):
+        raise ValueError("Filesystem package has unexpected payload paths")
+    if not module.is_file() or not guide.is_file():
+        raise ValueError("Filesystem package must contain one SO and one PDF")
+    if legacy.exists() or legacy.is_symlink():
+        legacy.replace(flat)
+        legacy.parent.rmdir()
+        sums = control / "md5sums"
+        if sums.exists():
+            old = legacy.relative_to(image).as_posix()
+            new = flat.relative_to(image).as_posix()
+            sums.write_text(sums.read_text().replace("  " + old + "\n", "  " + new + "\n"))
+        package = work / "flat-filesystem.deb"
+        run(["/usr/bin/dpkg-deb", "--root-owner-group", "--build", image, package])
+    install_deb(entry, package)
 
-    A known filename, root owner and missing dpkg ownership do not establish
-    that a document was made by an old installer. The new package ships only
-    its PDF; never unlink pre-existing unverified material.
-    """
-    folder = root / "System/Resources/Documentation" / entry["repository"]
-    manual = folder / pdf_name(entry)
-    if manual.is_symlink() or not manual.is_file():
-        raise ValueError("Filesystem PDF must exist before legacy documentation inspection")
-    with manual.open("rb") as guide:
-        if guide.read(5) != b"%PDF-":
-            raise ValueError("Invalid filesystem PDF before legacy inspection")
-    if root == Path("/"):
-        for directory in (root / "System", root / "System/Resources",
-                          root / "System/Resources/Documentation", folder):
-            metadata = directory.lstat()
-            if (not stat.S_ISDIR(metadata.st_mode) or metadata.st_uid != 0
-                    or metadata.st_mode & 0o022):
-                raise ValueError("Unsafe filesystem documentation directory")
-    _ = owner_lookup
-    for item in folder.iterdir():
-        if item.name in {"BUILD-INFO", "README.md", "MIGRATION-PROVENANCE.md", "LICENSE"}:
-            print("Preserving unverified legacy filesystem documentation: " + str(item),
-                  flush=True)
-    return 0
+
+def install_deb(entry, package):
+    flat, _ = manual_paths(entry, Path("/"))
+    if flat.exists() or flat.is_symlink():
+        owner = subprocess.check_output(["/usr/bin/dpkg-query", "-S", str(flat)], text=True)
+        if owner.strip() != f"{entry['package']}: {flat}":
+            raise ValueError("Existing flat filesystem manual belongs to another owner")
+    run(["/usr/bin/dpkg", "--refuse-downgrade", "-i", package])
+
+
+def migrate_verified_manual(entry, root=Path("/")):
+    """Repack an already verified two-file provider without rebuilding its SO."""
+    flat, legacy = manual_paths(entry, root)
+    if package_manual(entry, root) == flat:
+        return
+    module = root / entry["resource"].lstrip("/")
+    query = ["/usr/bin/dpkg-query"]
+    listed = subprocess.check_output(query + ["-L", entry["package"]], text=True).splitlines()
+    allowed = {module, legacy, *module.parents, *legacy.parents}
+    controls = subprocess.check_output(query + ["--control-list", entry["package"]], text=True).splitlines()
+    if any(root / p.lstrip("/") not in allowed for p in listed) or set(controls) - {"md5sums"}:
+        raise ValueError("Cannot move the manual of a filesystem package with extra payloads or hooks")
+    report = subprocess.check_output(query + ["-s", entry["package"]], text=True)
+    if any(line.startswith("Conffiles:") for line in report.splitlines()):
+        raise ValueError("Cannot move the manual of a filesystem package with conffiles")
+    with tempfile.TemporaryDirectory(dir=STATUS_DIR, prefix="filesystem-manual-") as folder:
+        work = Path(folder)
+        image = work / "installed-image"
+        control = image / "DEBIAN"
+        control.mkdir(parents=True)
+        (control / "control").write_text("\n".join(line for line in report.splitlines()
+                                                   if not line.startswith("Status:")) + "\n")
+        for source, target in ((module, module), (legacy, flat)):
+            dest = image / target.relative_to(root)
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source, dest)
+        package = work / "migrated-filesystem.deb"
+        run(["/usr/bin/dpkg-deb", "--root-owner-group", "--build", image, package])
+        install_deb(entry, package)
+    if not flat.is_file() or flat.is_symlink():
+        raise ValueError("Filesystem manual was not installed at its flat path")
 
 def ensure_dependencies(entry):
     ready_name = ("filesystem-extended-dependencies-ready" if entry.get("abi") else
@@ -445,14 +513,18 @@ def install(entry):
     release = json.loads(payload)
     version, location, digest, length = release_installer(entry, release)
     revision = release["target_commitish"]
+    installed = verified_current_version(entry, version, revision)
+    if installed:
+        migrate_verified_manual(entry)
+    if installed and installed != version:
+        print("Keeping newer installed release " + installed + " of " + entry["repository"], flush=True)
+        return True
     kernel = next((item for item in release["assets"] if item["name"] == kernel_asset_name(entry)), None)
     target = KERNEL_DIR / (entry["id"] + ".ko")
     if kernel is None and entry["id"] != "swap" and (target.exists() or target.is_symlink()):
         raise ValueError("Selected filesystem release is missing its previously staged kernel module")
     need_kernel = kernel is not None and not stored_kernel_matches(target, kernel)
-    installed = native_installed(entry, version, revision)
     if installed and not need_kernel:
-        cleanup_legacy_docs(entry)
         print("Already installed and verified: " + entry["repository"], flush=True)
         return True
     with tempfile.TemporaryDirectory(dir=STATUS_DIR, prefix="filesystem-native-") as folder:
@@ -468,12 +540,15 @@ def install(entry):
                    "Using its independent checksum-verified source installer")
             installer = Path(folder) / "filesystem.run"
             download(location, installer, digest, length)
-            run([installer, "--profile", "aggressive", "--system-package-mode"])
+            output = Path(folder) / "built"
+            run([installer, "--profile", "aggressive", "--system-package-mode",
+                 "--build-only", "--output", output])
+            package = output / f"{entry['package']}_{version}+native1_amd64.deb"
+            install_flat_package(entry, package, Path(folder))
             verify(entry, version, revision=revision)
         if need_kernel:
             stage_kernel_module(module, target)
             print("Stored and verified " + str(target), flush=True)
-        cleanup_legacy_docs(entry)
     return False
 
 
