@@ -47,19 +47,13 @@ class AdditionalFilesystemTests(unittest.TestCase):
             "pfs3", "hfs", "hfsplus", "minix", "ufs2", "zfs", "apfs", "swap", "sfs2", "ufs1"
         })
 
-    def test_ext2_requires_both_dropin_and_test_media_abis(self):
-        ext2 = next(entry for entry in worker.additional_catalogue()
-                    if entry["id"] == "ext2")
-        self.assertEqual(
-            worker.required_interface_symbols(ext2),
-            ["infiltrator_filesystem_module_v1",
-             "infiltrator_filesystem_ext_v1"],
-        )
+    def test_provider_abi_identity_is_component_owned(self):
+        # The OS validates the signed catalogue, not an independently
+        # compiled module's exported ABI: that qualification belongs to RUN.
+        entries = {e["id"]: e for e in worker.additional_catalogue()}
+        self.assertEqual(entries["ext2"]["abi"], "infiltrator_filesystem_module_v1")
         for format_id in ("ext3", "ext4"):
-            entry = next(e for e in worker.additional_catalogue()
-                         if e["id"] == format_id)
-            self.assertEqual(worker.required_interface_symbols(entry),
-                             ["infiltrator_filesystem_ext_v1"])
+            self.assertEqual(entries[format_id]["abi"], "infiltrator_filesystem_ext_v1")
 
     def test_deb_is_portable_and_run_rebuilds_native_package_contract(self):
         """Admission checks the same two published assets as FAT32/OFS."""

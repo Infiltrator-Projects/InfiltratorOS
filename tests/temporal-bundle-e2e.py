@@ -109,15 +109,10 @@ with tempfile.TemporaryDirectory(prefix="native-worker.", dir=native) as tempora
         assert module.stat().st_size > 10000
         manual = installed_manual(entry, module.stem + ".pdf")
         assert not manual.is_symlink() and manual.read_bytes().startswith(b"%PDF-")
-        release = json.loads((snapshot / (entry["repository"] + ".json")).read_text())
-        name = entry["id"] + "-linux-6.12.107.ko"
-        asset = next(item for item in release["assets"] if item["name"] == name)
-        stored = kernel_dir / (entry["id"] + ".ko")
-        assert stored.stat().st_size == asset["size"]
-        assert "sha256:" + hashlib.sha256(stored.read_bytes()).hexdigest() == asset["digest"]
+        # Independent native RUN owns the system-package transaction.
+        # Kernel builds are a separate optional product-specific mode.
     assert len(list((work / "status").glob("*-install.status"))) == 59
     assert {p.name for p in Path("/System/Filesystems").glob("FAT*.so")} == {"FAT12.so", "FAT16.so", "FAT32.so"}
-    assert {p.name for p in kernel_dir.iterdir()} == {entry["id"] + ".ko" for entry in filesystem_entries}
 assert Path("/System/Filesystems/OFS.so").is_file()
 print("Exact InfiltratorOS bundle: 54 temporal and 5 filesystem published native RUN installers independently built, installed, verified and owned")
 

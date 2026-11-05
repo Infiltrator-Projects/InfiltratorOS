@@ -120,6 +120,13 @@ def main():
     all_filesystems = filesystems + optional
     chosen = selection("INFILTRATOROS_SELECTED_FILESYSTEMS", all_filesystems,
                        lambda item: item.removeprefix("filesystem-"))
+    # Exactly the jobs we will launch belong to this run's progress contract.
+    # The complete provider/filesystem catalogues above remain for pinned
+    # release discovery, but must never generate phantom running jobs.
+    selected = applications + providers + chosen
+    manifest = stage / ".selected.list.tmp"
+    manifest.write_text("".join(slug + "\n" for slug in selected))
+    manifest.replace(stage / "selected.list")
     for product in applications:
         launch(stage, product)
     for provider in providers:

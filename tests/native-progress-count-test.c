@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later
- * Verify the production GTK progress denominator from real run manifests.
+ * Exercise the actual selected-job inventory, including partial installs.
  */
 #define _POSIX_C_SOURCE 200809L
 #include "../packaging/native-progress-count.h"
@@ -17,22 +17,6 @@
     } \
 } while (0)
 
-static int write_manifest(const char *stage, const char *name,
-                          const char *prefix, int count)
-{
-    char path[4096];
-    if (snprintf(path, sizeof(path), "%s/%s", stage, name) >= (int)sizeof(path))
-        return -1;
-    FILE *file = fopen(path, "w");
-    if (!file) return -1;
-    for (int n = 0; n < count; ++n)
-        if (fprintf(file, "%s%d\n", prefix, n) < 0) {
-            (void)fclose(file);
-            return -1;
-        }
-    return fclose(file);
-}
-
 static int write_status(const char *path, const char *state)
 {
     FILE *file = fopen(path, "w");
@@ -45,34 +29,29 @@ static int write_status(const char *path, const char *state)
 int main(void)
 {
     char root[] = "/tmp/infiltrator-progress-test.XXXXXX";
-    char stage[4096], status[4096], optional[4096];
+    char stage[4096], status[4096], manifest[4096], path[4096];
     CHECK(mkdtemp(root) != NULL);
     CHECK(snprintf(stage, sizeof(stage), "%s/native-worker.test", root) < (int)sizeof(stage));
     CHECK(snprintf(status, sizeof(status), "%s/status", stage) < (int)sizeof(status));
-    CHECK(snprintf(optional, sizeof(optional), "%s/filesystems-optional.list", stage) < (int)sizeof(optional));
+    CHECK(snprintf(manifest, sizeof(manifest), "%s/selected.list", stage) < (int)sizeof(manifest));
     CHECK(mkdir(stage, 0700) == 0);
     CHECK(mkdir(status, 0700) == 0);
     CHECK(native_progress_total_jobs(status) == -1);
-    CHECK(write_manifest(stage, "providers.list", "calendar-test-", 54) == 0);
-    CHECK(write_manifest(stage, "filesystems.list", "filesystem-main-", 5) == 0);
-    CHECK(write_manifest(stage, "filesystems-optional.list", "filesystem-extra-", 18) == 0);
-    CHECK(native_progress_total_jobs(status) == 81);
-    CHECK(write_manifest(stage, "filesystems-optional.list", "filesystem-extra-", 16) == 0);
-    CHECK(native_progress_total_jobs(status) == 79);
-    CHECK(write_manifest(stage, "filesystems-optional.list", "filesystem-extra-", 0) == 0);
-    CHECK(native_progress_total_jobs(status) == 63);
-    CHECK(write_manifest(stage, "filesystems-optional.list", "filesystem-extra-", 18) == 0);
+    FILE *file = fopen(manifest, "w");
+    CHECK(file != NULL);
+    CHECK(fputs("system-monitor\ncalculator\nfiles\ndefragmenter\n", file) >= 0);
+    for (int i = 0; i < 54; ++i) CHECK(fprintf(file, "calendar-test-%d\n", i) > 0);
+    for (int i = 0; i < 23; ++i) CHECK(fprintf(file, "filesystem-test-%d\n", i) > 0);
+    CHECK(fclose(file) == 0);
     CHECK(native_progress_total_jobs(status) == 81);
     NativeProgressJobs jobs;
     CHECK(native_progress_load_jobs(status, &jobs) == 81);
     CHECK(strcmp(jobs.slugs[0], "system-monitor") == 0);
-    CHECK(strcmp(jobs.slugs[4], "calendar-test-0") == 0);
-    CHECK(strcmp(jobs.slugs[80], "filesystem-extra-17") == 0);
+    CHECK(strcmp(jobs.slugs[80], "filesystem-test-22") == 0);
     CHECK(strcmp(native_progress_run_status(status), "running") == 0);
-    char path[4096];
-    for (int index = 0; index < jobs.count; ++index) {
+    for (int i = 0; i < jobs.count; ++i) {
         CHECK(snprintf(path, sizeof(path), "%s/%s-install.status", status,
-                       jobs.slugs[index]) < (int)sizeof(path));
+                       jobs.slugs[i]) < (int)sizeof(path));
         CHECK(write_status(path, "complete") == 0);
     }
     CHECK(strcmp(native_progress_run_status(status), "complete") == 0);
@@ -80,34 +59,52 @@ int main(void)
     CHECK(strcmp(native_progress_run_status(status), "failed") == 0);
     CHECK(write_status(path, "complete\nstate=failed") == 0);
     CHECK(strcmp(native_progress_run_status(status), "running") == 0);
-    for (int index = 0; index < jobs.count; ++index) {
+    for (int i = 0; i < jobs.count; ++i) {
         CHECK(snprintf(path, sizeof(path), "%s/%s-install.status", status,
-                       jobs.slugs[index]) < (int)sizeof(path));
+                       jobs.slugs[i]) < (int)sizeof(path));
         CHECK(unlink(path) == 0);
     }
-    /* Duplicate slugs across manifests are invalid, not extra jobs. */
-    CHECK(write_manifest(stage, "filesystems-optional.list", "filesystem-main-", 1) == 0);
-    CHECK(native_progress_total_jobs(status) == -1);
-    CHECK(write_manifest(stage, "filesystems-optional.list", "filesystem-extra-", 19) == 0);
-    CHECK(native_progress_total_jobs(status) == -1);
-    CHECK(write_manifest(stage, "filesystems-optional.list", "filesystem-extra-", 18) == 0);
-    CHECK(write_manifest(stage, "providers.list", "calendar-test-", 53) == 0);
-    CHECK(native_progress_total_jobs(status) == -1);
-    CHECK(write_manifest(stage, "providers.list", "calendar-test-", 54) == 0);
-    FILE *file = fopen(optional, "w");
+
+    file = fopen(manifest, "w");
     CHECK(file != NULL);
-    CHECK(fputs("filesystem-extra-0\nfilesystem-invalid/name\n", file) >= 0);
+    CHECK(fputs("calculator\nfilesystem-ofs\n", file) >= 0);
+    CHECK(fclose(file) == 0);
+    CHECK(native_progress_total_jobs(status) == 2);
+    CHECK(strcmp(native_progress_run_status(status), "running") == 0);
+    CHECK(snprintf(path, sizeof(path), "%s/calculator-install.status", status) < (int)sizeof(path));
+    CHECK(write_status(path, "complete") == 0);
+    CHECK(snprintf(path, sizeof(path), "%s/filesystem-ofs-install.status", status) < (int)sizeof(path));
+    CHECK(write_status(path, "complete") == 0);
+    CHECK(strcmp(native_progress_run_status(status), "complete") == 0);
+    CHECK(unlink(path) == 0);
+    CHECK(snprintf(path, sizeof(path), "%s/calculator-install.status", status) < (int)sizeof(path));
+    CHECK(unlink(path) == 0);
+
+    file = fopen(manifest, "w");
+    CHECK(file != NULL);
+    CHECK(fputs("calculator\ncalculator\n", file) >= 0);
     CHECK(fclose(file) == 0);
     CHECK(native_progress_total_jobs(status) == -1);
-    CHECK(unlink(optional) == 0);
+    file = fopen(manifest, "w");
+    CHECK(file != NULL);
+    CHECK(fputs("filesystem-invalid/name\n", file) >= 0);
+    CHECK(fclose(file) == 0);
     CHECK(native_progress_total_jobs(status) == -1);
-    CHECK(snprintf(path, sizeof(path), "%s/providers.list", stage) < (int)sizeof(path));
-    CHECK(unlink(path) == 0);
-    CHECK(snprintf(path, sizeof(path), "%s/filesystems.list", stage) < (int)sizeof(path));
-    CHECK(unlink(path) == 0);
+    file = fopen(manifest, "w");
+    CHECK(file != NULL);
+    CHECK(fputs("unexpected\n", file) >= 0);
+    CHECK(fclose(file) == 0);
+    CHECK(native_progress_total_jobs(status) == -1);
+    file = fopen(manifest, "w");
+    CHECK(file != NULL);
+    CHECK(fclose(file) == 0);
+    CHECK(native_progress_total_jobs(status) == 0);
+    CHECK(strcmp(native_progress_run_status(status), "complete") == 0);
+
+    CHECK(unlink(manifest) == 0);
     CHECK(rmdir(status) == 0);
     CHECK(rmdir(stage) == 0);
     CHECK(rmdir(root) == 0);
-    puts("Native installer inventory passed (63, 79, 81, duplicate and malformed lists)");
+    puts("Selected native installation status and progress contracts passed");
     return 0;
 }
