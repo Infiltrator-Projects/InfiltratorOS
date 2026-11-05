@@ -1,6 +1,6 @@
 #!/usr/bin/python3 -u
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Install and verify independently published FAT12/16/32, OFS and exFAT native SO packages."""
+"""Install native filesystem packages and store their published Linux modules."""
 import fcntl
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import hashlib
@@ -8,6 +8,7 @@ import json
 import os
 from pathlib import Path
 import re
+import shutil
 import stat
 import subprocess
 import sys
@@ -22,6 +23,8 @@ STATUS_DIR = STATUS_ROOT
 STATUS_PATH = None
 CATALOGUE = []  # @EMBED_FILESYSTEM_CATALOGUE@
 ADDITIONAL = []  # @EMBED_FILESYSTEM_ADDITIONAL@
+KERNEL_TARGET = "6.12.107"
+KERNEL_DIR = Path("/System/Kernel/Modules")
 
 def catalogue():
     entries = CATALOGUE or json.loads((Path(__file__).parent / "filesystem-resources.json").read_text())
@@ -105,6 +108,10 @@ def open_url(url):
             time.sleep(2**attempt)
     raise RuntimeError("GitHub release lookup failed")
 
+def kernel_asset_name(entry):
+    return f"{entry['id']}-linux-{KERNEL_TARGET}.ko"
+
+
 def release_installer(entry, release):
     if not isinstance(release, dict) or release.get("draft") or release.get("prerelease"):
         raise ValueError("Not a published stable filesystem release")
@@ -126,14 +133,18 @@ def release_installer(entry, release):
     # Neither distribution path requires a separately published bare SO.
     bits = entry["id"][3:]
     milestone = (0, 1, 2) if bits == "32" else (0, 1, 3)
+    kernel_name = kernel_asset_name(entry)
     if entry["id"] == "exfat":
-        expected.update({"exFAT.so", "exfat-linux-6.12.107.ko", "SHA256SUMS"})
+        expected.update({"exFAT.so", kernel_name, "SHA256SUMS"})
     elif entry["id"] == "ofs":
         expected.update({"OFS.so", "SHA256SUMS"})
         if tuple(map(int, version.split("."))) >= (0, 1, 1):
-            expected.add("ofs-linux-6.12.107.ko")
+            expected.add(kernel_name)
     elif entry["id"] in {"fat12", "fat16", "fat32"} and tuple(map(int, version.split("."))) >= milestone:
-        expected.update({f"FAT{bits}.efi", f"fat{bits}-linux-6.12.107.ko"})
+        expected.update({f"FAT{bits}.efi", kernel_name})
+    elif entry.get("abi") and entry["id"] != "swap" and isinstance(assets, list):
+        if any(isinstance(item, dict) and item.get("name") == kernel_name for item in assets):
+            expected.add(kernel_name)
     if (not isinstance(assets, list) or len(assets) != len(expected) or
             {x.get("name") for x in assets if isinstance(x, dict)} != expected):
         raise ValueError("Filesystem release is missing required native driver assets")
@@ -172,6 +183,48 @@ def download(url, path, digest, length):
     if count != length or sha.hexdigest() != digest:
         raise ValueError("Installer SHA256 or size mismatch")
     path.chmod(0o700)
+
+
+def stored_kernel_matches(path, asset):
+    owner = os.geteuid()
+    for directory in (KERNEL_DIR.parent.parent, KERNEL_DIR.parent, KERNEL_DIR):
+        info = directory.lstat()
+        if not stat.S_ISDIR(info.st_mode) or info.st_uid != owner or info.st_mode & 0o022:
+            raise ValueError("Untrusted kernel storage directory: " + str(directory))
+    try:
+        info = path.lstat()
+    except FileNotFoundError:
+        return False
+    if not stat.S_ISREG(info.st_mode) or info.st_uid != owner or info.st_mode & 0o022:
+        raise ValueError("Untrusted stored kernel module: " + str(path))
+    if info.st_size != asset["size"]:
+        return False
+    with path.open("rb") as module:
+        return hashlib.file_digest(module, "sha256").hexdigest() == asset["digest"][7:]
+
+
+def validate_kernel_module(path):
+    report = subprocess.check_output(["/usr/bin/readelf", "-W", "-h", "-p", ".modinfo", str(path)],
+                                     text=True, env={**os.environ, "LC_ALL": "C"})
+    if (not re.search(r"^\s*Class:\s+ELF64\s*$", report, re.M)
+            or not re.search(r"^\s*Type:\s+REL\b", report, re.M)
+            or not re.search(r"^\s*Machine:.*X86-64\s*$", report, re.M)
+            or not re.search(r"\bvermagic=" + re.escape(KERNEL_TARGET) + r"(?=\s|$)", report)):
+        raise ValueError("Filesystem kernel module does not match the published build target")
+
+
+def stage_kernel_module(source, destination):
+    with tempfile.NamedTemporaryFile(dir=destination.parent, prefix=".module-", delete=False) as file:
+        temporary = Path(file.name)
+        try:
+            with source.open("rb") as module:
+                shutil.copyfileobj(module, file)
+            os.fchmod(file.fileno(), 0o644)
+            file.flush()
+            os.fsync(file.fileno())
+            temporary.replace(destination)
+        finally:
+            temporary.unlink(missing_ok=True)
 
 def required_interface_symbols(entry):
     """The installed module must expose every ABI used by its consumers."""
@@ -392,18 +445,34 @@ def install(entry):
     release = json.loads(payload)
     version, location, digest, length = release_installer(entry, release)
     revision = release["target_commitish"]
-    if native_installed(entry, version, revision):
+    kernel = next((item for item in release["assets"] if item["name"] == kernel_asset_name(entry)), None)
+    target = KERNEL_DIR / (entry["id"] + ".ko")
+    if kernel is None and entry["id"] != "swap" and (target.exists() or target.is_symlink()):
+        raise ValueError("Selected filesystem release is missing its previously staged kernel module")
+    need_kernel = kernel is not None and not stored_kernel_matches(target, kernel)
+    installed = native_installed(entry, version, revision)
+    if installed and not need_kernel:
         cleanup_legacy_docs(entry)
         print("Already installed and verified: " + entry["repository"], flush=True)
         return True
-    ensure_dependencies(entry)
-    status("running", 12, "Compiling " + entry["name"],
-           "Using its independent checksum-verified source installer")
     with tempfile.TemporaryDirectory(dir=STATUS_DIR, prefix="filesystem-native-") as folder:
-        installer = Path(folder) / "filesystem.run"
-        download(location, installer, digest, length)
-        run([installer, "--profile", "aggressive", "--system-package-mode"])
-        verify(entry, version, revision=revision)
+        module = Path(folder) / "filesystem.ko"
+        if need_kernel:
+            status("running", 10, "Verifying the " + entry["name"] + " kernel module",
+                   "Preparing a stored copy for manual use")
+            download(kernel["browser_download_url"], module, kernel["digest"][7:], kernel["size"])
+            validate_kernel_module(module)
+        if not installed:
+            ensure_dependencies(entry)
+            status("running", 12, "Compiling " + entry["name"],
+                   "Using its independent checksum-verified source installer")
+            installer = Path(folder) / "filesystem.run"
+            download(location, installer, digest, length)
+            run([installer, "--profile", "aggressive", "--system-package-mode"])
+            verify(entry, version, revision=revision)
+        if need_kernel:
+            stage_kernel_module(module, target)
+            print("Stored and verified " + str(target), flush=True)
         cleanup_legacy_docs(entry)
     return False
 

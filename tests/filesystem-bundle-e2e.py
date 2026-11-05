@@ -18,6 +18,9 @@ package = Path(sys.argv[1]).resolve()
 root = Path(__file__).resolve().parents[1]
 entries = json.loads((root / "packaging/filesystem-resources.json").read_text())
 assert [x["id"] for x in entries] == ["fat12", "fat16", "fat32", "ofs", "exfat"]
+kernel_dir = Path("/System/Kernel/Modules")
+assert "./System/Kernel/Modules/" in subprocess.check_output(["dpkg-deb", "-c", package], text=True)
+kernel_dir.mkdir(parents=True, exist_ok=True)
 native = Path("/Temporary/InfiltratorOS")
 native.mkdir(mode=0o755, parents=True, exist_ok=True)
 with tempfile.TemporaryDirectory(prefix="native-worker.", dir=native) as temporary:
@@ -58,6 +61,7 @@ with tempfile.TemporaryDirectory(prefix="native-worker.", dir=native) as tempora
                        check=True, env=env)
         record = stage / "status" / (slug + "-install.status")
         assert "state=complete\n" in record.read_text(), slug
+        assert (kernel_dir / (entry["id"] + ".ko")).is_file()
         module = Path(entry["resource"])
         assert module.is_file(), module
         owner = subprocess.check_output(["dpkg-query", "-S", entry["resource"]],

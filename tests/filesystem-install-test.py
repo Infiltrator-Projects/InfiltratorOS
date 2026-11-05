@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """Contract tests for five independently packaged filesystem installers."""
 import copy
+import hashlib
 import importlib.util
+import io
 import json
 from pathlib import Path
 import tempfile
@@ -218,6 +220,63 @@ class InstallerTests(unittest.TestCase):
                  patch.object(worker, "cleanup_legacy_docs") as cleanup:
                 self.assertTrue(worker.install(self.entry))
                 cleanup.assert_called_once_with(self.entry)
+
+    def test_store_one_current_kernel_module_without_rebuilding_current_so(self):
+        entry = next(e for e in worker.additional_catalogue() if e["id"] == "ffs")
+        version = "1.0.2"
+        repo = entry["repository"]
+        names = [f"{repo.lower()}-{version}-native-installer.run",
+                 f"{entry['package']}_{version}_amd64.deb", worker.kernel_asset_name(entry)]
+        base = f"https://github.com/Infiltrator-Projects/{repo}/releases/download/v{version}/"
+        payload = b"verified kernel fixture"
+        assets = [{"name": name, "browser_download_url": base + name,
+                   "size": len(payload), "digest": "sha256:" + hashlib.sha256(payload).hexdigest()}
+                  for name in names]
+        release = {"tag_name": "v" + version, "target_commitish": "a" * 40, "assets": assets}
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            directory = root / "System/Kernel/Modules"
+            directory.mkdir(parents=True)
+            (root / (repo + ".json")).write_text(json.dumps(release))
+            target = directory / "ffs.ko"
+            target.write_bytes(b"previous stored build")
+            with patch.dict(worker.os.environ, {"INFILTRATOROS_RELEASE_DIR": str(root)}), \
+                 patch.object(worker, "KERNEL_DIR", directory), \
+                 patch.object(worker, "STATUS_DIR", root), \
+                 patch.object(worker, "STATUS_PATH", root / "test.status"), \
+                 patch.object(worker, "native_installed", return_value=True), \
+                 patch.object(worker, "ensure_dependencies", side_effect=AssertionError("unnecessary apt")), \
+                 patch.object(worker, "run", side_effect=AssertionError("unnecessary build or load")), \
+                 patch.object(worker, "cleanup_legacy_docs"), \
+                 patch.object(worker, "validate_kernel_module"), \
+                 patch.object(worker, "open_url") as fetch:
+                fetch.return_value = io.BytesIO(b"bad bytes")
+                with self.assertRaisesRegex(ValueError, "SHA256 or size mismatch"):
+                    worker.install(entry)
+                self.assertEqual(target.read_bytes(), b"previous stored build")
+                fetch.reset_mock()
+                fetch.return_value = io.BytesIO(payload)
+                self.assertFalse(worker.install(entry))
+                self.assertEqual(target.read_bytes(), payload)
+                self.assertEqual({path.name for path in directory.iterdir()}, {"ffs.ko"})
+                self.assertTrue(worker.install(entry))
+                fetch.assert_called_once_with(base + names[-1])
+                release["assets"].pop()
+                (root / (repo + ".json")).write_text(json.dumps(release))
+                with self.assertRaisesRegex(ValueError, "previously staged kernel module"):
+                    worker.install(entry)
+                self.assertEqual(target.read_bytes(), payload)
+
+    def test_swap_cannot_supply_a_kernel_module_asset(self):
+        entry = next(e for e in worker.additional_catalogue() if e["id"] == "swap")
+        release = copy.deepcopy(self.release)
+        names = [f"{entry['repository'].lower()}-0.1.0-native-installer.run",
+                 f"{entry['package']}_0.1.0_amd64.deb", worker.kernel_asset_name(entry)]
+        base = f"https://github.com/Infiltrator-Projects/{entry['repository']}/releases/download/v0.1.0/"
+        release["assets"] = [{"name": name, "browser_download_url": base + name,
+                              "digest": "sha256:" + "a" * 64, "size": 100} for name in names]
+        with self.assertRaisesRegex(ValueError, "missing required native driver"):
+            worker.release_installer(entry, release)
 
     def test_source_commit_required_before_reusing_or_installing(self):
         with tempfile.TemporaryDirectory() as temporary:

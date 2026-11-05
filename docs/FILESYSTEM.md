@@ -38,7 +38,7 @@ The native skeleton is:
 
 `/System` is reserved for operating-system capabilities and implementation components. `/System/Commands` is for genuine command helpers rather than GUI applications; `/System/Libraries`, `/System/Devices` and `/System/Filesystems` identify their corresponding infrastructure roles. There is deliberately no `/System/Programs`.
 
-`/System/Kernel` is the native namespace for kernel-owned material. `Images` is intended for kernel images and closely associated boot artefacts, `Modules` for loadable kernel modules, and `Firmware` for firmware consumed by kernel-managed hardware support. These directories remain structural placeholders: establishing them does not move, copy, link, mount over or otherwise alter the Linux kernel, `/boot`, distribution module trees or existing firmware locations.
+`/System/Kernel` is the native namespace for kernel-owned material. `Images` is reserved for kernel images and associated boot artefacts, `Firmware` for kernel-managed hardware firmware, and `Modules` for stored `.ko` files. Filesystem `.ko` files go directly in `Modules` under a single filename per provider.
 
 `/System/Resources` contains discoverable capabilities and shared presentation resources. Calendars and clocks belong under `Resources`, not under `Preferences`: a calendar or clock implementation is a capability, while selecting one is a preference. `/System/Preferences` is reserved for system-wide policy and configuration.
 
@@ -52,9 +52,20 @@ The native command search path is `/System/Commands:/Programs` ahead of the inhe
 
 No native Infiltrator application is mirrored into `/usr/bin` merely for compatibility. The Linux base can keep its historical paths while the Infiltrator namespace grows independently.
 
-## Planned boot and modular filesystem integration
+## Filesystem build outputs
 
-The current native namespace reserves `/System/Kernel/Images` and `/System/Kernel/Modules` as a future OS-owned layout. During the intermediate Linux stage, kernel and initramfs images may remain in `/boot` and Linux `.ko` filesystem modules remain in their qualified Linux module paths; no premature migration is implied.
+These destinations apply to every provider in the [established](../packaging/filesystem-resources.json) and [additional](../packaging/filesystem-additional.json) catalogues.
+
+| Release output | Installed destination | Example |
+| --- | --- | --- |
+| Format shared object | `/System/Filesystems/<catalogue filename>.so` | `/System/Filesystems/OFS.so` |
+| Linux kernel module | `/System/Kernel/Modules/<provider-id>.ko` | `/System/Kernel/Modules/ofs.ko` |
+
+Build the `.so` and the Linux adapter from the same provider release. The release job builds and qualifies one amd64 `.ko` against the project Linux `6.12.107` target and publishes it as `<provider-id>-linux-6.12.107.ko` with the release SHA-256. The native RUN builds the `.so` locally. The InfiltratorOS worker stages the kernel asset from that same release after verifying its SHA-256, ELF type, architecture and kernel release. The stored filename stays the same across provider upgrades. The module is available for manual use from this directory, outside Linux's active module tree.
+
+FAT12, FAT16, FAT32, OFS and exFAT already publish the kernel asset. Other providers can use the same contract as their kernel builds qualify. Once a provider stages a `.ko`, later upgrades require its matching asset. SWAP uses the Linux kernel's built-in swap support.
+
+## Planned boot and modular filesystem integration
 
 The intended Setup installer will select an on-disk format based on qualified capabilities, install its **single authoritative `.so`** and supply the verified exact same module to BOOT's generic loader and the kernel's generic filesystem bridge, along with the required early-boot infrastructure. Until those loaders work, Setup may temporarily use existing separately qualified `.efi` readers and Linux `.ko` providers. The boot-image filesystem and the runtime root filesystem may differ. A future native InfiltratorOS kernel may use a non-Linux module ABI, but the same separation remains.
 

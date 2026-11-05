@@ -55,4 +55,4 @@ Cinnamon login integration may assign native executable icons in the user's GVfs
 
 `tests/check.sh` exercises the compiled launcher/status contracts, provider identity rules and verification logic. CI rebuilds and compares Debian package bytes and exercises real provider installers inside disposable GitHub Actions hosts. Publishing uses exactly the qualified bytes, with immutable public release tags/assets. These checks are not equivalent to physical-machine, filesystem crash-recovery, native BOOT or Linux-kernel VFS qualification.
 
-The current system remains an integration layer on Debian/Linux Mint. `/System/Kernel` directories are placeholders; they do not automatically replace Linux kernel, firmware or initramfs files. See [VALIDATION.md](VALIDATION.md) for explicit remaining evidence gates.
+The current system remains an integration layer on Debian/Linux Mint. `/System/Kernel/Modules` stores verified filesystem kernel modules for manual use, with one filename per provider. Linux's active module, firmware and initramfs paths remain distribution-owned. See [VALIDATION.md](VALIDATION.md) for explicit remaining evidence gates.
