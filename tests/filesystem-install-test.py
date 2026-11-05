@@ -304,6 +304,11 @@ class InstallerTests(unittest.TestCase):
                    "size": len(payload), "digest": "sha256:" + hashlib.sha256(payload).hexdigest()}
                   for name in names]
         release = {"tag_name": "v" + version, "target_commitish": "a" * 40, "assets": assets}
+        metadata = {"Package": entry["package"], "Version": version + "+native1",
+                    "X-Infiltrator-Native-Profile": "aggressive",
+                    "X-Infiltrator-Source-Revision": "a" * 40}
+        staged = {}
+        commands = []
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             directory = root / "System/Kernel/Filesystems"
@@ -311,13 +316,31 @@ class InstallerTests(unittest.TestCase):
             (root / (repo + ".json")).write_text(json.dumps(release))
             target = directory / "ffs.ko"
             target.write_bytes(b"previous stored build")
+
+            def package_kernel(entry, package, module, kernel_release, identity):
+                staged["payload"] = module.read_bytes()
+                metadata["X-Infiltrator-Kernel-SHA256"] = hashlib.sha256(module.read_bytes()).hexdigest()
+                metadata["X-Infiltrator-Kernel-Release"] = kernel_release
+                package.parent.mkdir(parents=True, exist_ok=True)
+                package.write_bytes(b"three-file package fixture")
+
+            def run(command):
+                commands.append(command)
+                if command[0] == "/usr/bin/dpkg":
+                    target.write_bytes(staged["payload"])
+                elif Path(command[0]).name != "filesystem.run":
+                    raise AssertionError("Unexpected build or activation")
+
             with patch.dict(worker.os.environ, {"INFILTRATOROS_RELEASE_DIR": str(root)}), \
                  patch.object(worker, "KERNEL_DIR", directory), \
                  patch.object(worker, "STATUS_DIR", root), \
                  patch.object(worker, "STATUS_PATH", root / "test.status"), \
-                 patch.object(worker, "verified_current_version", return_value=(version, {})), \
+                 patch.object(worker, "verified_current_version", return_value=(version, metadata)), \
                  patch.object(worker, "ensure_dependencies", side_effect=AssertionError("unnecessary apt")), \
-                 patch.object(worker, "run", side_effect=AssertionError("unnecessary build or load")), \
+                 patch.object(worker, "run", side_effect=run), \
+                 patch.object(worker, "package_kernel", side_effect=package_kernel), \
+                 patch.object(worker, "verify", return_value=metadata), \
+                 patch.object(worker, "verify_owned_path"), \
                  patch.object(worker, "repair_manual", return_value=False), \
                  patch.object(worker, "validate_kernel_module"), \
                  patch.object(worker, "open_url") as fetch:
@@ -330,19 +353,15 @@ class InstallerTests(unittest.TestCase):
                 self.assertFalse(worker.install(entry))
                 self.assertEqual(target.read_bytes(), payload)
                 self.assertEqual({path.name for path in directory.iterdir()}, {"ffs.ko"})
+                self.assertEqual(len(commands), 1)
+                self.assertEqual(commands[0][0], "/usr/bin/dpkg")
                 self.assertTrue(worker.install(entry))
                 fetch.assert_called_once_with(base + names[-1])
                 fetch.reset_mock()
                 fetch.return_value = io.BytesIO(payload)
-
-                def install_new_package(command):
-                    if command[0] == "/usr/bin/dpkg":
-                        target.unlink()
-
                 with patch.object(worker, "verified_current_version", return_value=None), \
-                     patch.object(worker, "ensure_dependencies"), \
-                     patch.object(worker, "verify", return_value={}), \
-                     patch.object(worker, "run", side_effect=install_new_package):
+                     patch.object(worker, "installed_kernel_metadata", return_value=metadata), \
+                     patch.object(worker, "ensure_dependencies"):
                     self.assertFalse(worker.install(entry))
                 fetch.assert_called_once_with(base + names[0])
                 self.assertEqual(target.read_bytes(), payload)
@@ -352,7 +371,7 @@ class InstallerTests(unittest.TestCase):
                     worker.install(entry)
                 self.assertEqual(target.read_bytes(), payload)
 
-    def test_keep_verified_manual_ofs_module_for_the_selected_release(self):
+    def test_keep_manual_ofs_kernel_when_rebuilding_a_missing_so(self):
         entry = next(e for e in self.entries if e["id"] == "ofs")
         version = "0.1.9"
         repo = entry["repository"]
@@ -366,8 +385,13 @@ class InstallerTests(unittest.TestCase):
                    "size": len(released), "digest": "sha256:" + hashlib.sha256(released).hexdigest()}
                   for name in names]
         release = {"tag_name": "v" + version, "target_commitish": "a" * 40, "assets": assets}
-        metadata = {"X-Infiltrator-Kernel-Release": "6.14.0-37-generic",
+        metadata = {"Package": entry["package"], "Version": version + "+native1",
+                    "X-Infiltrator-Native-Profile": "aggressive",
+                    "X-Infiltrator-Source-Revision": "a" * 40,
+                    "X-Infiltrator-Kernel-Release": "6.14.0-37-generic",
                     "X-Infiltrator-Kernel-SHA256": hashlib.sha256(local).hexdigest()}
+        staged = {}
+        commands = []
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             directory = root / "System/Kernel/Filesystems"
@@ -375,25 +399,54 @@ class InstallerTests(unittest.TestCase):
             target = directory / "ofs.ko"
             target.write_bytes(local)
             (root / (repo + ".json")).write_text(json.dumps(release))
+
+            def package_kernel(entry, package, module, kernel_release, identity):
+                staged["payload"] = module.read_bytes()
+                metadata["X-Infiltrator-Kernel-SHA256"] = hashlib.sha256(module.read_bytes()).hexdigest()
+                metadata["X-Infiltrator-Kernel-Release"] = kernel_release
+                package.parent.mkdir(parents=True, exist_ok=True)
+                package.write_bytes(b"three-file package fixture")
+
+            def run(command):
+                commands.append(command)
+                if command[0] == "/usr/bin/dpkg":
+                    target.write_bytes(staged["payload"])
+                elif Path(command[0]).name != "filesystem.run":
+                    raise AssertionError("Unexpected build or activation")
+
             with patch.dict(worker.os.environ, {"INFILTRATOROS_RELEASE_DIR": str(root)}), \
                  patch.object(worker, "KERNEL_DIR", directory), \
                  patch.object(worker, "STATUS_DIR", root), \
                  patch.object(worker, "STATUS_PATH", root / "test.status"), \
                  patch.object(worker, "verified_current_version", return_value=(version, metadata)), \
+                 patch.object(worker, "installed_kernel_metadata", return_value=metadata), \
                  patch.object(worker, "repair_manual", return_value=False), \
                  patch.object(worker, "verify_owned_path") as owns, \
                  patch.object(worker, "validate_kernel_module") as validate, \
+                 patch.object(worker, "verify", return_value=metadata), \
+                 patch.object(worker, "package_kernel", side_effect=package_kernel), \
                  patch.object(worker, "open_url", return_value=io.BytesIO(released)) as fetch, \
-                 patch.object(worker, "run", side_effect=AssertionError("unnecessary build")):
+                 patch.object(worker, "run", side_effect=run):
                 self.assertTrue(worker.install(entry))
                 owns.assert_called_once_with(entry, target, Path("/"))
                 validate.assert_called_once_with(target, metadata["X-Infiltrator-Kernel-Release"])
                 fetch.assert_not_called()
                 self.assertEqual(target.read_bytes(), local)
+                with patch.object(worker, "verified_current_version", return_value=None), \
+                     patch.object(worker, "ensure_dependencies"):
+                    self.assertFalse(worker.install(entry))
+                self.assertEqual(target.read_bytes(), local)
+                self.assertEqual(metadata["X-Infiltrator-Kernel-Release"], "6.14.0-37-generic")
+                fetch.assert_called_once_with(base + names[0])
+                self.assertTrue(worker.install(entry))
                 target.write_bytes(b"damaged module")
+                fetch.reset_mock()
+                fetch.return_value = io.BytesIO(released)
                 self.assertFalse(worker.install(entry))
                 fetch.assert_called_once_with(base + worker.kernel_asset_name(entry))
                 self.assertEqual(target.read_bytes(), released)
+                self.assertEqual(metadata["X-Infiltrator-Kernel-Release"], worker.KERNEL_TARGET)
+                self.assertEqual(sum(Path(command[0]).name == "filesystem.run" for command in commands), 1)
 
     def test_swap_cannot_supply_a_kernel_module_asset(self):
         entry = next(e for e in worker.additional_catalogue() if e["id"] == "swap")
@@ -405,6 +458,73 @@ class InstallerTests(unittest.TestCase):
                               "digest": "sha256:" + "a" * 64, "size": 100} for name in names]
         with self.assertRaisesRegex(ValueError, "missing required native driver"):
             worker.release_installer(entry, release)
+
+    def test_kernel_metadata_survives_a_missing_shared_object(self):
+        entry = self.entry
+        metadata = {"Package": entry["package"], "Status": "install ok installed",
+                    "Version": "1.0.2+native1", "X-Infiltrator-Source-Revision": "a" * 40,
+                    "X-Infiltrator-Kernel-Release": "6.14.0-generic",
+                    "X-Infiltrator-Kernel-SHA256": "b" * 64}
+        report = "\n".join(f"{key}: {value}" for key, value in metadata.items())
+        with patch.object(worker.subprocess, "check_output", return_value=report):
+            self.assertEqual(worker.installed_kernel_metadata(entry, "1.0.2", "a" * 40), metadata)
+            self.assertEqual(worker.installed_kernel_metadata(entry, "1.0.3", "a" * 40), {})
+            self.assertEqual(worker.installed_kernel_metadata(entry, "1.0.2", "c" * 40), {})
+
+    def test_kernel_repairs_preserve_the_three_file_package_record(self):
+        entry = self.entry
+        so = b"verified SO fixture"
+        pdf = b"%PDF-verified manual fixture"
+        ko = b"verified local kernel fixture"
+        identity = {"Package": entry["package"], "Version": "1.0.2+native1",
+                    "X-Infiltrator-Source-Revision": "a" * 40}
+        fields = {**identity, "Architecture": "amd64", "Maintainer": "Fixture <fixture@example.invalid>",
+                  "X-Infiltrator-Resource-SHA256": hashlib.sha256(so).hexdigest(),
+                  "X-Infiltrator-PDF-SHA256": hashlib.sha256(pdf).hexdigest(),
+                  "Description": "Verified package fixture"}
+        control = "\n".join(f"{key}: {value}" for key, value in fields.items()) + "\n Multiline description.\n"
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            image = root / "candidate"
+            (image / "DEBIAN").mkdir(parents=True)
+            (image / "DEBIAN/control").write_text(control)
+            module = image / entry["resource"].lstrip("/")
+            manual = worker.manual_path(entry, image)
+            module.parent.mkdir(parents=True)
+            manual.parent.mkdir(parents=True)
+            module.write_bytes(so)
+            manual.write_bytes(pdf)
+            kernel = root / "local.ko"
+            kernel.write_bytes(ko)
+            package = root / "rebuilt.deb"
+            subprocess.run(["dpkg-deb", "--root-owner-group", "--build", str(image), str(package)],
+                           check=True, stdout=subprocess.DEVNULL)
+            installed_status = "Status: install ok installed\n" + control
+            original_query = subprocess.check_output
+
+            def query(command, **kwargs):
+                if command[:2] == ["/usr/bin/dpkg-query", "-s"]:
+                    return installed_status
+                return original_query(command, **kwargs)
+
+            for existing in (True, False):
+                with self.subTest(existing_source_package=existing):
+                    target = package if existing else root / "repair.deb"
+                    with patch.object(worker, "STATUS_DIR", root), \
+                         patch.object(worker, "verify_owned_path"), \
+                         patch.object(worker.subprocess, "check_output", side_effect=query):
+                        worker.package_kernel(entry, target, kernel, "6.14.0-generic", identity, root=image)
+                    payload = root / ("rebuilt-payload" if existing else "repair-payload")
+                    subprocess.run(["dpkg-deb", "-x", str(target), str(payload)], check=True)
+                    paths = {p.relative_to(payload) for p in payload.rglob("*") if p.is_file() or p.is_symlink()}
+                    self.assertEqual(paths, {Path(entry["resource"].lstrip("/")),
+                                            worker.manual_path(entry).relative_to("/"),
+                                            Path("System/Kernel/Filesystems") / (entry["id"] + ".ko")})
+                    report = original_query(["dpkg-deb", "-f", str(target)], text=True)
+                    self.assertIn("X-Infiltrator-Kernel-Release: 6.14.0-generic", report)
+                    self.assertIn("X-Infiltrator-Kernel-SHA256: " + hashlib.sha256(ko).hexdigest(), report)
+                    self.assertIn(" Multiline description.", report)
+                    self.assertNotIn("Status:", report)
 
     def test_source_commit_required_before_reusing_or_installing(self):
         with tempfile.TemporaryDirectory() as temporary:

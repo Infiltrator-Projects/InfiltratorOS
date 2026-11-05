@@ -297,6 +297,79 @@ def package_version(entry):
     return identity[1]
 
 
+def installed_kernel_metadata(entry, version, revision):
+    """Read kernel provenance independently when the SO needs rebuilding."""
+    try:
+        report = subprocess.check_output(
+            ["/usr/bin/dpkg-query", "-s", entry["package"]], text=True, stderr=subprocess.DEVNULL)
+    except subprocess.CalledProcessError:
+        return {}
+    metadata = dict(line.split(": ", 1) for line in report.splitlines() if ": " in line)
+    if (metadata.get("Package") != entry["package"] or
+            metadata.get("Status") != "install ok installed" or
+            metadata.get("Version", "").removesuffix("+native1") != version or
+            metadata.get("X-Infiltrator-Source-Revision") != revision):
+        return {}
+    return metadata
+
+
+def package_kernel(entry, package, module, kernel_release, identity, root=Path("/")):
+    """Keep all three files and their checksums in the installed Debian package."""
+    with tempfile.TemporaryDirectory(dir=STATUS_DIR, prefix="filesystem-package-") as folder:
+        image = Path(folder) / "root"
+        if package.exists():
+            run(["/usr/bin/dpkg-deb", "--raw-extract", package, image])
+        else:
+            control = image / "DEBIAN/control"
+            control.parent.mkdir(parents=True)
+            control.write_text(subprocess.check_output(
+                ["/usr/bin/dpkg-query", "-s", entry["package"]], text=True))
+            for relative in (Path(entry["resource"].lstrip("/")), manual_path(entry).relative_to("/")):
+                source = root / relative
+                verify_owned_path(entry, source, root)
+                destination = image / relative
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(source, destination)
+        control = image / "DEBIAN/control"
+        text = control.read_text()
+        fields = dict(line.split(": ", 1) for line in text.splitlines()
+                      if ": " in line and not line.startswith(" "))
+        if any(fields.get(key) != value for key, value in identity.items()):
+            raise ValueError("Filesystem package identity changed before kernel repair")
+        resource = image / entry["resource"].lstrip("/")
+        manual = manual_path(entry, image)
+        for path, field in ((resource, "X-Infiltrator-Resource-SHA256"),
+                            (manual, "X-Infiltrator-PDF-SHA256")):
+            if (path.is_symlink() or not path.is_file() or
+                    hashlib.sha256(path.read_bytes()).hexdigest() != fields.get(field)):
+                raise ValueError("Filesystem package payload does not match its metadata")
+        if any(path.is_symlink() for path in image.rglob("*")):
+            raise ValueError("Filesystem package contains a symbolic link")
+        destination = image / "System/Kernel/Filesystems" / (entry["id"] + ".ko")
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(module, destination)
+        removed = {"Status", "Conffiles", "Config-Version", "Triggers-Awaited", "Triggers-Pending",
+                   "X-Infiltrator-Kernel-SHA256", "X-Infiltrator-Kernel-Release"}
+        lines = []
+        keep = True
+        for line in text.splitlines():
+            if not line.startswith((" ", "\t")):
+                keep = line.partition(":")[0] not in removed
+            if keep:
+                lines.append(line)
+        digest = hashlib.sha256(destination.read_bytes()).hexdigest()
+        control.write_text("\n".join(lines).rstrip() + "\n" +
+                           f"X-Infiltrator-Kernel-SHA256: {digest}\n" +
+                           f"X-Infiltrator-Kernel-Release: {kernel_release}\n")
+        actual = {path for path in image.rglob("*") if not path.is_dir() and
+                  "DEBIAN" not in path.relative_to(image).parts}
+        if actual != {resource, manual, destination}:
+            raise ValueError("Filesystem package must contain exactly its SO, PDF and KO")
+        bundled = Path(folder) / "bundled.deb"
+        run(["/usr/bin/dpkg-deb", "--root-owner-group", "--build", image, bundled])
+        bundled.replace(package)
+
+
 def verify_owned_path(entry, path, root):
     for parent in reversed(path.relative_to(root).parents):
         directory = root / parent
@@ -500,6 +573,7 @@ def install(entry):
     version, location, digest, length = release_installer(entry, release)
     revision = release["target_commitish"]
     current = verified_current_version(entry, version, revision)
+    metadata = current[1] if current else installed_kernel_metadata(entry, version, revision)
     repaired = False
     if current:
         installed, metadata = current
@@ -511,7 +585,7 @@ def install(entry):
     target = KERNEL_DIR / (entry["id"] + ".ko")
     if kernel is None and entry["id"] != "swap" and (target.exists() or target.is_symlink()):
         raise ValueError("Selected filesystem release is missing its previously staged kernel module")
-    kernel_matches = kernel is not None and stored_kernel_matches(target, kernel, entry, current[1] if current else {})
+    kernel_matches = kernel is not None and stored_kernel_matches(target, kernel, entry, metadata)
     need_kernel = kernel is not None and (not kernel_matches or not current)
     if current and not need_kernel:
         if not repaired:
@@ -519,15 +593,18 @@ def install(entry):
         return not repaired
     with tempfile.TemporaryDirectory(dir=STATUS_DIR, prefix="filesystem-native-") as folder:
         module = Path(folder) / "filesystem.ko"
+        kernel_release = KERNEL_TARGET
         if need_kernel:
             status("running", 10, "Verifying the " + entry["name"] + " kernel module",
                    "Preparing a stored copy for manual use")
             if kernel_matches:
                 # The old Debian package may own this path and remove it on upgrade.
                 shutil.copyfile(target, module)
+                if hashlib.sha256(module.read_bytes()).hexdigest() == metadata.get("X-Infiltrator-Kernel-SHA256"):
+                    kernel_release = metadata["X-Infiltrator-Kernel-Release"]
             else:
                 download(kernel["browser_download_url"], module, kernel["digest"][7:], kernel["size"])
-            validate_kernel_module(module)
+            validate_kernel_module(module, kernel_release)
         if not current:
             ensure_dependencies(entry)
             status("running", 12, "Compiling " + entry["name"],
@@ -538,11 +615,25 @@ def install(entry):
             run([installer, "--profile", "aggressive", "--system-package-mode",
                  "--build-only", "--output", output])
             package = output / f"{entry['package']}_{version}+native1_amd64.deb"
-            run(["/usr/bin/dpkg", "--refuse-downgrade", "-i", package])
-            metadata = verify(entry, version, revision=revision)
+            deb_version = version + "+native1"
+            profile = "aggressive"
+        else:
+            deb_version = metadata["Version"]
+            profile = metadata["X-Infiltrator-Native-Profile"]
+            package = Path(folder) / f"{entry['package']}_{deb_version}_amd64.deb"
+        if need_kernel:
+            identity = {"Package": entry["package"], "Version": deb_version,
+                        "X-Infiltrator-Source-Revision": revision}
+            package_kernel(entry, package, module, kernel_release, identity)
+        run(["/usr/bin/dpkg", "--refuse-downgrade", "-i", package])
+        metadata = verify(entry, version, revision=revision, profile=profile)
+        if not current:
             repair_manual(entry, release, version, metadata)
-        if need_kernel and (not kernel_matches or not target.exists()):
-            stage_file(module, target)
+        if need_kernel:
+            verify_owned_path(entry, target, Path("/"))
+            if (metadata.get("X-Infiltrator-Kernel-Release") != kernel_release or
+                    hashlib.sha256(target.read_bytes()).hexdigest() != metadata.get("X-Infiltrator-Kernel-SHA256")):
+                raise ValueError("Installed kernel module does not match its package metadata")
             print("Stored and verified " + str(target), flush=True)
     return False
 
