@@ -128,14 +128,14 @@ def download_installer(url, destination, digest, size):
 def native_current(entry, version, release):
     """Skip only a complete, correctly owned and verified native Debian build."""
     package = entry["package"]
-    fields = ("$" + "{Status}\\t" + "$" + "{Version}\\t" +
-              "$" + "{X-Infiltrator-Native-Profile}\\t" +
+    fields = ("$" + "{Status}\t" + "$" + "{Version}\t" +
+              "$" + "{X-Infiltrator-Native-Profile}\t" +
               "$" + "{X-Infiltrator-PGO}")
     proc = subprocess.run(["/usr/bin/dpkg-query", "-W", "-f=" + fields, package],
                           capture_output=True, text=True, check=False)
     if proc.returncode != 0:
         return False
-    values = proc.stdout.strip().split("\\t")
+    values = proc.stdout.strip().split("\t")
     if (len(values) != 4 or values[0] != "install ok installed" or
             values[1] != version + "+native1" or
             values[2] != "aggressive" or values[3] != "trained-two-pass"):
