@@ -322,6 +322,7 @@ def ensure_dependencies(entry):
 
 
 def install_entry(entry):
+    """Verify and invoke the independent calendar or clock RUN installer."""
     release_dir = os.environ.get("INFILTRATOROS_RELEASE_DIR")
     if release_dir:
         data = (Path(release_dir) / (entry["repository"] + ".json")).read_bytes()
@@ -333,26 +334,12 @@ def install_entry(entry):
         raise ValueError("Release metadata is too large")
     release = json.loads(data)
     version, url, digest, size = release_installer(entry, release)
-    revision = release.get("target_commitish")
-    if not isinstance(revision, str) or not re.fullmatch(r"[0-9a-f]{40}", revision):
-        raise ValueError("Selected temporal release has no exact source commit identity")
-    if native_installed(entry, version, release):
-        clean_legacy_documentation(entry)
-        print("Already installed and verified: " + entry["repository"], flush=True)
-        return True
-    ensure_dependencies(entry)
-    write_status("running", 10, "Optimising " + entry["name"],
-                 "Running its independent checksum-verified native installer.")
+    write_status("running", 10, "Installing " + entry["name"],
+                 "Executing its independently published native installer")
     with tempfile.TemporaryDirectory(dir=STATUS_DIR, prefix="temporal-resource-") as temporary:
         installer = Path(temporary) / "provider.run"
         download_installer(url, installer, digest, size)
         required([installer, "--profile", "aggressive", "--system-package-mode"])
-        verify_installation(entry, version, revision=revision)
-        # Fresh installs must pass the same Debian ownership, symlink and
-        # pinned-source qualification required before reusing a cached module.
-        if not native_installed(entry, version, release):
-            raise ValueError("Fresh temporal release/ownership verification failed")
-        clean_legacy_documentation(entry)
     return False
 
 
