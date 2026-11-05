@@ -43,7 +43,7 @@ class ApplicationTests(unittest.TestCase):
         for metadata in ("", "native"):
             with self.subTest(metadata=metadata):
                 result = subprocess.CompletedProcess(
-                    [], 0, "install ok installed\\t1.2.3\\t" + metadata, "")
+                    [], 0, "install ok installed\t1.2.3\t" + metadata, "")
                 with patch.object(app.subprocess, "run", return_value=result):
                     self.assertEqual(
                         app.package_info("calculator"),
