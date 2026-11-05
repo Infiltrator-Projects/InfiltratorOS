@@ -2,6 +2,12 @@
 
 This is a concise record of **published changes**, not an alternative copy of the current architecture or a replay of every development commit. The [README](README.md) and [technical documentation](docs/README.md) describe current behaviour. [Immutable release tags](https://github.com/Infiltrator-Projects/InfiltratorOS/releases) and [Git commits](https://github.com/Infiltrator-Projects/InfiltratorOS/commits/main/) preserve detailed historical provenance; the full older changelog is retained at [v1.0.52](https://github.com/Infiltrator-Projects/InfiltratorOS/blob/v1.0.52/CHANGELOG.md).
 
+## 1.0.63 — Native dispatcher consolidation and no-op reinstalls
+
+- Replace four application-specific C installers with a single checksum-verified launcher that invokes each component's own published RUN.
+- Skip current native application, calendar, clock and filesystem installations only after checking Debian version, installed files, integrity and native-build evidence.
+- Retain separate component status records, release identities and independent installer ownership.
+
 ## 1.0.62 — Independent native installation dispatch
 
 - Delegate calendar, clock and filesystem source compilation, package building and documentation to independently published, checksum-verified native RUN installers.

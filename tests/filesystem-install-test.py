@@ -58,13 +58,22 @@ class NativeRunContract(unittest.TestCase):
                  patch.object(worker, "STATUS_DIR", snapshot), \
                  patch.object(worker, "download") as download, \
                  patch.object(worker, "run") as execute, \
-                 patch.object(worker, "status"):
+                 patch.object(worker, "status"), \
+                 patch.object(worker, "native_current", side_effect=[False, True]):
                 result = worker.install(self.entry)
             self.assertFalse(result)
             self.assertEqual(download.call_count, 1)
             args = execute.call_args.args[0]
             self.assertEqual(args[1:], ["--profile", "aggressive", "--system-package-mode"])
             self.assertEqual(args[0].suffix, ".run")
+
+    def test_current_native_installed_skips_download_and_rebuild(self):
+        with tempfile.TemporaryDirectory() as directory:
+            (Path(directory) / (self.entry["repository"] + ".json")).write_text(json.dumps(self.release))
+            with patch.dict(worker.os.environ, {"INFILTRATOROS_RELEASE_DIR": directory}), \
+                 patch.object(worker, "native_current", return_value=True), \
+                 patch.object(worker, "download", side_effect=AssertionError("download attempted")):
+                self.assertTrue(worker.install(self.entry))
 
     def test_reject_oversized_snapshot(self):
         with tempfile.TemporaryDirectory() as directory:

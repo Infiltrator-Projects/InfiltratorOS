@@ -125,6 +125,40 @@ def download_installer(url, destination, digest, size):
     destination.chmod(0o700)
 
 
+def native_current(entry, version, release):
+    """Skip only a complete, correctly owned and verified native Debian build."""
+    package = entry["package"]
+    fields = ("$" + "{Status}\\t" + "$" + "{Version}\\t" +
+              "$" + "{X-Infiltrator-Native-Profile}\\t" +
+              "$" + "{X-Infiltrator-PGO}")
+    proc = subprocess.run(["/usr/bin/dpkg-query", "-W", "-f=" + fields, package],
+                          capture_output=True, text=True, check=False)
+    if proc.returncode != 0:
+        return False
+    values = proc.stdout.strip().split("\\t")
+    if (len(values) != 4 or values[0] != "install ok installed" or
+            values[1] != version + "+native1" or
+            values[2] != "aggressive" or values[3] != "trained-two-pass"):
+        return False
+    module = Path(entry["resource"])
+    guide = Path("/System/Resources/Documentation") / (entry["repository"] + ".pdf")
+    for path in (module, guide):
+        if path.is_symlink() or not path.is_file():
+            return False
+        owned = subprocess.run(["/usr/bin/dpkg-query", "-S", str(path)],
+                               capture_output=True, text=True, check=False)
+        if owned.returncode or owned.stdout.strip() != package + ": " + str(path):
+            return False
+    try:
+        with guide.open("rb") as stream:
+            if stream.read(5) != b"%PDF-":
+                return False
+    except OSError:
+        return False
+    return subprocess.run(["/usr/bin/dpkg", "--verify", package], check=False,
+                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0
+
+
 def install_entry(entry):
     """Verify and invoke the independent calendar or clock RUN installer."""
     release_dir = os.environ.get("INFILTRATOROS_RELEASE_DIR")
@@ -138,12 +172,16 @@ def install_entry(entry):
         raise ValueError("Release metadata is too large")
     release = json.loads(data)
     version, url, digest, size = release_installer(entry, release)
+    if native_current(entry, version, release):
+        return True
     write_status("running", 10, "Installing " + entry["name"],
                  "Executing its independently published native installer")
     with tempfile.TemporaryDirectory(dir=STATUS_DIR, prefix="temporal-resource-") as temporary:
         installer = Path(temporary) / "provider.run"
         download_installer(url, installer, digest, size)
         required([installer, "--profile", "aggressive", "--system-package-mode"])
+    if not native_current(entry, version, release):
+        raise RuntimeError("Independent calendar/clock RUN did not install its verified native SO and PDF")
     return False
 
 

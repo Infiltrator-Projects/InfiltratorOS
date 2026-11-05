@@ -179,6 +179,40 @@ def download(url, path, digest, length):
     path.chmod(0o700)
 
 
+def native_current(entry, version, release):
+    """Skip only a complete, correctly owned and verified native Debian build."""
+    package = entry["package"]
+    fields = ("$" + "{Status}\\t" + "$" + "{Version}\\t" +
+              "$" + "{X-Infiltrator-Native-Profile}\\t" +
+              "$" + "{X-Infiltrator-PGO}")
+    proc = subprocess.run(["/usr/bin/dpkg-query", "-W", "-f=" + fields, package],
+                          capture_output=True, text=True, check=False)
+    if proc.returncode != 0:
+        return False
+    values = proc.stdout.strip().split("\\t")
+    if (len(values) != 4 or values[0] != "install ok installed" or
+            values[1] != version + "+native1" or
+            values[2] != "aggressive" or values[3] != "trained-two-pass"):
+        return False
+    module = Path(entry["resource"])
+    guide = Path("/System/Resources/Documentation") / (entry["repository"] + ".pdf")
+    for path in (module, guide):
+        if path.is_symlink() or not path.is_file():
+            return False
+        owned = subprocess.run(["/usr/bin/dpkg-query", "-S", str(path)],
+                               capture_output=True, text=True, check=False)
+        if owned.returncode or owned.stdout.strip() != package + ": " + str(path):
+            return False
+    try:
+        with guide.open("rb") as stream:
+            if stream.read(5) != b"%PDF-":
+                return False
+    except OSError:
+        return False
+    return subprocess.run(["/usr/bin/dpkg", "--verify", package], check=False,
+                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0
+
+
 def install(entry):
     """Delegate installation entirely to the component's published native RUN.
 
@@ -197,12 +231,16 @@ def install(entry):
         raise ValueError("Oversized GitHub release metadata")
     release = json.loads(payload)
     version, location, digest, length = release_installer(entry, release)
+    if native_current(entry, version, release):
+        return True
     status("running", 10, "Installing " + entry["name"],
            "Executing its independently published native installer")
     with tempfile.TemporaryDirectory(dir=STATUS_DIR, prefix="filesystem-native-") as folder:
         installer = Path(folder) / "filesystem.run"
         download(location, installer, digest, length)
         run([installer, "--profile", "aggressive", "--system-package-mode"])
+    if not native_current(entry, version, release):
+        raise RuntimeError("Independent filesystem RUN did not install its verified native SO and PDF")
     return False
 
 
