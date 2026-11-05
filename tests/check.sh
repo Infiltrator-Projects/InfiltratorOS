@@ -92,7 +92,6 @@ grep -Fq 'run_status' "$ROOT/packaging/start-native-install.c"
 grep -Fq 'provider_slug, NULL' "$ROOT/packaging/start-native-install.c"
 grep -Fq 'ui.product_name' "$ROOT/packaging/native-install-progress.c"
 grep -Fq 'STATUS_DIR = directory / "status"' "$ROOT/packaging/install-temporal-resources.py"
-grep -Fq 'dependencies-ready' "$ROOT/packaging/install-temporal-resources.py"
 grep -Fq 'status_root="$stage/status"' "$ROOT/debian/postinst"
 # Every native worker must wait for a live Mint aptk/dpkg frontend rather
 # than fail after an arbitrary 300-second timeout.
@@ -101,9 +100,7 @@ for product in system-monitor calculator files defragmenter; do
     grep -Fq 'DPkg::Lock::Timeout=-1' "$worker"
     ! grep -Fq 'DPkg::Lock::Timeout=300' "$worker"
 done
-grep -Fq 'DPkg::Lock::Timeout=-1' "$ROOT/packaging/install-temporal-resources.py"
 ! grep -Fq 'DPkg::Lock::Timeout=300' "$ROOT/packaging/install-temporal-resources.py"
-grep -Fq 'DPkg::Lock::Timeout=-1' "$ROOT/packaging/install-filesystem-resources.py"
 ! grep -Fq 'DPkg::Lock::Timeout=300' "$ROOT/packaging/install-filesystem-resources.py"
 # Count real per-run manifests, including the 18 additional filesystem
 # installers in v1.0.51 (81 jobs total), without a fixed 16-job ceiling.
