@@ -727,6 +727,19 @@ def main():
         for entry in entries:
             print(entry["repository"].lower())
         return
+    if sys.argv[1:] == ["--list-selected"]:
+        # No selection means install everything. A future checkbox UI can
+        # supply a comma-separated set of catalogue IDs without changing
+        # individual filesystem installers or their release contracts.
+        requested = os.environ.get("INFILTRATOROS_SELECTED_FILESYSTEMS")
+        selected = None if requested is None else {part.strip().lower() for part in requested.split(",") if part.strip()}
+        known = {entry["id"] for entry in entries}
+        if selected is not None and not selected <= known:
+            raise ValueError("Unknown selected filesystem: " + ", ".join(sorted(selected - known)))
+        for entry in entries:
+            if selected is None or entry["id"] in selected:
+                print(entry["repository"].lower())
+        return
     if len(sys.argv) == 3 and sys.argv[1] == "--discover-additional":
         if os.geteuid() != 0:
             raise RuntimeError("Native release discovery requires root")
