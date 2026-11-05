@@ -19,7 +19,7 @@ ROOT = Path(__file__).resolve().parents[1]
 entries = json.loads((ROOT / "packaging/temporal-resources.json").read_text())
 products = ("system-monitor", "calculator", "files", "defragmenter", "temporal-resources", "filesystem-resources")
 expected = {name for product in products for name in ("install-" + product, "start-" + product + "-install", product + "-progress")}
-expected.add("prepare-native-releases")
+expected.update(("prepare-native-releases", "orchestrate-native-install"))
 native = Path("/Temporary/InfiltratorOS")
 native.mkdir(parents=True, exist_ok=True)
 def installed_manual(entry, legacy_name):
