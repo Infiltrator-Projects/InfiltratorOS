@@ -118,7 +118,7 @@ cc -std=c11 -O2 -DNDEBUG -Wall -Wextra -Werror -Wpedantic \
 # independently logged but must not spawn 54 graphical windows.
 grep -Fq 'refresh_aggregate' "$ROOT/packaging/native-install-progress.c"
 grep -Fq 'INFILTRATOROS_PROGRESS_MODE' "$ROOT/packaging/start-native-install.c"
-grep -Fq 'INFILTRATOROS_PROGRESS_MODE=none' "$ROOT/debian/postinst"
+grep -Fq 'INFILTRATOROS_PROGRESS_MODE=none' "$ROOT/packaging/orchestrate-native-install.py"
 grep -Fq 'INFILTRATOROS_PROGRESS_MODE=aggregate' "$ROOT/debian/postinst"
 grep -Fq 'provision.lock' "$ROOT/debian/postinst"
 grep -Fq 'flock -n 9' "$ROOT/debian/postinst"
