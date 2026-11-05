@@ -199,6 +199,7 @@ PY
 done
 
 install -m 0755 "$ROOT/packaging/prepare-native-releases.py" "$RUNTIME_BUILD/prepare-native-releases"
+install -m 0755 "$ROOT/packaging/orchestrate-native-install.py" "$RUNTIME_BUILD/orchestrate-native-install"
 test "$(file -b --mime-type "$THEME_DIR/infiltratoros.png")" = image/png
 test ! -e "$PKGROOT/usr/lib/infiltratoros"
 test -x "$PKGROOT/System/Commands/InfiltratorOS/activate-program-icons"
