@@ -181,9 +181,7 @@ output.write_text(source)
 output.chmod(0o755)
 PY
     else
-        cc -std=c11 -O2 -Wall -Wextra -Werror -Wpedantic \
-            "$ROOT/packaging/install-$product.c" \
-            -o "$RUNTIME_BUILD/install-$product"
+        install -m 0755 "$ROOT/packaging/install-application.py" "$RUNTIME_BUILD/install-$product"
     fi
     cc -std=c11 -O2 -Wall -Wextra -Werror -Wpedantic "-D$profile" \
         "$ROOT/packaging/start-native-install.c" "$ROOT/packaging/installer-process.c" \
