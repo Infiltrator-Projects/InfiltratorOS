@@ -80,7 +80,7 @@ def package_info(package):
                        capture_output=True, text=True, check=False)
     if r.returncode:
         return None
-    parts = r.stdout.strip().split("\t")
+    parts = r.stdout.rstrip("\n").split("\t")
     return parts if len(parts) == 3 and parts[0] == "install ok installed" else None
 
 
