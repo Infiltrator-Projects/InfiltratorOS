@@ -66,16 +66,8 @@ def pdf_name(entry):
     return entry.get("pdf") or (entry["resource"].rsplit("/", 1)[1].removesuffix(".so") + ".pdf")
 
 
-def manual_paths(entry, root):
-    docs = root / "System/Resources/Documentation"
-    return docs / (entry["repository"] + ".pdf"), docs / entry["repository"] / pdf_name(entry)
-
-
-def package_manual(entry, root):
-    flat, legacy = manual_paths(entry, root)
-    if flat.is_symlink():
-        raise ValueError("Unexpected filesystem manual link: " + str(flat))
-    return flat if flat.exists() else legacy
+def manual_path(entry, root=Path("/")):
+    return root / "System/Resources/Documentation" / entry["repository"] / pdf_name(entry)
 
 
 def all_catalogue():
@@ -226,12 +218,12 @@ def validate_kernel_module(path):
         raise ValueError("Filesystem kernel module does not match the published build target")
 
 
-def stage_kernel_module(source, destination):
-    with tempfile.NamedTemporaryFile(dir=destination.parent, prefix=".module-", delete=False) as file:
+def stage_file(source, destination):
+    with tempfile.NamedTemporaryFile(dir=destination.parent, prefix=".filesystem-", delete=False) as file:
         temporary = Path(file.name)
         try:
-            with source.open("rb") as module:
-                shutil.copyfileobj(module, file)
+            with source.open("rb") as payload:
+                shutil.copyfileobj(payload, file)
             os.fchmod(file.fileno(), 0o644)
             file.flush()
             os.fsync(file.fileno())
@@ -291,8 +283,26 @@ def package_version(entry):
     return identity[1]
 
 
+def verify_owned_path(entry, path, root):
+    for parent in reversed(path.relative_to(root).parents):
+        directory = root / parent
+        try:
+            info = directory.lstat()
+        except FileNotFoundError:
+            continue
+        if not stat.S_ISDIR(info.st_mode) or info.st_uid != os.geteuid() or info.st_mode & 0o022:
+            raise ValueError("Untrusted filesystem directory: " + str(directory))
+    if path.exists() or path.is_symlink():
+        info = path.lstat()
+        if not stat.S_ISREG(info.st_mode) or info.st_uid != os.geteuid() or info.st_mode & 0o022:
+            raise ValueError("Untrusted filesystem file: " + str(path))
+    owner = subprocess.check_output(["/usr/bin/dpkg-query", "-S", str(path)], text=True)
+    if owner.strip() != f"{entry['package']}: {path}":
+        raise ValueError("Filesystem payload owned by wrong package")
+
+
 def verify(entry, version, root=Path("/"), query=True, revision=None, profile="aggressive"):
-    """Verify an installed SO and package-owned PDF against the build data."""
+    """Verify the SO independently and return the installed package metadata."""
     native = profile == "aggressive"
     deb_version = version + ("+native1" if native else "")
     if query and package_version(entry) != deb_version:
@@ -300,12 +310,8 @@ def verify(entry, version, root=Path("/"), query=True, revision=None, profile="a
     module = root / entry["resource"].lstrip("/")
     if not module.is_file() or module.is_symlink():
         raise ValueError("Installed filesystem SO must be a regular file")
-    guide = package_manual(entry, root)
-    if guide.is_symlink() or not guide.is_file():
-        raise ValueError("Required filesystem illustrated PDF is missing")
-    with guide.open("rb") as file:
-        if file.read(5) != b"%PDF-":
-            raise ValueError("Invalid filesystem illustrated PDF")
+    if query:
+        verify_owned_path(entry, module, root)
     report = subprocess.check_output(
         ["/usr/bin/dpkg-query", "-s", entry["package"]], text=True)
     data = dict(line.split(": ", 1) for line in report.splitlines() if ": " in line)
@@ -330,18 +336,6 @@ def verify(entry, version, root=Path("/"), query=True, revision=None, profile="a
         raise ValueError("Installed filesystem source does not match the selected published release")
     if hashlib.sha256(module.read_bytes()).hexdigest() != data.get("X-Infiltrator-Resource-SHA256"):
         raise ValueError("Installed filesystem SO differs from Debian package hash")
-    if hashlib.sha256(guide.read_bytes()).hexdigest() != data.get("X-Infiltrator-PDF-SHA256"):
-        raise ValueError("Installed filesystem PDF differs from Debian package hash")
-    if query:
-        for p in (root / "System", root / "System/Filesystems", module, root / "System/Resources",
-                  root / "System/Resources/Documentation", guide.parent, guide):
-            metadata = p.lstat()
-            if metadata.st_uid != 0 or metadata.st_mode & 0o022 or p.is_symlink():
-                raise ValueError("Untrusted native filesystem path: " + str(p))
-        for path in (module, guide):
-            owner = subprocess.check_output(["/usr/bin/dpkg-query", "-S", str(path)], text=True)
-            if not owner.startswith(entry["package"] + ":"):
-                raise ValueError("Filesystem payload owned by wrong package")
     table = subprocess.check_output(["/usr/bin/readelf", "-W", "--dyn-syms", str(module)], text=True)
     exports = exported_interface_symbols(table)
     for symbol in required_interface_symbols(entry):
@@ -355,6 +349,7 @@ def verify(entry, version, root=Path("/"), query=True, revision=None, profile="a
                 raise ValueError("Wrong filesystem width or ABI")
     validate_runtime_dependencies(entry, subprocess.check_output(
         ["/usr/bin/readelf", "-d", str(module)], text=True))
+    return data
 
 
 def validate_runtime_dependencies(entry, dynamic_section):
@@ -404,78 +399,55 @@ def verified_current_version(entry, selected, revision, root=Path("/")):
     if tuple(map(int, installed.split("."))) < tuple(map(int, selected.split("."))):
         return None
     profile = "aggressive" if deb_version.endswith("+native1") else "portable"
-    verify(entry, installed, root=root, revision=revision if installed == selected else None,
-           profile=profile)
-    return installed
+    metadata = verify(entry, installed, root=root, revision=revision if installed == selected else None,
+                      profile=profile)
+    return installed, metadata
 
 
-def install_flat_package(entry, package, work):
-    """Put a newly built package's manual at the flat path before installation."""
-    image = work / "package-image"
-    run(["/usr/bin/dpkg-deb", "--raw-extract", package, image])
-    flat, legacy = manual_paths(entry, image)
-    module = image / entry["resource"].lstrip("/")
-    guide = package_manual(entry, image)
-    allowed = {module, guide, *module.parents, *guide.parents}
-    control = image / "DEBIAN"
-    if any(p not in allowed or p.is_symlink() for p in image.rglob("*")
-           if p != control and control not in p.parents):
-        raise ValueError("Filesystem package has unexpected payload paths")
-    if not module.is_file() or not guide.is_file():
-        raise ValueError("Filesystem package must contain one SO and one PDF")
-    if legacy.exists() or legacy.is_symlink():
-        legacy.replace(flat)
-        legacy.parent.rmdir()
-        sums = control / "md5sums"
-        if sums.exists():
-            old = legacy.relative_to(image).as_posix()
-            new = flat.relative_to(image).as_posix()
-            sums.write_text(sums.read_text().replace("  " + old + "\n", "  " + new + "\n"))
-        package = work / "flat-filesystem.deb"
-        run(["/usr/bin/dpkg-deb", "--root-owner-group", "--build", image, package])
-    install_deb(entry, package)
+def manual_matches(path, digest):
+    if path.is_symlink() or not path.is_file():
+        return False
+    with path.open("rb") as file:
+        if file.read(5) != b"%PDF-":
+            return False
+        file.seek(0)
+        return hashlib.file_digest(file, "sha256").hexdigest() == digest
 
 
-def install_deb(entry, package):
-    flat, _ = manual_paths(entry, Path("/"))
-    if flat.exists() or flat.is_symlink():
-        owner = subprocess.check_output(["/usr/bin/dpkg-query", "-S", str(flat)], text=True)
-        if owner.strip() != f"{entry['package']}: {flat}":
-            raise ValueError("Existing flat filesystem manual belongs to another owner")
-    run(["/usr/bin/dpkg", "--refuse-downgrade", "-i", package])
-
-
-def migrate_verified_manual(entry, root=Path("/")):
-    """Repack an already verified two-file provider without rebuilding its SO."""
-    flat, legacy = manual_paths(entry, root)
-    if package_manual(entry, root) == flat:
-        return
-    module = root / entry["resource"].lstrip("/")
-    query = ["/usr/bin/dpkg-query"]
-    listed = subprocess.check_output(query + ["-L", entry["package"]], text=True).splitlines()
-    allowed = {module, legacy, *module.parents, *legacy.parents}
-    controls = subprocess.check_output(query + ["--control-list", entry["package"]], text=True).splitlines()
-    if any(root / p.lstrip("/") not in allowed for p in listed) or set(controls) - {"md5sums"}:
-        raise ValueError("Cannot move the manual of a filesystem package with extra payloads or hooks")
-    report = subprocess.check_output(query + ["-s", entry["package"]], text=True)
-    if any(line.startswith("Conffiles:") for line in report.splitlines()):
-        raise ValueError("Cannot move the manual of a filesystem package with conffiles")
+def repair_manual(entry, release, version, metadata, root=Path("/")):
+    """Restore just the verified provider manual from its matching portable DEB."""
+    path = manual_path(entry, root)
+    expected = metadata.get("X-Infiltrator-PDF-SHA256", "")
+    if not re.fullmatch(r"[0-9a-f]{64}", expected):
+        raise ValueError("Missing filesystem manual checksum in installed package metadata")
+    verify_owned_path(entry, path, root)
+    if manual_matches(path, expected):
+        return False
+    if (metadata.get("Version", "").removesuffix("+native1") != version or
+            metadata.get("X-Infiltrator-Source-Revision") != release["target_commitish"]):
+        raise ValueError("The selected release cannot repair the manual for this installed version")
+    name = f"{entry['package']}_{version}_amd64.deb"
+    asset = next(item for item in release["assets"] if item["name"] == name)
+    status("running", 25, "Restoring the " + entry["name"] + " manual", "Using the verified portable release")
     with tempfile.TemporaryDirectory(dir=STATUS_DIR, prefix="filesystem-manual-") as folder:
         work = Path(folder)
-        image = work / "installed-image"
-        control = image / "DEBIAN"
-        control.mkdir(parents=True)
-        (control / "control").write_text("\n".join(line for line in report.splitlines()
-                                                   if not line.startswith("Status:")) + "\n")
-        for source, target in ((module, module), (legacy, flat)):
-            dest = image / target.relative_to(root)
-            dest.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(source, dest)
-        package = work / "migrated-filesystem.deb"
-        run(["/usr/bin/dpkg-deb", "--root-owner-group", "--build", image, package])
-        install_deb(entry, package)
-    if not flat.is_file() or flat.is_symlink():
-        raise ValueError("Filesystem manual was not installed at its flat path")
+        package = work / name
+        download(asset["browser_download_url"], package, asset["digest"][7:], asset["size"])
+        report = subprocess.check_output(["/usr/bin/dpkg-deb", "-f", str(package)], text=True)
+        fields = dict(line.split(": ", 1) for line in report.splitlines() if ": " in line)
+        if (fields.get("Package") != entry["package"] or fields.get("Version") != version or
+                fields.get("X-Infiltrator-Source-Revision") != release["target_commitish"] or
+                fields.get("X-Infiltrator-PDF-SHA256") != expected):
+            raise ValueError("Published package does not match the installed filesystem manual")
+        image = work / "pdf-payload"
+        run(["/usr/bin/dpkg-deb", "-x", package, image])
+        manual = manual_path(entry, image)
+        if any((image / p).is_symlink() for p in manual.relative_to(image).parents) or not manual_matches(manual, expected):
+            raise ValueError("Published filesystem manual does not match its checksum")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        stage_file(manual, path)
+    return True
+
 
 def ensure_dependencies(entry):
     ready_name = ("filesystem-extended-dependencies-ready" if entry.get("abi") else
@@ -513,20 +485,23 @@ def install(entry):
     release = json.loads(payload)
     version, location, digest, length = release_installer(entry, release)
     revision = release["target_commitish"]
-    installed = verified_current_version(entry, version, revision)
-    if installed:
-        migrate_verified_manual(entry)
-    if installed and installed != version:
-        print("Keeping newer installed release " + installed + " of " + entry["repository"], flush=True)
-        return True
+    current = verified_current_version(entry, version, revision)
+    repaired = False
+    if current:
+        installed, metadata = current
+        repaired = repair_manual(entry, release, version, metadata)
+        if installed != version:
+            print("Keeping newer installed release " + installed + " of " + entry["repository"], flush=True)
+            return not repaired
     kernel = next((item for item in release["assets"] if item["name"] == kernel_asset_name(entry)), None)
     target = KERNEL_DIR / (entry["id"] + ".ko")
     if kernel is None and entry["id"] != "swap" and (target.exists() or target.is_symlink()):
         raise ValueError("Selected filesystem release is missing its previously staged kernel module")
     need_kernel = kernel is not None and not stored_kernel_matches(target, kernel)
-    if installed and not need_kernel:
-        print("Already installed and verified: " + entry["repository"], flush=True)
-        return True
+    if current and not need_kernel:
+        if not repaired:
+            print("Already installed and verified: " + entry["repository"], flush=True)
+        return not repaired
     with tempfile.TemporaryDirectory(dir=STATUS_DIR, prefix="filesystem-native-") as folder:
         module = Path(folder) / "filesystem.ko"
         if need_kernel:
@@ -534,7 +509,7 @@ def install(entry):
                    "Preparing a stored copy for manual use")
             download(kernel["browser_download_url"], module, kernel["digest"][7:], kernel["size"])
             validate_kernel_module(module)
-        if not installed:
+        if not current:
             ensure_dependencies(entry)
             status("running", 12, "Compiling " + entry["name"],
                    "Using its independent checksum-verified source installer")
@@ -544,10 +519,11 @@ def install(entry):
             run([installer, "--profile", "aggressive", "--system-package-mode",
                  "--build-only", "--output", output])
             package = output / f"{entry['package']}_{version}+native1_amd64.deb"
-            install_flat_package(entry, package, Path(folder))
-            verify(entry, version, revision=revision)
+            run(["/usr/bin/dpkg", "--refuse-downgrade", "-i", package])
+            metadata = verify(entry, version, revision=revision)
+            repair_manual(entry, release, version, metadata)
         if need_kernel:
-            stage_kernel_module(module, target)
+            stage_file(module, target)
             print("Stored and verified " + str(target), flush=True)
     return False
 

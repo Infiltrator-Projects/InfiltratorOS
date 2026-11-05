@@ -104,7 +104,7 @@ with tempfile.TemporaryDirectory(prefix="native-worker.", dir=native) as tempora
         version = subprocess.check_output(["dpkg-query", "-W", "-f=${Version}", entry["package"]], text=True)
         assert version.endswith("+native1")
         assert module.stat().st_size > 10000
-        manual = Path("/System/Resources/Documentation") / (entry["repository"] + ".pdf")
+        manual = Path("/System/Resources/Documentation") / entry["repository"] / (module.stem + ".pdf")
         assert not manual.is_symlink() and manual.read_bytes().startswith(b"%PDF-")
         release = json.loads((snapshot / (entry["repository"] + ".json")).read_text())
         name = entry["id"] + "-linux-6.12.107.ko"

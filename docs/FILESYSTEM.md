@@ -59,11 +59,11 @@ These destinations apply to every provider in the [established](../packaging/fil
 
 | Release output | Installed destination | Example |
 | --- | --- | --- |
-| PDF manual | `/System/Resources/Documentation/<provider-repository>.pdf` | `/System/Resources/Documentation/Filesystem-OFS.pdf` |
+| PDF manual | `/System/Resources/Documentation/<provider-repository>/<manual>.pdf` | `/System/Resources/Documentation/Filesystem-OFS/OFS.pdf` |
 | Format shared object | `/System/Filesystems/<catalogue filename>.so` | `/System/Filesystems/OFS.so` |
 | Linux kernel module | `/System/Kernel/Filesystems/<provider-id>.ko` | `/System/Kernel/Filesystems/ofs.ko` |
 
-Build the `.so` and the Linux adapter from the same provider release. The release job builds and qualifies one amd64 `.ko` against the project Linux `6.12.107` target and publishes it as `<provider-id>-linux-6.12.107.ko` with the release SHA-256. InfiltratorOS calls the native build when the installed `.so` is missing or older than the selected release. It verifies current or newer copies in place, including portable packages. The installer moves legacy package-owned PDFs to the flat path and preserves the exact installed `.so` bytes during that migration.
+Build the `.so` and the Linux adapter from the same provider release. The release job builds and qualifies one amd64 `.ko` against the project Linux `6.12.107` target and publishes it as `<provider-id>-linux-6.12.107.ko` with the release SHA-256. InfiltratorOS calls the native build when the installed `.so` is missing or older than the selected release. It verifies current or newer copies in place, including portable packages. It checks the package-owned PDF independently and repairs a missing or damaged copy using the matching portable DEB.
 
 The worker stages the matching kernel asset after verifying its SHA-256, ELF type, architecture and kernel release. The stored filename stays the same across provider upgrades. The module is available for manual use from this directory, outside Linux's active module tree.
 

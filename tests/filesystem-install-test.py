@@ -174,82 +174,75 @@ class InstallerTests(unittest.TestCase):
         self.assertNotIn("infiltrator_filesystem_module_v2",
                          worker.exported_interface_symbols(spoofed_object))
 
-    def test_native_fat_requires_pdf_and_pgo_in_debian_metadata(self):
+    def test_so_verification_checks_pgo_independently_of_the_pdf(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             module = root / self.entry["resource"].lstrip("/")
             module.parent.mkdir(parents=True)
             module.write_bytes(b"test data")
-            guide = root / "System/Resources/Documentation" / self.entry["repository"] / "FAT12.pdf"
-            guide.parent.mkdir(parents=True)
             info = ("Version: 0.1.2+native1\n"
                     "X-Infiltrator-Native-Profile: aggressive\n"
                     "X-Infiltrator-LTO: enabled\n"
                     "X-Infiltrator-PGO: disabled\n")
+            self.assertFalse(worker.manual_path(self.entry, root).exists())
             with patch.object(worker.subprocess, "check_output", return_value=info):
-                with self.assertRaisesRegex(ValueError, "PDF"):
-                    worker.verify(self.entry, "0.1.2", root=root, query=False)
-                guide.write_bytes(b"%PDF-1.4\n")
                 with self.assertRaisesRegex(ValueError, "X-Infiltrator-PGO"):
                     worker.verify(self.entry, "0.1.2", root=root, query=False)
 
-    def test_packages_use_a_single_flat_manual_and_keep_installed_so_bytes(self):
-        with tempfile.TemporaryDirectory() as temp:
-            work = Path(temp)
-            image = work / "old-image"
-            module = image / self.entry["resource"].lstrip("/")
-            module.parent.mkdir(parents=True)
-            module.write_bytes(b"existing SO fixture")
-            flat, legacy = worker.manual_paths(self.entry, image)
-            legacy.parent.mkdir(parents=True)
-            legacy.write_bytes(b"%PDF-1.4\n")
-            control = image / "DEBIAN"
-            control.mkdir()
-            report = (f"Package: {self.entry['package']}\nVersion: 1.0.2\nArchitecture: amd64\n"
-                      "Maintainer: Fixture <test@example.invalid>\nDescription: Manual migration fixture\n")
-            (control / "control").write_text(report)
-            package = work / "legacy.deb"
-            subprocess.run(["dpkg-deb", "-b", image, package], check=True, stdout=subprocess.DEVNULL)
-
-            def assert_flat(entry, deb):
-                with tempfile.TemporaryDirectory(dir=work) as destination:
-                    dest = Path(destination)
-                    subprocess.run(["dpkg-deb", "-x", deb, dest], check=True)
-                    current, old = worker.manual_paths(entry, dest)
-                    self.assertEqual(current.read_bytes(), b"%PDF-1.4\n")
-                    self.assertFalse(current.is_symlink())
-                    self.assertFalse(old.parent.exists())
-                    self.assertEqual((dest / entry["resource"].lstrip("/")).read_bytes(), module.read_bytes())
-
-            with patch.object(worker, "install_deb", side_effect=assert_flat):
-                worker.install_flat_package(self.entry, package, work)
-
-            # Feed the same verified installed bytes through the migration path.
-            def install_migrated(entry, deb):
-                assert_flat(entry, deb)
-                flat.write_bytes(legacy.read_bytes())
-                legacy.unlink()
-
-            listed = "/.\n" + "/" + module.relative_to(image).as_posix() + "\n/" + legacy.relative_to(image).as_posix() + "\n"
-            with patch.object(worker, "STATUS_DIR", work), \
-                 patch.object(worker.subprocess, "check_output", side_effect=[listed, "md5sums\n", report]), \
-                 patch.object(worker, "install_deb", side_effect=install_migrated):
-                worker.migrate_verified_manual(self.entry, root=image)
-            self.assertEqual(worker.package_manual(self.entry, image), flat)
-
-    def test_flat_manual_can_be_owned_directly_by_a_new_package(self):
+    def test_missing_or_damaged_manual_repairs_only_the_pdf(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
-            flat, legacy = worker.manual_paths(self.entry, root)
-            flat.parent.mkdir(parents=True)
-            flat.write_bytes(b"%PDF-1.4\n")
-            self.assertEqual(worker.package_manual(self.entry, root), flat)
-            self.assertFalse(flat.is_symlink())
-            self.assertFalse(legacy.exists())
-            flat.unlink()
-            flat.symlink_to("personal.pdf")
-            with self.assertRaisesRegex(ValueError, "Unexpected filesystem manual link"):
-                worker.package_manual(self.entry, root)
+            installed = root / "installed"
+            module = installed / self.entry["resource"].lstrip("/")
+            module.parent.mkdir(parents=True)
+            module.write_bytes(b"existing SO fixture")
+            original = module.stat()
+            release = copy.deepcopy(self.release)
+            revision = release["target_commitish"]
+            version = release["tag_name"][1:]
+            image = root / "package"
+            pdf = b"%PDF-1.4\nmanual\n"
+            digest = hashlib.sha256(pdf).hexdigest()
+            manual = worker.manual_path(self.entry, image)
+            manual.parent.mkdir(parents=True)
+            manual.write_bytes(pdf)
+            control = image / "DEBIAN"
+            control.mkdir()
+            (control / "control").write_text(
+                f"Package: {self.entry['package']}\nVersion: {version}\nArchitecture: amd64\n"
+                "Maintainer: Fixture <test@example.invalid>\nDescription: Manual repair fixture\n"
+                f"X-Infiltrator-Source-Revision: {revision}\nX-Infiltrator-PDF-SHA256: {digest}\n")
+            package = root / "manual.deb"
+            subprocess.run(["dpkg-deb", "-b", image, package], check=True, stdout=subprocess.DEVNULL)
+            payload = package.read_bytes()
+            asset = next(a for a in release["assets"] if a["name"].endswith(".deb"))
+            asset.update(size=len(payload), digest="sha256:" + hashlib.sha256(payload).hexdigest())
+            (root / (self.entry["repository"] + ".json")).write_text(json.dumps(release))
+            metadata = {"Version": version + "+native1", "X-Infiltrator-Source-Revision": revision,
+                        "X-Infiltrator-PDF-SHA256": digest}
+            original_repair = worker.repair_manual
+            target = worker.manual_path(self.entry, installed)
+            with patch.dict(worker.os.environ, {"INFILTRATOROS_RELEASE_DIR": str(root)}), \
+                 patch.object(worker, "STATUS_DIR", root), \
+                 patch.object(worker, "STATUS_PATH", root / "test.status"), \
+                 patch.object(worker, "verified_current_version", return_value=(version, metadata)), \
+                 patch.object(worker, "repair_manual", side_effect=lambda *args: original_repair(*args, root=installed)), \
+                 patch.object(worker, "verify_owned_path"), \
+                 patch.object(worker, "ensure_dependencies", side_effect=AssertionError("unnecessary build")), \
+                 patch.object(worker, "open_url", side_effect=lambda url: io.BytesIO(payload)) as fetch, \
+                 patch.object(worker, "run", wraps=worker.run) as command:
+                self.assertFalse(target.exists())
+                self.assertFalse(worker.install(self.entry))
+                self.assertEqual(target.read_bytes(), pdf)
+                target.write_bytes(b"%PDF-1.4\ndamaged\n")
+                self.assertFalse(worker.install(self.entry))
+                self.assertEqual(target.read_bytes(), pdf)
+                self.assertTrue(worker.install(self.entry))
+                self.assertEqual([call.args[0] for call in fetch.call_args_list], [asset["browser_download_url"]] * 2)
+                self.assertEqual([call.args[0][:2] for call in command.call_args_list],
+                                 [["/usr/bin/dpkg-deb", "-x"]] * 2)
+                self.assertEqual(module.stat().st_ino, original.st_ino)
+                self.assertEqual(module.read_bytes(), b"existing SO fixture")
 
     def test_only_a_missing_or_older_so_requires_a_build(self):
         revision = "a" * 40
@@ -269,7 +262,8 @@ class InstallerTests(unittest.TestCase):
                 with patch.object(worker, "package_version", return_value=version), \
                      patch.object(worker, "verify") as verify:
                     provider = version.removesuffix("+native1")
-                    self.assertEqual(worker.verified_current_version(self.entry, "1.0.2", revision, root), provider)
+                    self.assertEqual(worker.verified_current_version(self.entry, "1.0.2", revision, root),
+                                     (provider, verify.return_value))
                     verify.assert_called_once_with(self.entry, provider, root=root,
                                                    revision=expected_revision, profile=profile)
 
@@ -278,25 +272,25 @@ class InstallerTests(unittest.TestCase):
             root = Path(temporary)
             (root / (self.entry["repository"] + ".json")).write_text(json.dumps(self.release))
             with patch.dict(worker.os.environ, {"INFILTRATOROS_RELEASE_DIR": str(root)}), \
-                 patch.object(worker, "verified_current_version", return_value="0.1.0"), \
+                 patch.object(worker, "verified_current_version", return_value=("0.1.0", {})), \
                  patch.object(worker, "ensure_dependencies", side_effect=AssertionError("unnecessary apt")), \
                  patch.object(worker, "download", side_effect=AssertionError("unnecessary download")), \
-                 patch.object(worker, "migrate_verified_manual") as manual:
+                 patch.object(worker, "repair_manual", return_value=False) as manual:
                 self.assertTrue(worker.install(self.entry))
-                manual.assert_called_once_with(self.entry)
+                manual.assert_called_once_with(self.entry, self.release, "0.1.0", {})
 
     def test_newer_so_skips_build_and_older_kernel_download(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             (root / (self.entry["repository"] + ".json")).write_text(json.dumps(self.release))
             with patch.dict(worker.os.environ, {"INFILTRATOROS_RELEASE_DIR": str(root)}), \
-                 patch.object(worker, "verified_current_version", return_value="0.1.1"), \
+                 patch.object(worker, "verified_current_version", return_value=("0.1.1", {})), \
                  patch.object(worker, "stored_kernel_matches", side_effect=AssertionError("older KO check")), \
                  patch.object(worker, "ensure_dependencies", side_effect=AssertionError("unnecessary apt")), \
                  patch.object(worker, "download", side_effect=AssertionError("unnecessary download")), \
-                 patch.object(worker, "migrate_verified_manual") as manual:
+                 patch.object(worker, "repair_manual", return_value=False) as manual:
                 self.assertTrue(worker.install(self.entry))
-                manual.assert_called_once_with(self.entry)
+                manual.assert_called_once_with(self.entry, self.release, "0.1.0", {})
 
     def test_store_one_current_kernel_module_without_rebuilding_current_so(self):
         entry = next(e for e in worker.additional_catalogue() if e["id"] == "ffs")
@@ -321,10 +315,10 @@ class InstallerTests(unittest.TestCase):
                  patch.object(worker, "KERNEL_DIR", directory), \
                  patch.object(worker, "STATUS_DIR", root), \
                  patch.object(worker, "STATUS_PATH", root / "test.status"), \
-                 patch.object(worker, "verified_current_version", return_value=version), \
+                 patch.object(worker, "verified_current_version", return_value=(version, {})), \
                  patch.object(worker, "ensure_dependencies", side_effect=AssertionError("unnecessary apt")), \
                  patch.object(worker, "run", side_effect=AssertionError("unnecessary build or load")), \
-                 patch.object(worker, "migrate_verified_manual"), \
+                 patch.object(worker, "repair_manual", return_value=False), \
                  patch.object(worker, "validate_kernel_module"), \
                  patch.object(worker, "open_url") as fetch:
                 fetch.return_value = io.BytesIO(b"bad bytes")
@@ -379,13 +373,15 @@ class InstallerTests(unittest.TestCase):
                  patch.object(worker, "download") as download, \
                  patch.object(worker, "run") as compile_install, \
                  patch.object(worker, "verify") as verify, \
-                 patch.object(worker, "install_flat_package") as install:
+                 patch.object(worker, "repair_manual", return_value=False) as manual:
                 self.assertFalse(worker.install(self.entry))
-                install.assert_called_once()
                 dependencies.assert_called_once()
                 download.assert_called_once()
-                compile_install.assert_called_once()
+                self.assertEqual(compile_install.call_count, 2)
+                self.assertEqual(compile_install.call_args_list[1].args[0][:3],
+                                 ["/usr/bin/dpkg", "--refuse-downgrade", "-i"])
                 verify.assert_called_once()
+                manual.assert_called_once()
 
 
     def test_separate_per_run_terminal_records(self):
