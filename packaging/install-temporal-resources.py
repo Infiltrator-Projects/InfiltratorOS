@@ -134,7 +134,7 @@ class Metadata(ctypes.Structure):
                 ("requires_longitude", ctypes.c_bool)]
 
 
-def manual_path(entry, root=Path("/")):
+
     """Accept current flat manuals and older releases during the upgrade."""
     directory = root / "System/Resources/Documentation"
     flat = directory / (entry["repository"] + ".pdf")
@@ -146,7 +146,7 @@ def manual_path(entry, root=Path("/")):
     return flat
 
 
-def installed_provenance(entry, root=Path("/"), query=True):
+
     """Require the two-file package: PDF + Debian metadata, never old BUILD-INFO."""
     guide = manual_path(entry, root)
     if guide.is_symlink() or not guide.is_file():
@@ -185,7 +185,7 @@ LEGACY_DOC_NAMES = frozenset({
 LEGACY_DOC_DIRS = frozenset({"common", "docs"})
 
 
-def _dpkg_owns_path(path):
+
     result = subprocess.run(["/usr/bin/dpkg-query", "-S", str(path)],
                             capture_output=True, text=True, check=False)
     if result.returncode not in (0, 1):
@@ -193,7 +193,7 @@ def _dpkg_owns_path(path):
     return result.returncode == 0
 
 
-def clean_legacy_documentation(entry, root=Path("/"), owner_lookup=None):
+
     """Preserve existing documents without independently proved provenance.
 
     New packages install one PDF. Neither a familiar name nor lack of dpkg
@@ -225,7 +225,7 @@ def clean_legacy_documentation(entry, root=Path("/"), owner_lookup=None):
                   flush=True)
     return 0
 
-def native_compiler_flags_are_aggressive(flags):
+
     """Check actual flag tokens, including the effective final -O level.
 
     Published Clock-Binary uses -g0 -pipe -flto ... -O3 -march=native.
@@ -238,7 +238,7 @@ def native_compiler_flags_are_aggressive(flags):
             "-march=native" in tokens and "-flto" in tokens)
 
 
-def verify_installation(entry, version, root=Path("/"), query=True, revision=None):
+
     if query:
         identity = subprocess.check_output(["/usr/bin/dpkg-query", "-W", "-f=${Status}\n${Version}\n", entry["package"]], text=True)
         if identity.splitlines() != ["install ok installed", version + "+native1"]:
@@ -272,7 +272,7 @@ def verify_installation(entry, version, root=Path("/"), query=True, revision=Non
     getattr(module, "infiltratr_temporal_" + entry["kind"] + "_provider_v1")
 
 
-def native_installed(entry, version, release):
+
     """Accept a cached native provider only after checking its real installed ABI."""
     revision = release.get("target_commitish")
     if not isinstance(revision, str) or not re.fullmatch(r"[0-9a-f]{40}", revision):
@@ -306,7 +306,7 @@ def native_installed(entry, version, release):
         return False
 
 
-def ensure_dependencies(entry):
+
     ready = STATUS_DIR / "dependencies-ready"
     if ready.exists():
         return
