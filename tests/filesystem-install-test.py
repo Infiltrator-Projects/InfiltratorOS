@@ -332,11 +332,68 @@ class InstallerTests(unittest.TestCase):
                 self.assertEqual({path.name for path in directory.iterdir()}, {"ffs.ko"})
                 self.assertTrue(worker.install(entry))
                 fetch.assert_called_once_with(base + names[-1])
+                fetch.reset_mock()
+                fetch.return_value = io.BytesIO(payload)
+
+                def install_new_package(command):
+                    if command[0] == "/usr/bin/dpkg":
+                        target.unlink()
+
+                with patch.object(worker, "verified_current_version", return_value=None), \
+                     patch.object(worker, "ensure_dependencies"), \
+                     patch.object(worker, "verify", return_value={}), \
+                     patch.object(worker, "run", side_effect=install_new_package):
+                    self.assertFalse(worker.install(entry))
+                fetch.assert_called_once_with(base + names[0])
+                self.assertEqual(target.read_bytes(), payload)
                 release["assets"].pop()
                 (root / (repo + ".json")).write_text(json.dumps(release))
                 with self.assertRaisesRegex(ValueError, "previously staged kernel module"):
                     worker.install(entry)
                 self.assertEqual(target.read_bytes(), payload)
+
+    def test_keep_verified_manual_ofs_module_for_the_selected_release(self):
+        entry = next(e for e in self.entries if e["id"] == "ofs")
+        version = "0.1.9"
+        repo = entry["repository"]
+        names = [f"{repo.lower()}-{version}-native-installer.run",
+                 f"{entry['package']}_{version}_amd64.deb", worker.kernel_asset_name(entry),
+                 "OFS.so", "SHA256SUMS"]
+        base = f"https://github.com/Infiltrator-Projects/{repo}/releases/download/v{version}/"
+        local = b"module built against the running kernel"
+        released = b"module built against the published kernel"
+        assets = [{"name": name, "browser_download_url": base + name,
+                   "size": len(released), "digest": "sha256:" + hashlib.sha256(released).hexdigest()}
+                  for name in names]
+        release = {"tag_name": "v" + version, "target_commitish": "a" * 40, "assets": assets}
+        metadata = {"X-Infiltrator-Kernel-Release": "6.14.0-37-generic",
+                    "X-Infiltrator-Kernel-SHA256": hashlib.sha256(local).hexdigest()}
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            directory = root / "System/Kernel/Filesystems"
+            directory.mkdir(parents=True)
+            target = directory / "ofs.ko"
+            target.write_bytes(local)
+            (root / (repo + ".json")).write_text(json.dumps(release))
+            with patch.dict(worker.os.environ, {"INFILTRATOROS_RELEASE_DIR": str(root)}), \
+                 patch.object(worker, "KERNEL_DIR", directory), \
+                 patch.object(worker, "STATUS_DIR", root), \
+                 patch.object(worker, "STATUS_PATH", root / "test.status"), \
+                 patch.object(worker, "verified_current_version", return_value=(version, metadata)), \
+                 patch.object(worker, "repair_manual", return_value=False), \
+                 patch.object(worker, "verify_owned_path") as owns, \
+                 patch.object(worker, "validate_kernel_module") as validate, \
+                 patch.object(worker, "open_url", return_value=io.BytesIO(released)) as fetch, \
+                 patch.object(worker, "run", side_effect=AssertionError("unnecessary build")):
+                self.assertTrue(worker.install(entry))
+                owns.assert_called_once_with(entry, target, Path("/"))
+                validate.assert_called_once_with(target, metadata["X-Infiltrator-Kernel-Release"])
+                fetch.assert_not_called()
+                self.assertEqual(target.read_bytes(), local)
+                target.write_bytes(b"damaged module")
+                self.assertFalse(worker.install(entry))
+                fetch.assert_called_once_with(base + worker.kernel_asset_name(entry))
+                self.assertEqual(target.read_bytes(), released)
 
     def test_swap_cannot_supply_a_kernel_module_asset(self):
         entry = next(e for e in worker.additional_catalogue() if e["id"] == "swap")

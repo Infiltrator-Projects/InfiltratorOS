@@ -190,7 +190,7 @@ def download(url, path, digest, length):
     path.chmod(0o700)
 
 
-def stored_kernel_matches(path, asset):
+def stored_kernel_matches(path, asset, entry, metadata):
     owner = os.geteuid()
     for directory in (KERNEL_DIR.parent.parent, KERNEL_DIR.parent, KERNEL_DIR):
         info = directory.lstat()
@@ -202,20 +202,34 @@ def stored_kernel_matches(path, asset):
         return False
     if not stat.S_ISREG(info.st_mode) or info.st_uid != owner or info.st_mode & 0o022:
         raise ValueError("Untrusted stored kernel module: " + str(path))
-    if info.st_size != asset["size"]:
+    local_release = metadata.get("X-Infiltrator-Kernel-Release", "")
+    local_digest = metadata.get("X-Infiltrator-Kernel-SHA256", "")
+    local_build = (re.fullmatch(r"[A-Za-z0-9.+_~-]+", local_release)
+                   and re.fullmatch(r"[0-9a-f]{64}", local_digest))
+    if info.st_size != asset["size"] and not local_build:
         return False
     with path.open("rb") as module:
-        return hashlib.file_digest(module, "sha256").hexdigest() == asset["digest"][7:]
+        digest = hashlib.file_digest(module, "sha256").hexdigest()
+    if info.st_size == asset["size"] and digest == asset["digest"][7:]:
+        return True
+    if not local_build or digest != local_digest:
+        return False
+    try:
+        verify_owned_path(entry, path, Path("/"))
+        validate_kernel_module(path, local_release)
+    except (ValueError, subprocess.CalledProcessError):
+        return False
+    return True
 
 
-def validate_kernel_module(path):
+def validate_kernel_module(path, release=KERNEL_TARGET):
     report = subprocess.check_output(["/usr/bin/readelf", "-W", "-h", "-p", ".modinfo", str(path)],
                                      text=True, env={**os.environ, "LC_ALL": "C"})
     if (not re.search(r"^\s*Class:\s+ELF64\s*$", report, re.M)
             or not re.search(r"^\s*Type:\s+REL\b", report, re.M)
             or not re.search(r"^\s*Machine:.*X86-64\s*$", report, re.M)
-            or not re.search(r"\bvermagic=" + re.escape(KERNEL_TARGET) + r"(?=\s|$)", report)):
-        raise ValueError("Filesystem kernel module does not match the published build target")
+            or not re.search(r"\bvermagic=" + re.escape(release) + r"(?=\s|$)", report)):
+        raise ValueError("Filesystem kernel module does not match its declared build target")
 
 
 def stage_file(source, destination):
@@ -497,7 +511,8 @@ def install(entry):
     target = KERNEL_DIR / (entry["id"] + ".ko")
     if kernel is None and entry["id"] != "swap" and (target.exists() or target.is_symlink()):
         raise ValueError("Selected filesystem release is missing its previously staged kernel module")
-    need_kernel = kernel is not None and not stored_kernel_matches(target, kernel)
+    kernel_matches = kernel is not None and stored_kernel_matches(target, kernel, entry, current[1] if current else {})
+    need_kernel = kernel is not None and (not kernel_matches or not current)
     if current and not need_kernel:
         if not repaired:
             print("Already installed and verified: " + entry["repository"], flush=True)
@@ -507,7 +522,11 @@ def install(entry):
         if need_kernel:
             status("running", 10, "Verifying the " + entry["name"] + " kernel module",
                    "Preparing a stored copy for manual use")
-            download(kernel["browser_download_url"], module, kernel["digest"][7:], kernel["size"])
+            if kernel_matches:
+                # The old Debian package may own this path and remove it on upgrade.
+                shutil.copyfile(target, module)
+            else:
+                download(kernel["browser_download_url"], module, kernel["digest"][7:], kernel["size"])
             validate_kernel_module(module)
         if not current:
             ensure_dependencies(entry)
@@ -522,7 +541,7 @@ def install(entry):
             run(["/usr/bin/dpkg", "--refuse-downgrade", "-i", package])
             metadata = verify(entry, version, revision=revision)
             repair_manual(entry, release, version, metadata)
-        if need_kernel:
+        if need_kernel and (not kernel_matches or not target.exists()):
             stage_file(module, target)
             print("Stored and verified " + str(target), flush=True)
     return False
