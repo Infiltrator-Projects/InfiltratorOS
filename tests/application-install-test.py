@@ -39,6 +39,16 @@ class ApplicationTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     app.release(repo, slug, tmp)
 
+    def test_missing_optional_dpkg_field_does_not_hide_installed_package(self):
+        for metadata in ("", "native"):
+            with self.subTest(metadata=metadata):
+                result = subprocess.CompletedProcess(
+                    [], 0, "install ok installed\\t1.2.3\\t" + metadata, "")
+                with patch.object(app.subprocess, "run", return_value=result):
+                    self.assertEqual(
+                        app.package_info("calculator"),
+                        ["install ok installed", "1.2.3", metadata])
+
     def test_verified_download_fails_on_corruption(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "native.run"
