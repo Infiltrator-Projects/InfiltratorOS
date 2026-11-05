@@ -25,13 +25,14 @@ cc -std=c11 -O2 -Wall -Wextra -Werror -Wpedantic \
     "$ROOT/tests/select-theme-command-test.c" -o "$ROOT/.build-select-theme-test"
 "$ROOT/.build-select-theme-test"
 rm -f "$ROOT/.build-select-theme-test"
-# Prevent regression to purging stock monitors before verifying the replacement.
+# Only the published application RUN may own removal or package changes.
 python3 - "$ROOT" <<'PY'
 from pathlib import Path
 import sys
 root = Path(sys.argv[1])
-monitor = (root / "packaging/install-system-monitor.c").read_text()
-assert monitor.index('native_package_version_matches("/var/lib/dpkg/status"') < monitor.index("purge_stock_monitors();")
+application = (root / "packaging/install-application.py").read_text()
+assert "purge" not in application
+assert "current(slug, version, digest, verified)" in application
 progress = (root / "packaging/native-install-progress.c").read_text()
 assert 'Waiting for the verified final installation result' in progress
 assert progress.index('if (outcome != 0)') < progress.index('if (finished == total_jobs)')
