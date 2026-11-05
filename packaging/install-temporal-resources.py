@@ -134,10 +134,21 @@ class Metadata(ctypes.Structure):
                 ("requires_longitude", ctypes.c_bool)]
 
 
+def manual_path(entry, root=Path("/")):
+    """Accept current flat manuals and older releases during the upgrade."""
+    directory = root / "System/Resources/Documentation"
+    flat = directory / (entry["repository"] + ".pdf")
+    legacy = directory / entry["repository"] / (entry["name"] + ".pdf")
+    if flat.exists() or flat.is_symlink():
+        return flat
+    if legacy.exists() or legacy.is_symlink():
+        return legacy
+    return flat
+
+
 def installed_provenance(entry, root=Path("/"), query=True):
     """Require the two-file package: PDF + Debian metadata, never old BUILD-INFO."""
-    docs = root / "System/Resources/Documentation" / entry["repository"]
-    guide = docs / (entry["name"] + ".pdf")
+    guide = manual_path(entry, root)
     if guide.is_symlink() or not guide.is_file():
         raise ValueError("Illustrated calendar or clock PDF is missing or invalid")
     with guide.open("rb") as stream:
@@ -189,19 +200,25 @@ def clean_legacy_documentation(entry, root=Path("/"), owner_lookup=None):
     ownership makes an old root-owned file safe to erase.
     """
     docs = root / "System/Resources/Documentation" / entry["repository"]
-    guide = docs / (entry["name"] + ".pdf")
+    guide = manual_path(entry, root)
     if guide.is_symlink() or not guide.is_file():
         raise ValueError("Refusing legacy inspection without provider PDF: " + entry["repository"])
     with guide.open("rb") as stream:
         if stream.read(5) != b"%PDF-":
             raise ValueError("Refusing legacy inspection without valid provider PDF")
     for directory in (root / "System", root / "System/Resources",
-                      root / "System/Resources/Documentation", docs):
+                      root / "System/Resources/Documentation", guide.parent):
         info = directory.lstat()
         if (not stat.S_ISDIR(info.st_mode) or info.st_mode & 0o022
                 or (root == Path("/") and info.st_uid != 0)):
             raise ValueError("Unsafe temporal documentation directory: " + str(directory))
     _ = owner_lookup
+    if not docs.exists() and not docs.is_symlink():
+        return 0
+    info = docs.lstat()
+    if (not stat.S_ISDIR(info.st_mode) or info.st_mode & 0o022
+            or (root == Path("/") and info.st_uid != 0)):
+        raise ValueError("Unsafe temporal documentation directory: " + str(docs))
     for item in docs.iterdir():
         if item.name in LEGACY_DOC_NAMES or item.name in LEGACY_DOC_DIRS:
             print("Preserving unverified legacy temporal documentation: " + str(item),
@@ -262,8 +279,8 @@ def native_installed(entry, version, release):
         print("Native cache unavailable: release commit is not pinned.", flush=True)
         return False
     library = Path(entry["resource"])
-    docs = Path("/System/Resources/Documentation") / entry["repository"]
-    guide = docs / (entry["name"] + ".pdf")
+    guide = manual_path(entry)
+    docs = guide.parent
     record = guide
     try:
         for path in (Path("/System"), Path("/System/Resources"), library.parent,

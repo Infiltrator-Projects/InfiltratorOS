@@ -324,7 +324,9 @@ int main(void)
     if (access("/usr/bin/files", F_OK) == 0)
         fail("obsolete /usr/bin/files path remains after native Files installation");
 
-    const char info[] = "/System/Resources/Documentation/Files/BUILD-INFO";
+    const char *info = access("/System/Resources/Documentation/Files-BUILD-INFO", R_OK) == 0
+        ? "/System/Resources/Documentation/Files-BUILD-INFO"
+        : "/System/Resources/Documentation/Files/BUILD-INFO";
     if (!file_contains(info, "Profile: aggressive") ||
         !file_contains(info, "PGO: trained two-pass profile") ||
         !file_contains(info, "CXX flags: -O3") ||

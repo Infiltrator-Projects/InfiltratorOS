@@ -67,7 +67,32 @@ def pdf_name(entry):
 
 
 def manual_path(entry, root=Path("/")):
-    return root / "System/Resources/Documentation" / entry["repository"] / pdf_name(entry)
+    directory = root / "System/Resources/Documentation"
+    flat = directory / (entry["repository"] + ".pdf")
+    legacy = directory / entry["repository"] / pdf_name(entry)
+    if flat.exists() or flat.is_symlink():
+        return flat
+    if legacy.exists() or legacy.is_symlink():
+        return legacy
+    return flat
+
+
+def installed_manual_path(entry, root=Path("/")):
+    """Use Debian ownership to locate even a missing PDF during repair."""
+    if root != Path("/"):
+        return manual_path(entry, root)
+    directory = root / "System/Resources/Documentation"
+    paths = (directory / (entry["repository"] + ".pdf"),
+             directory / entry["repository"] / pdf_name(entry))
+    for path in paths:
+        try:
+            owner = subprocess.check_output(["/usr/bin/dpkg-query", "-S", str(path)],
+                                            text=True, stderr=subprocess.DEVNULL)
+        except subprocess.CalledProcessError:
+            continue
+        if owner.strip() == f"{entry['package']}: {path}":
+            return path
+    return manual_path(entry, root)
 
 
 def all_catalogue():
@@ -324,7 +349,8 @@ def package_kernel(entry, package, module, kernel_release, identity, root=Path("
             control.parent.mkdir(parents=True)
             control.write_text(subprocess.check_output(
                 ["/usr/bin/dpkg-query", "-s", entry["package"]], text=True))
-            for relative in (Path(entry["resource"].lstrip("/")), manual_path(entry).relative_to("/")):
+            for relative in (Path(entry["resource"].lstrip("/")),
+                             installed_manual_path(entry, root).relative_to(root)):
                 source = root / relative
                 verify_owned_path(entry, source, root)
                 destination = image / relative
@@ -503,7 +529,7 @@ def manual_matches(path, digest):
 
 def repair_manual(entry, release, version, metadata, root=Path("/")):
     """Restore just the verified provider manual from its matching portable DEB."""
-    path = manual_path(entry, root)
+    path = installed_manual_path(entry, root)
     expected = metadata.get("X-Infiltrator-PDF-SHA256", "")
     if not re.fullmatch(r"[0-9a-f]{64}", expected):
         raise ValueError("Missing filesystem manual checksum in installed package metadata")

@@ -24,7 +24,7 @@ reassembles and verifies the exact archive SHA-256
 The package contains 1,233 flat icon files directly under
 `/System/Resources/Icons/`, with filenames such as
 `adapter-default-arrow_link_icon.png`. A SHA-256 inventory is packaged
-under `/System/Resources/Documentation/InfiltratorOS/icons.sha256`.
+under `/System/Resources/Documentation/InfiltratorOS-icons.sha256`.
 No installed archive or `Seed` folder remains; the helper verifies icons in place. Application and
 normal/night distinctions live in the filenames, without resource subdirectories.
 On upgrade from 1.0.22, verified unchanged files in the old `mercedes` tree are

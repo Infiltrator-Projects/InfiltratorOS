@@ -19,7 +19,7 @@ PRODUCTS = ("system-monitor", "calculator", "files", "defragmenter", "temporal-r
 COMMAND_ROOT = "System/Commands/InfiltratorOS/"
 FONT_ROOT = "System/Resources/Fonts/"
 ICON_ROOT = "System/Resources/Icons/"
-MANIFEST_ROOT = "System/Resources/Documentation/InfiltratorOS/"
+MANIFEST_ROOT = "System/Resources/Documentation/"
 
 
 def expected_paths(source_root: pathlib.Path) -> set[str]:
@@ -33,8 +33,8 @@ def expected_paths(source_root: pathlib.Path) -> set[str]:
         "etc/profile.d/90-infiltratoros-native-path.sh",
         "etc/xdg/autostart/infiltrator-calendar.desktop",
         "etc/xdg/autostart/infiltrator-program-icons.desktop",
-        MANIFEST_ROOT + "fonts.sha256",
-        MANIFEST_ROOT + "icons.sha256",
+        MANIFEST_ROOT + "InfiltratorOS-fonts.sha256",
+        MANIFEST_ROOT + "InfiltratorOS-icons.sha256",
     })
     entries.update({
         "usr/share/plymouth/themes/infiltratoros/" + name

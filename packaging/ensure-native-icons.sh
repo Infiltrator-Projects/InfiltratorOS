@@ -10,11 +10,10 @@ case "$ROOT" in ''|/*) ;; *) echo 'Native root must be absolute' >&2; exit 2 ;; 
 native_path() { printf '%s%s\n' "$ROOT" "$1"; }
 
 ICON_ROOT=$(native_path /System/Resources/Icons)
-MANIFEST=$(native_path /System/Resources/Documentation/InfiltratorOS/icons.sha256)
+MANIFEST=$(native_path /System/Resources/Documentation/InfiltratorOS-icons.sha256)
 LEGACY_ROOT="$ICON_ROOT/mercedes"
 for path in "$(native_path /System)" "$(native_path /System/Resources)" \
             "$(native_path /System/Resources/Documentation)" \
-            "$(native_path /System/Resources/Documentation/InfiltratorOS)" \
             "$ICON_ROOT" "$LEGACY_ROOT"; do
     [ ! -L "$path" ] || { echo "Unsafe icon path: $path" >&2; exit 3; }
 done

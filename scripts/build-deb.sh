@@ -24,7 +24,7 @@ RUNTIME_BUILD="$WORK/native-runtime"
 THEME_DIR="$PKGROOT/usr/share/plymouth/themes/infiltratoros"
 FONT_DIR="$PKGROOT/System/Resources/Fonts"
 ICON_DIR="$PKGROOT/System/Resources/Icons"
-RESOURCE_MANIFEST_DIR="$PKGROOT/System/Resources/Documentation/InfiltratorOS"
+RESOURCE_MANIFEST_DIR="$PKGROOT/System/Resources/Documentation"
 ICON_PART_DIR="$ROOT/assets/icons"
 ICON_ARCHIVE_SHA256="8d55ccbe5f1eefe3800ab12578a641524742b9482410d95757317434523b342c"
 SYSTEM_ROOT="$PKGROOT/System"
@@ -83,7 +83,7 @@ tar -xJf "$archive" -C "$WORK/icon-source" --no-same-owner
 original_manifest="$WORK/icon-source/SHA256SUMS"
 test "$(wc -l < "$original_manifest")" -eq 1233
 (cd "$WORK/icon-source/mercedes" && sha256sum -c "$original_manifest") >/dev/null
-icon_manifest="$RESOURCE_MANIFEST_DIR/icons.sha256"
+icon_manifest="$RESOURCE_MANIFEST_DIR/InfiltratorOS-icons.sha256"
 : > "$icon_manifest"
 icon_count=0
 while IFS= read -r entry || [ -n "$entry" ]; do
@@ -115,12 +115,12 @@ install -m 0755 "$ROOT/packaging/ensure-native-fonts.sh" \
     "$PKGROOT/System/Commands/InfiltratorOS/ensure-native-fonts"
 install -m 0755 "$ROOT/packaging/ensure-native-icons.sh" \
     "$PKGROOT/System/Commands/InfiltratorOS/ensure-native-icons"
-install -m 0644 "$FONT_MANIFEST" "$RESOURCE_MANIFEST_DIR/fonts.sha256"
+install -m 0644 "$FONT_MANIFEST" "$RESOURCE_MANIFEST_DIR/InfiltratorOS-fonts.sha256"
 while IFS= read -r entry; do
     font_file=${entry#*  }
     install -m 0644 "$ROOT/assets/fonts/$font_file" "$FONT_DIR/$font_file"
 done < "$FONT_MANIFEST"
-(cd "$FONT_DIR" && sha256sum -c "$RESOURCE_MANIFEST_DIR/fonts.sha256") >/dev/null
+(cd "$FONT_DIR" && sha256sum -c "$RESOURCE_MANIFEST_DIR/InfiltratorOS-fonts.sha256") >/dev/null
 test "$(find "$FONT_DIR" -maxdepth 1 -type f -name '*.ttf' | wc -l)" -eq 23
 install -m 0644 "$ROOT/packaging/infiltrator-native-path.sh" \
     "$PKGROOT/etc/profile.d/90-infiltratoros-native-path.sh"

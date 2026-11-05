@@ -364,7 +364,8 @@ static const char *installed_contract_error(const char *expected_version)
         return "the Calculator package is installed but /Programs/calculator is missing or not executable";
     if (!installed_package_version_matches("/var/lib/dpkg/status", "calculator", expected_version))
         return "installed Calculator package version differs from the verified native release";
-    if (!regular_file("/System/Resources/Documentation/Calculator/Calculator-Manual.pdf"))
+    if (!regular_file("/System/Resources/Documentation/Calculator.pdf") &&
+        !regular_file("/System/Resources/Documentation/Calculator/Calculator-Manual.pdf"))
         return "Calculator user manual is missing after installation";
     if (!regular_file(desktop))
         return "Calculator desktop launcher is missing after installation";

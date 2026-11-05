@@ -10,12 +10,11 @@ case "$ROOT" in ''|/*) ;; *) echo 'Native root must be absolute' >&2; exit 2 ;; 
 native_path() { printf '%s%s\n' "$ROOT" "$1"; }
 
 FONT_DIR=$(native_path /System/Resources/Fonts)
-MANIFEST=$(native_path /System/Resources/Documentation/InfiltratorOS/fonts.sha256)
+MANIFEST=$(native_path /System/Resources/Documentation/InfiltratorOS-fonts.sha256)
 FONTCONFIG_DIR=$(native_path /etc/fonts/conf.d)
 FONTCONFIG_FILE="$FONTCONFIG_DIR/90-infiltrator-native-fonts.conf"
 for path in "$(native_path /System)" "$(native_path /System/Resources)" \
             "$(native_path /System/Resources/Documentation)" \
-            "$(native_path /System/Resources/Documentation/InfiltratorOS)" \
             "$FONT_DIR"; do
     [ ! -L "$path" ] || { echo "Unsafe native font path: $path" >&2; exit 3; }
 done

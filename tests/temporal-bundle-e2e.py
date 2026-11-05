@@ -22,6 +22,11 @@ expected = {name for product in products for name in ("install-" + product, "sta
 expected.add("prepare-native-releases")
 native = Path("/Temporary/InfiltratorOS")
 native.mkdir(parents=True, exist_ok=True)
+def installed_manual(entry, legacy_name):
+    docs = Path("/System/Resources/Documentation")
+    flat = docs / (entry["repository"] + ".pdf")
+    return flat if flat.exists() else docs / entry["repository"] / legacy_name
+
 with tempfile.TemporaryDirectory(prefix="native-worker.", dir=native) as temporary:
     work = Path(temporary)
     subprocess.run(["dpkg-deb", "--control", package, work / "control"], check=True)
@@ -79,9 +84,7 @@ with tempfile.TemporaryDirectory(prefix="native-worker.", dir=native) as tempora
     assert len(list(Path("/System/Resources/Calendars").glob("*.so"))) == 31
     assert len(list(Path("/System/Resources/Clocks").glob("*.so"))) == 23
     for entry in entries:
-        docs = Path("/System/Resources/Documentation") / entry["repository"]
-        guide = docs / (entry["name"] + ".pdf")
-        assert {p.name for p in docs.glob("*.pdf")} == {guide.name}, entry["repository"]
+        guide = installed_manual(entry, entry["name"] + ".pdf")
         assert guide.read_bytes().startswith(b"%PDF-")
         owner = subprocess.check_output(["dpkg-query", "-S", str(guide)], text=True).strip()
         assert owner == entry["package"] + ": " + str(guide), owner
@@ -104,7 +107,7 @@ with tempfile.TemporaryDirectory(prefix="native-worker.", dir=native) as tempora
         version = subprocess.check_output(["dpkg-query", "-W", "-f=${Version}", entry["package"]], text=True)
         assert version.endswith("+native1")
         assert module.stat().st_size > 10000
-        manual = Path("/System/Resources/Documentation") / entry["repository"] / (module.stem + ".pdf")
+        manual = installed_manual(entry, module.stem + ".pdf")
         assert not manual.is_symlink() and manual.read_bytes().startswith(b"%PDF-")
         release = json.loads((snapshot / (entry["repository"] + ".json")).read_text())
         name = entry["id"] + "-linux-6.12.107.ko"

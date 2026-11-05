@@ -28,9 +28,9 @@ helper="$ROOT/packaging/ensure-native-icons.sh"
 stage_icons() {
     root=$1
     mkdir -p "$root/System/Resources/Icons" \
-             "$root/System/Resources/Documentation/InfiltratorOS"
+             "$root/System/Resources/Documentation"
     cp -a "$WORK/flat/." "$root/System/Resources/Icons/"
-    cp "$manifest" "$root/System/Resources/Documentation/InfiltratorOS/icons.sha256"
+    cp "$manifest" "$root/System/Resources/Documentation/InfiltratorOS-icons.sha256"
 }
 verify_icons() {
     INFILTRATR_NATIVE_ROOT="$1" sh "$helper"

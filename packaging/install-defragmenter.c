@@ -425,7 +425,8 @@ int main(void)
         access("/System/Commands/Defragmenter/ext4/ext-metadata-worker", X_OK) != 0 ||
         access("/System/Commands/Defragmenter/defragmenter-privileged-helper", X_OK) != 0 ||
         access("/System/Commands/defragmenter-ensure-fonts", X_OK) != 0 ||
-        access("/System/Resources/Documentation/Defragmenter/README.md", R_OK) != 0 ||
+        (access("/System/Resources/Documentation/Defragmenter-README.md", R_OK) != 0 &&
+         access("/System/Resources/Documentation/Defragmenter/README.md", R_OK) != 0) ||
         access("/System/Resources/Icons/defragmenter.png", R_OK) != 0 ||
         !file_contains("/usr/share/applications/io.github.defragmenter.desktop",
                        "Exec=/Programs/defragmenter") ||

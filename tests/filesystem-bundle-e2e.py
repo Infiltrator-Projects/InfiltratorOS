@@ -23,6 +23,11 @@ assert "./System/Kernel/Filesystems/" in subprocess.check_output(["dpkg-deb", "-
 kernel_dir.mkdir(parents=True, exist_ok=True)
 native = Path("/Temporary/InfiltratorOS")
 native.mkdir(mode=0o755, parents=True, exist_ok=True)
+def installed_manual(entry, legacy_name):
+    docs = Path("/System/Resources/Documentation")
+    flat = docs / (entry["repository"] + ".pdf")
+    return flat if flat.exists() else docs / entry["repository"] / legacy_name
+
 with tempfile.TemporaryDirectory(prefix="native-worker.", dir=native) as temporary:
     stage = Path(temporary)
     subprocess.run(["dpkg-deb", "--control", package, stage / "control"], check=True)
@@ -70,7 +75,7 @@ with tempfile.TemporaryDirectory(prefix="native-worker.", dir=native) as tempora
         version = subprocess.check_output(["dpkg-query", "-W", "-f=${Version}",
                                            entry["package"]], text=True)
         assert version.endswith("+native1"), version
-        pdf = Path("/System/Resources/Documentation") / entry["repository"] / (module.stem + ".pdf")
+        pdf = installed_manual(entry, module.stem + ".pdf")
         assert not pdf.is_symlink() and pdf.read_bytes().startswith(b"%PDF-"), pdf
         pdf_owner = subprocess.check_output(["dpkg-query", "-S", str(pdf)], text=True).strip()
         assert pdf_owner == entry["package"] + ": " + str(pdf), pdf_owner
@@ -103,7 +108,7 @@ with tempfile.TemporaryDirectory(prefix="native-worker.", dir=native) as tempora
         status = (stage / "status" / (slug + "-install.status")).read_text()
         assert "state=complete\n" in status, slug
         module = Path(entry["resource"])
-        manual = Path("/System/Resources/Documentation") / entry["repository"] / entry["pdf"]
+        manual = installed_manual(entry, entry["pdf"])
         assert module.is_file() and not module.is_symlink(), module
         assert manual.is_file() and not manual.is_symlink(), manual
         assert manual.read_bytes().startswith(b"%PDF-"), manual

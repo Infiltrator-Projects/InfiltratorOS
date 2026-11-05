@@ -79,6 +79,29 @@ class InstallationContract(unittest.TestCase):
             with self.assertRaises(ValueError):
                 worker.installed_provenance(self.entry, root)
 
+    def test_flat_and_legacy_manuals_are_accepted_during_rollout(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            docs = root / "System/Resources/Documentation"
+            legacy = docs / self.entry["repository"] / (self.entry["name"] + ".pdf")
+            flat = docs / (self.entry["repository"] + ".pdf")
+            legacy.parent.mkdir(parents=True)
+            legacy.write_bytes(b"%PDF-1.4 legacy")
+            report = "Version: 1.2.3+native1\n"
+            with patch.object(worker.subprocess, "check_output", return_value=report):
+                self.assertEqual(worker.manual_path(self.entry, root), legacy)
+                self.assertEqual(worker.installed_provenance(self.entry, root)["Version"], "1.2.3")
+                flat.write_bytes(b"%PDF-1.4 flat")
+                self.assertEqual(worker.manual_path(self.entry, root), flat)
+                self.assertEqual(worker.installed_provenance(self.entry, root)["Version"], "1.2.3")
+                flat.write_bytes(b"corrupt")
+                with self.assertRaisesRegex(ValueError, "PDF"):
+                    worker.installed_provenance(self.entry, root)
+            flat.write_bytes(b"%PDF-1.4 flat")
+            legacy.unlink()
+            legacy.parent.rmdir()
+            self.assertEqual(worker.clean_legacy_documentation(self.entry, root), 0)
+
     def test_build_info_never_overrides_current_package(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

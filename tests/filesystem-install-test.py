@@ -189,6 +189,31 @@ class InstallerTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "X-Infiltrator-PGO"):
                     worker.verify(self.entry, "0.1.2", root=root, query=False)
 
+    def test_all_provider_manual_paths_support_flat_and_legacy_packages(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            directory = root / "System/Resources/Documentation"
+            for entry in worker.all_catalogue():
+                flat = directory / (entry["repository"] + ".pdf")
+                legacy = directory / entry["repository"] / worker.pdf_name(entry)
+                self.assertEqual(worker.manual_path(entry, root), flat)
+                legacy.parent.mkdir(parents=True, exist_ok=True)
+                legacy.write_bytes(b"%PDF-1.4 legacy")
+                self.assertEqual(worker.manual_path(entry, root), legacy)
+                flat.write_bytes(b"%PDF-1.4 flat")
+                self.assertEqual(worker.manual_path(entry, root), flat)
+                flat.unlink()
+
+    def test_missing_legacy_manual_is_repaired_at_its_owned_path(self):
+        entry = self.entry
+        legacy = Path("/System/Resources/Documentation") / entry["repository"] / worker.pdf_name(entry)
+        def query(args, **kwargs):
+            if args[-1] == str(legacy):
+                return f"{entry['package']}: {legacy}\n"
+            raise subprocess.CalledProcessError(1, args)
+        with patch.object(worker.subprocess, "check_output", side_effect=query):
+            self.assertEqual(worker.installed_manual_path(entry), legacy)
+
     def test_missing_or_damaged_manual_repairs_only_the_pdf(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)

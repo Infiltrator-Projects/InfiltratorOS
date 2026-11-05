@@ -2,6 +2,12 @@
 
 This is a concise record of **published changes**, not an alternative copy of the current architecture or a replay of every development commit. The [README](README.md) and [technical documentation](docs/README.md) describe current behaviour. [Immutable release tags](https://github.com/Infiltrator-Projects/InfiltratorOS/releases) and [Git commits](https://github.com/Infiltrator-Projects/InfiltratorOS/commits/main/) preserve detailed historical provenance; the full older changelog is retained at [v1.0.52](https://github.com/Infiltrator-Projects/InfiltratorOS/blob/v1.0.52/CHANGELOG.md).
 
+## 1.0.61 — Support flat documentation upgrades
+
+- Install the OS font and icon checksum manifests directly in the documentation directory. An upgrade removes the old OS-owned directory when empty.
+- Accept both current nested manuals and the new flat provider manuals during the transition, while retaining package ownership checks and independent filesystem PDF repair.
+- Preserve unverified legacy files; each independently released provider or application must be upgraded before its own old package-owned folder is removed.
+
 ## 1.0.60 — Flat filesystem kernel storage and independent repairs
 
 - Store each qualified filesystem kernel module directly under `/System/Kernel/Filesystems/<provider-id>.ko`, alongside the independently installed `.so` and provider PDF. Keep kernel modules inactive and retain one stored version.

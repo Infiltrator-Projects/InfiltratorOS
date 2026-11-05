@@ -4,7 +4,7 @@ This directory contains 23 SHA-256-distinct MB Corpo and Daimler TTF files. The
 authoritative SHA-256 manifest is [SHA256SUMS](SHA256SUMS). InfiltratorOS verifies
 every listed binary during packaging and installs all 23 **directly** into
 `/System/Resources/Fonts`. The packaged SHA-256 inventory is placed at
-`/System/Resources/Documentation/InfiltratorOS/fonts.sha256`. There is no
+`/System/Resources/Documentation/InfiltratorOS-fonts.sha256`. There is no
 installed font seed, second resource copy or runtime font acquisition.
 
 Three earlier 1.000 MB Corpo builds were removed in favour of the newer 1.010
