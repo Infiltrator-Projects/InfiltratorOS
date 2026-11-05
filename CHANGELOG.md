@@ -2,6 +2,13 @@
 
 This is a concise record of **published changes**, not an alternative copy of the current architecture or a replay of every development commit. The [README](README.md) and [technical documentation](docs/README.md) describe current behaviour. [Immutable release tags](https://github.com/Infiltrator-Projects/InfiltratorOS/releases) and [Git commits](https://github.com/Infiltrator-Projects/InfiltratorOS/commits/main/) preserve detailed historical provenance; the full older changelog is retained at [v1.0.52](https://github.com/Infiltrator-Projects/InfiltratorOS/blob/v1.0.52/CHANGELOG.md).
 
+## 1.0.60 — Flat filesystem kernel storage and independent repairs
+
+- Store each qualified filesystem kernel module directly under `/System/Kernel/Filesystems/<provider-id>.ko`, alongside the independently installed `.so` and provider PDF. Keep kernel modules inactive and retain one stored version.
+- Compile the `.so` only when it is missing or older than the selected release; repair a missing or damaged PDF or stored kernel module independently.
+- Preserve a verified manually compiled kernel module even when the `.so` is missing. Keep the kernel checksum, kernel version and ownership in the installed three-file Debian package, including after a repair or native rebuild.
+- Cover missing-SO preservation, kernel-only repair, repeated verification and Debian package ownership with regression tests and isolated real-dpkg qualification.
+
 ## 1.0.59 — Repair installer bootstrap and verification
 
 - Verify and register the packaged fonts and icons, then open the aggregate progress window before Plymouth and release discovery. Check the exact font files selected by Pango, including the MB Corpo condensed alias and bold title face.

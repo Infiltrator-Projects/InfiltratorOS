@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
 """Contract tests for five independently packaged filesystem installers."""
 import copy
+import hashlib
 import importlib.util
+import io
 import json
 from pathlib import Path
+import subprocess
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -171,53 +174,357 @@ class InstallerTests(unittest.TestCase):
         self.assertNotIn("infiltrator_filesystem_module_v2",
                          worker.exported_interface_symbols(spoofed_object))
 
-    def test_native_fat_requires_pdf_and_pgo_in_debian_metadata(self):
+    def test_so_verification_checks_pgo_independently_of_the_pdf(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             module = root / self.entry["resource"].lstrip("/")
             module.parent.mkdir(parents=True)
             module.write_bytes(b"test data")
-            guide = root / "System/Resources/Documentation" / self.entry["repository"] / "FAT12.pdf"
-            guide.parent.mkdir(parents=True)
             info = ("Version: 0.1.2+native1\n"
                     "X-Infiltrator-Native-Profile: aggressive\n"
                     "X-Infiltrator-LTO: enabled\n"
                     "X-Infiltrator-PGO: disabled\n")
+            self.assertFalse(worker.manual_path(self.entry, root).exists())
             with patch.object(worker.subprocess, "check_output", return_value=info):
-                with self.assertRaisesRegex(ValueError, "PDF"):
-                    worker.verify(self.entry, "0.1.2", root=root, query=False)
-                guide.write_bytes(b"%PDF-1.4\n")
                 with self.assertRaisesRegex(ValueError, "X-Infiltrator-PGO"):
                     worker.verify(self.entry, "0.1.2", root=root, query=False)
 
-    def test_safe_cleanup_all_five_filesystems(self):
+    def test_missing_or_damaged_manual_repairs_only_the_pdf(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
-            for entry in self.entries:
-                docs = root / "System/Resources/Documentation" / entry["repository"]
-                docs.mkdir(parents=True)
-                name = entry["resource"].rsplit("/", 1)[1].removesuffix(".so") + ".pdf"
-                (docs / name).write_bytes(b"%PDF-1.4\n")
-                for legacy in ("BUILD-INFO", "README.md", "MIGRATION-PROVENANCE.md", "LICENSE"):
-                    (docs / legacy).write_text("obsolete")
-                (docs / "personal.txt").write_text("keep")
-                self.assertEqual(worker.cleanup_legacy_docs(
-                    entry, root=root, owner_lookup=lambda path: path.name == "LICENSE"), 0)
-                self.assertEqual({p.name for p in docs.iterdir()},
-                                 {name, "BUILD-INFO", "README.md",
-                                  "MIGRATION-PROVENANCE.md", "LICENSE", "personal.txt"})
+            installed = root / "installed"
+            module = installed / self.entry["resource"].lstrip("/")
+            module.parent.mkdir(parents=True)
+            module.write_bytes(b"existing SO fixture")
+            original = module.stat()
+            release = copy.deepcopy(self.release)
+            revision = release["target_commitish"]
+            version = release["tag_name"][1:]
+            image = root / "package"
+            pdf = b"%PDF-1.4\nmanual\n"
+            digest = hashlib.sha256(pdf).hexdigest()
+            manual = worker.manual_path(self.entry, image)
+            manual.parent.mkdir(parents=True)
+            manual.write_bytes(pdf)
+            control = image / "DEBIAN"
+            control.mkdir()
+            (control / "control").write_text(
+                f"Package: {self.entry['package']}\nVersion: {version}\nArchitecture: amd64\n"
+                "Maintainer: Fixture <test@example.invalid>\nDescription: Manual repair fixture\n"
+                f"X-Infiltrator-Source-Revision: {revision}\nX-Infiltrator-PDF-SHA256: {digest}\n")
+            package = root / "manual.deb"
+            subprocess.run(["dpkg-deb", "-b", image, package], check=True, stdout=subprocess.DEVNULL)
+            payload = package.read_bytes()
+            asset = next(a for a in release["assets"] if a["name"].endswith(".deb"))
+            asset.update(size=len(payload), digest="sha256:" + hashlib.sha256(payload).hexdigest())
+            (root / (self.entry["repository"] + ".json")).write_text(json.dumps(release))
+            metadata = {"Version": version + "+native1", "X-Infiltrator-Source-Revision": revision,
+                        "X-Infiltrator-PDF-SHA256": digest}
+            original_repair = worker.repair_manual
+            target = worker.manual_path(self.entry, installed)
+            with patch.dict(worker.os.environ, {"INFILTRATOROS_RELEASE_DIR": str(root)}), \
+                 patch.object(worker, "STATUS_DIR", root), \
+                 patch.object(worker, "STATUS_PATH", root / "test.status"), \
+                 patch.object(worker, "verified_current_version", return_value=(version, metadata)), \
+                 patch.object(worker, "repair_manual", side_effect=lambda *args: original_repair(*args, root=installed)), \
+                 patch.object(worker, "verify_owned_path"), \
+                 patch.object(worker, "ensure_dependencies", side_effect=AssertionError("unnecessary build")), \
+                 patch.object(worker, "open_url", side_effect=lambda url: io.BytesIO(payload)) as fetch, \
+                 patch.object(worker, "run", wraps=worker.run) as command:
+                self.assertFalse(target.exists())
+                self.assertFalse(worker.install(self.entry))
+                self.assertEqual(target.read_bytes(), pdf)
+                target.write_bytes(b"%PDF-1.4\ndamaged\n")
+                self.assertFalse(worker.install(self.entry))
+                self.assertEqual(target.read_bytes(), pdf)
+                self.assertTrue(worker.install(self.entry))
+                self.assertEqual([call.args[0] for call in fetch.call_args_list], [asset["browser_download_url"]] * 2)
+                self.assertEqual([call.args[0][:2] for call in command.call_args_list],
+                                 [["/usr/bin/dpkg-deb", "-x"]] * 2)
+                self.assertEqual(module.stat().st_ino, original.st_ino)
+                self.assertEqual(module.read_bytes(), b"existing SO fixture")
+
+    def test_only_a_missing_or_older_so_requires_a_build(self):
+        revision = "a" * 40
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            module = root / self.entry["resource"].lstrip("/")
+            self.assertIsNone(worker.verified_current_version(self.entry, "1.0.2", revision, root))
+            module.parent.mkdir(parents=True)
+            module.write_bytes(b"installed SO fixture")
+            with patch.object(worker, "package_version", return_value="1.0.1+native1"), \
+                 patch.object(worker, "verify") as verify:
+                self.assertIsNone(worker.verified_current_version(self.entry, "1.0.2", revision, root))
+                verify.assert_not_called()
+            for version, profile, expected_revision in (("1.0.2", "portable", revision),
+                                                        ("1.0.2+native1", "aggressive", revision),
+                                                        ("1.0.10", "portable", None)):
+                with patch.object(worker, "package_version", return_value=version), \
+                     patch.object(worker, "verify") as verify:
+                    provider = version.removesuffix("+native1")
+                    self.assertEqual(worker.verified_current_version(self.entry, "1.0.2", revision, root),
+                                     (provider, verify.return_value))
+                    verify.assert_called_once_with(self.entry, provider, root=root,
+                                                   revision=expected_revision, profile=profile)
 
     def test_current_native_fat_skips_download_and_build(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             (root / (self.entry["repository"] + ".json")).write_text(json.dumps(self.release))
             with patch.dict(worker.os.environ, {"INFILTRATOROS_RELEASE_DIR": str(root)}), \
-                 patch.object(worker, "native_installed", return_value=True), \
+                 patch.object(worker, "verified_current_version", return_value=("0.1.0", {})), \
                  patch.object(worker, "ensure_dependencies", side_effect=AssertionError("unnecessary apt")), \
                  patch.object(worker, "download", side_effect=AssertionError("unnecessary download")), \
-                 patch.object(worker, "cleanup_legacy_docs") as cleanup:
+                 patch.object(worker, "repair_manual", return_value=False) as manual:
                 self.assertTrue(worker.install(self.entry))
-                cleanup.assert_called_once_with(self.entry)
+                manual.assert_called_once_with(self.entry, self.release, "0.1.0", {})
+
+    def test_newer_so_skips_build_and_older_kernel_download(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / (self.entry["repository"] + ".json")).write_text(json.dumps(self.release))
+            with patch.dict(worker.os.environ, {"INFILTRATOROS_RELEASE_DIR": str(root)}), \
+                 patch.object(worker, "verified_current_version", return_value=("0.1.1", {})), \
+                 patch.object(worker, "stored_kernel_matches", side_effect=AssertionError("older KO check")), \
+                 patch.object(worker, "ensure_dependencies", side_effect=AssertionError("unnecessary apt")), \
+                 patch.object(worker, "download", side_effect=AssertionError("unnecessary download")), \
+                 patch.object(worker, "repair_manual", return_value=False) as manual:
+                self.assertTrue(worker.install(self.entry))
+                manual.assert_called_once_with(self.entry, self.release, "0.1.0", {})
+
+    def test_store_one_current_kernel_module_without_rebuilding_current_so(self):
+        entry = next(e for e in worker.additional_catalogue() if e["id"] == "ffs")
+        version = "1.0.2"
+        repo = entry["repository"]
+        names = [f"{repo.lower()}-{version}-native-installer.run",
+                 f"{entry['package']}_{version}_amd64.deb", worker.kernel_asset_name(entry)]
+        base = f"https://github.com/Infiltrator-Projects/{repo}/releases/download/v{version}/"
+        payload = b"verified kernel fixture"
+        assets = [{"name": name, "browser_download_url": base + name,
+                   "size": len(payload), "digest": "sha256:" + hashlib.sha256(payload).hexdigest()}
+                  for name in names]
+        release = {"tag_name": "v" + version, "target_commitish": "a" * 40, "assets": assets}
+        metadata = {"Package": entry["package"], "Version": version + "+native1",
+                    "X-Infiltrator-Native-Profile": "aggressive",
+                    "X-Infiltrator-Source-Revision": "a" * 40}
+        staged = {}
+        commands = []
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            directory = root / "System/Kernel/Filesystems"
+            directory.mkdir(parents=True)
+            (root / (repo + ".json")).write_text(json.dumps(release))
+            target = directory / "ffs.ko"
+            target.write_bytes(b"previous stored build")
+
+            def package_kernel(entry, package, module, kernel_release, identity):
+                staged["payload"] = module.read_bytes()
+                metadata["X-Infiltrator-Kernel-SHA256"] = hashlib.sha256(module.read_bytes()).hexdigest()
+                metadata["X-Infiltrator-Kernel-Release"] = kernel_release
+                package.parent.mkdir(parents=True, exist_ok=True)
+                package.write_bytes(b"three-file package fixture")
+
+            def run(command):
+                commands.append(command)
+                if command[0] == "/usr/bin/dpkg":
+                    target.write_bytes(staged["payload"])
+                elif Path(command[0]).name != "filesystem.run":
+                    raise AssertionError("Unexpected build or activation")
+
+            with patch.dict(worker.os.environ, {"INFILTRATOROS_RELEASE_DIR": str(root)}), \
+                 patch.object(worker, "KERNEL_DIR", directory), \
+                 patch.object(worker, "STATUS_DIR", root), \
+                 patch.object(worker, "STATUS_PATH", root / "test.status"), \
+                 patch.object(worker, "verified_current_version", return_value=(version, metadata)), \
+                 patch.object(worker, "ensure_dependencies", side_effect=AssertionError("unnecessary apt")), \
+                 patch.object(worker, "run", side_effect=run), \
+                 patch.object(worker, "package_kernel", side_effect=package_kernel), \
+                 patch.object(worker, "verify", return_value=metadata), \
+                 patch.object(worker, "verify_owned_path"), \
+                 patch.object(worker, "repair_manual", return_value=False), \
+                 patch.object(worker, "validate_kernel_module"), \
+                 patch.object(worker, "open_url") as fetch:
+                fetch.return_value = io.BytesIO(b"bad bytes")
+                with self.assertRaisesRegex(ValueError, "SHA256 or size mismatch"):
+                    worker.install(entry)
+                self.assertEqual(target.read_bytes(), b"previous stored build")
+                fetch.reset_mock()
+                fetch.return_value = io.BytesIO(payload)
+                self.assertFalse(worker.install(entry))
+                self.assertEqual(target.read_bytes(), payload)
+                self.assertEqual({path.name for path in directory.iterdir()}, {"ffs.ko"})
+                self.assertEqual(len(commands), 1)
+                self.assertEqual(commands[0][0], "/usr/bin/dpkg")
+                self.assertTrue(worker.install(entry))
+                fetch.assert_called_once_with(base + names[-1])
+                fetch.reset_mock()
+                fetch.return_value = io.BytesIO(payload)
+                with patch.object(worker, "verified_current_version", return_value=None), \
+                     patch.object(worker, "installed_kernel_metadata", return_value=metadata), \
+                     patch.object(worker, "ensure_dependencies"):
+                    self.assertFalse(worker.install(entry))
+                fetch.assert_called_once_with(base + names[0])
+                self.assertEqual(target.read_bytes(), payload)
+                release["assets"].pop()
+                (root / (repo + ".json")).write_text(json.dumps(release))
+                with self.assertRaisesRegex(ValueError, "previously staged kernel module"):
+                    worker.install(entry)
+                self.assertEqual(target.read_bytes(), payload)
+
+    def test_keep_manual_ofs_kernel_when_rebuilding_a_missing_so(self):
+        entry = next(e for e in self.entries if e["id"] == "ofs")
+        version = "0.1.9"
+        repo = entry["repository"]
+        names = [f"{repo.lower()}-{version}-native-installer.run",
+                 f"{entry['package']}_{version}_amd64.deb", worker.kernel_asset_name(entry),
+                 "OFS.so", "SHA256SUMS"]
+        base = f"https://github.com/Infiltrator-Projects/{repo}/releases/download/v{version}/"
+        local = b"module built against the running kernel"
+        released = b"module built against the published kernel"
+        assets = [{"name": name, "browser_download_url": base + name,
+                   "size": len(released), "digest": "sha256:" + hashlib.sha256(released).hexdigest()}
+                  for name in names]
+        release = {"tag_name": "v" + version, "target_commitish": "a" * 40, "assets": assets}
+        metadata = {"Package": entry["package"], "Version": version + "+native1",
+                    "X-Infiltrator-Native-Profile": "aggressive",
+                    "X-Infiltrator-Source-Revision": "a" * 40,
+                    "X-Infiltrator-Kernel-Release": "6.14.0-37-generic",
+                    "X-Infiltrator-Kernel-SHA256": hashlib.sha256(local).hexdigest()}
+        staged = {}
+        commands = []
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            directory = root / "System/Kernel/Filesystems"
+            directory.mkdir(parents=True)
+            target = directory / "ofs.ko"
+            target.write_bytes(local)
+            (root / (repo + ".json")).write_text(json.dumps(release))
+
+            def package_kernel(entry, package, module, kernel_release, identity):
+                staged["payload"] = module.read_bytes()
+                metadata["X-Infiltrator-Kernel-SHA256"] = hashlib.sha256(module.read_bytes()).hexdigest()
+                metadata["X-Infiltrator-Kernel-Release"] = kernel_release
+                package.parent.mkdir(parents=True, exist_ok=True)
+                package.write_bytes(b"three-file package fixture")
+
+            def run(command):
+                commands.append(command)
+                if command[0] == "/usr/bin/dpkg":
+                    target.write_bytes(staged["payload"])
+                elif Path(command[0]).name != "filesystem.run":
+                    raise AssertionError("Unexpected build or activation")
+
+            with patch.dict(worker.os.environ, {"INFILTRATOROS_RELEASE_DIR": str(root)}), \
+                 patch.object(worker, "KERNEL_DIR", directory), \
+                 patch.object(worker, "STATUS_DIR", root), \
+                 patch.object(worker, "STATUS_PATH", root / "test.status"), \
+                 patch.object(worker, "verified_current_version", return_value=(version, metadata)), \
+                 patch.object(worker, "installed_kernel_metadata", return_value=metadata), \
+                 patch.object(worker, "repair_manual", return_value=False), \
+                 patch.object(worker, "verify_owned_path") as owns, \
+                 patch.object(worker, "validate_kernel_module") as validate, \
+                 patch.object(worker, "verify", return_value=metadata), \
+                 patch.object(worker, "package_kernel", side_effect=package_kernel), \
+                 patch.object(worker, "open_url", return_value=io.BytesIO(released)) as fetch, \
+                 patch.object(worker, "run", side_effect=run):
+                self.assertTrue(worker.install(entry))
+                owns.assert_called_once_with(entry, target, Path("/"))
+                validate.assert_called_once_with(target, metadata["X-Infiltrator-Kernel-Release"])
+                fetch.assert_not_called()
+                self.assertEqual(target.read_bytes(), local)
+                with patch.object(worker, "verified_current_version", return_value=None), \
+                     patch.object(worker, "ensure_dependencies"):
+                    self.assertFalse(worker.install(entry))
+                self.assertEqual(target.read_bytes(), local)
+                self.assertEqual(metadata["X-Infiltrator-Kernel-Release"], "6.14.0-37-generic")
+                fetch.assert_called_once_with(base + names[0])
+                self.assertTrue(worker.install(entry))
+                target.write_bytes(b"damaged module")
+                fetch.reset_mock()
+                fetch.return_value = io.BytesIO(released)
+                self.assertFalse(worker.install(entry))
+                fetch.assert_called_once_with(base + worker.kernel_asset_name(entry))
+                self.assertEqual(target.read_bytes(), released)
+                self.assertEqual(metadata["X-Infiltrator-Kernel-Release"], worker.KERNEL_TARGET)
+                self.assertEqual(sum(Path(command[0]).name == "filesystem.run" for command in commands), 1)
+
+    def test_swap_cannot_supply_a_kernel_module_asset(self):
+        entry = next(e for e in worker.additional_catalogue() if e["id"] == "swap")
+        release = copy.deepcopy(self.release)
+        names = [f"{entry['repository'].lower()}-0.1.0-native-installer.run",
+                 f"{entry['package']}_0.1.0_amd64.deb", worker.kernel_asset_name(entry)]
+        base = f"https://github.com/Infiltrator-Projects/{entry['repository']}/releases/download/v0.1.0/"
+        release["assets"] = [{"name": name, "browser_download_url": base + name,
+                              "digest": "sha256:" + "a" * 64, "size": 100} for name in names]
+        with self.assertRaisesRegex(ValueError, "missing required native driver"):
+            worker.release_installer(entry, release)
+
+    def test_kernel_metadata_survives_a_missing_shared_object(self):
+        entry = self.entry
+        metadata = {"Package": entry["package"], "Status": "install ok installed",
+                    "Version": "1.0.2+native1", "X-Infiltrator-Source-Revision": "a" * 40,
+                    "X-Infiltrator-Kernel-Release": "6.14.0-generic",
+                    "X-Infiltrator-Kernel-SHA256": "b" * 64}
+        report = "\n".join(f"{key}: {value}" for key, value in metadata.items())
+        with patch.object(worker.subprocess, "check_output", return_value=report):
+            self.assertEqual(worker.installed_kernel_metadata(entry, "1.0.2", "a" * 40), metadata)
+            self.assertEqual(worker.installed_kernel_metadata(entry, "1.0.3", "a" * 40), {})
+            self.assertEqual(worker.installed_kernel_metadata(entry, "1.0.2", "c" * 40), {})
+
+    def test_kernel_repairs_preserve_the_three_file_package_record(self):
+        entry = self.entry
+        so = b"verified SO fixture"
+        pdf = b"%PDF-verified manual fixture"
+        ko = b"verified local kernel fixture"
+        identity = {"Package": entry["package"], "Version": "1.0.2+native1",
+                    "X-Infiltrator-Source-Revision": "a" * 40}
+        fields = {**identity, "Architecture": "amd64", "Maintainer": "Fixture <fixture@example.invalid>",
+                  "X-Infiltrator-Resource-SHA256": hashlib.sha256(so).hexdigest(),
+                  "X-Infiltrator-PDF-SHA256": hashlib.sha256(pdf).hexdigest(),
+                  "Description": "Verified package fixture"}
+        control = "\n".join(f"{key}: {value}" for key, value in fields.items()) + "\n Multiline description.\n"
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            image = root / "candidate"
+            (image / "DEBIAN").mkdir(parents=True)
+            (image / "DEBIAN/control").write_text(control)
+            module = image / entry["resource"].lstrip("/")
+            manual = worker.manual_path(entry, image)
+            module.parent.mkdir(parents=True)
+            manual.parent.mkdir(parents=True)
+            module.write_bytes(so)
+            manual.write_bytes(pdf)
+            kernel = root / "local.ko"
+            kernel.write_bytes(ko)
+            package = root / "rebuilt.deb"
+            subprocess.run(["dpkg-deb", "--root-owner-group", "--build", str(image), str(package)],
+                           check=True, stdout=subprocess.DEVNULL)
+            installed_status = "Status: install ok installed\n" + control
+            original_query = subprocess.check_output
+
+            def query(command, **kwargs):
+                if command[:2] == ["/usr/bin/dpkg-query", "-s"]:
+                    return installed_status
+                return original_query(command, **kwargs)
+
+            for existing in (True, False):
+                with self.subTest(existing_source_package=existing):
+                    target = package if existing else root / "repair.deb"
+                    with patch.object(worker, "STATUS_DIR", root), \
+                         patch.object(worker, "verify_owned_path"), \
+                         patch.object(worker.subprocess, "check_output", side_effect=query):
+                        worker.package_kernel(entry, target, kernel, "6.14.0-generic", identity, root=image)
+                    payload = root / ("rebuilt-payload" if existing else "repair-payload")
+                    subprocess.run(["dpkg-deb", "-x", str(target), str(payload)], check=True)
+                    paths = {p.relative_to(payload) for p in payload.rglob("*") if p.is_file() or p.is_symlink()}
+                    self.assertEqual(paths, {Path(entry["resource"].lstrip("/")),
+                                            worker.manual_path(entry).relative_to("/"),
+                                            Path("System/Kernel/Filesystems") / (entry["id"] + ".ko")})
+                    report = original_query(["dpkg-deb", "-f", str(target)], text=True)
+                    self.assertIn("X-Infiltrator-Kernel-Release: 6.14.0-generic", report)
+                    self.assertIn("X-Infiltrator-Kernel-SHA256: " + hashlib.sha256(ko).hexdigest(), report)
+                    self.assertIn(" Multiline description.", report)
+                    self.assertNotIn("Status:", report)
 
     def test_source_commit_required_before_reusing_or_installing(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -238,18 +545,20 @@ class InstallerTests(unittest.TestCase):
             with patch.dict(worker.os.environ, {"INFILTRATOROS_RELEASE_DIR": str(root)}), \
                  patch.object(worker, "STATUS_DIR", root), \
                  patch.object(worker, "STATUS_PATH", root / "test.status"), \
-                 patch.object(worker, "native_installed", return_value=False), \
+                 patch.object(worker, "verified_current_version", return_value=None), \
                  patch.object(worker, "ensure_dependencies") as dependencies, \
                  patch.object(worker, "download") as download, \
                  patch.object(worker, "run") as compile_install, \
                  patch.object(worker, "verify") as verify, \
-                 patch.object(worker, "cleanup_legacy_docs") as cleanup:
+                 patch.object(worker, "repair_manual", return_value=False) as manual:
                 self.assertFalse(worker.install(self.entry))
-                cleanup.assert_called_once_with(self.entry)
                 dependencies.assert_called_once()
                 download.assert_called_once()
-                compile_install.assert_called_once()
+                self.assertEqual(compile_install.call_count, 2)
+                self.assertEqual(compile_install.call_args_list[1].args[0][:3],
+                                 ["/usr/bin/dpkg", "--refuse-downgrade", "-i"])
                 verify.assert_called_once()
+                manual.assert_called_once()
 
 
     def test_separate_per_run_terminal_records(self):

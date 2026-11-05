@@ -18,6 +18,9 @@ package = Path(sys.argv[1]).resolve()
 root = Path(__file__).resolve().parents[1]
 entries = json.loads((root / "packaging/filesystem-resources.json").read_text())
 assert [x["id"] for x in entries] == ["fat12", "fat16", "fat32", "ofs", "exfat"]
+kernel_dir = Path("/System/Kernel/Filesystems")
+assert "./System/Kernel/Filesystems/" in subprocess.check_output(["dpkg-deb", "-c", package], text=True)
+kernel_dir.mkdir(parents=True, exist_ok=True)
 native = Path("/Temporary/InfiltratorOS")
 native.mkdir(mode=0o755, parents=True, exist_ok=True)
 with tempfile.TemporaryDirectory(prefix="native-worker.", dir=native) as temporary:
@@ -58,6 +61,7 @@ with tempfile.TemporaryDirectory(prefix="native-worker.", dir=native) as tempora
                        check=True, env=env)
         record = stage / "status" / (slug + "-install.status")
         assert "state=complete\n" in record.read_text(), slug
+        assert (kernel_dir / (entry["id"] + ".ko")).is_file()
         module = Path(entry["resource"])
         assert module.is_file(), module
         owner = subprocess.check_output(["dpkg-query", "-S", entry["resource"]],
@@ -66,12 +70,18 @@ with tempfile.TemporaryDirectory(prefix="native-worker.", dir=native) as tempora
         version = subprocess.check_output(["dpkg-query", "-W", "-f=${Version}",
                                            entry["package"]], text=True)
         assert version.endswith("+native1"), version
-        folder = Path("/System/Resources/Documentation") / entry["repository"]
-        pdf = folder / (module.stem + ".pdf")
-        assert {x.name for x in folder.glob("*.pdf")} == {pdf.name}, entry["repository"]
-        assert pdf.read_bytes().startswith(b"%PDF-"), pdf
+        pdf = Path("/System/Resources/Documentation") / entry["repository"] / (module.stem + ".pdf")
+        assert not pdf.is_symlink() and pdf.read_bytes().startswith(b"%PDF-"), pdf
         pdf_owner = subprocess.check_output(["dpkg-query", "-S", str(pdf)], text=True).strip()
         assert pdf_owner == entry["package"] + ": " + str(pdf), pdf_owner
+        if entry["id"] == "ofs":
+            original_pdf = pdf.read_bytes()
+            original_so = module.read_bytes()
+            original_inode = module.stat().st_ino
+            pdf.unlink()
+            subprocess.run([stage / "workers/install-filesystem-resources", slug], check=True, env=env)
+            assert pdf.read_bytes() == original_pdf
+            assert module.stat().st_ino == original_inode and module.read_bytes() == original_so
     assert len(list((stage / "status").glob("*-install.status"))) == 5
     # Prove the eighteen conditionally published SO providers through the exact sealed
     # InfiltratorOS worker on disposable GitHub Actions hardware.
@@ -93,12 +103,10 @@ with tempfile.TemporaryDirectory(prefix="native-worker.", dir=native) as tempora
         status = (stage / "status" / (slug + "-install.status")).read_text()
         assert "state=complete\n" in status, slug
         module = Path(entry["resource"])
-        manual = (Path("/System/Resources/Documentation") / entry["repository"] /
-                  entry["pdf"])
+        manual = Path("/System/Resources/Documentation") / entry["repository"] / entry["pdf"]
         assert module.is_file() and not module.is_symlink(), module
         assert manual.is_file() and not manual.is_symlink(), manual
         assert manual.read_bytes().startswith(b"%PDF-"), manual
-        assert {p.name for p in manual.parent.iterdir()} == {manual.name}
         assert subprocess.check_output(
             ["dpkg-query", "-S", str(module)], text=True).strip() == (
                 entry["package"] + ": " + str(module))
