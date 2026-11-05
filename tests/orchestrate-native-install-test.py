@@ -24,6 +24,7 @@ class DispatcherSelectionTest(unittest.TestCase):
             stage = root / "native-worker.test"
             (stage / "status").mkdir(parents=True)
             launched = []
+            paired = []
 
             def catalogue(stage_arg, worker, filename, expected):
                 source = ("temporal-resources.json" if worker == "install-temporal-resources"
@@ -43,9 +44,11 @@ class DispatcherSelectionTest(unittest.TestCase):
                 (stage / "filesystems-pending.list").write_text("")
                 return SimpleNamespace(returncode=0)
 
-            def launch(stage_arg, name, slug=None):
+            def launch(stage_arg, name, slug=None, *, pilot_pair=False):
                 self.assertEqual(stage_arg, stage)
                 launched.append((name, slug))
+                if pilot_pair:
+                    paired.append((name, slug))
 
             with (
                 patch.object(dispatch, "STATUS_ROOT", root),
@@ -59,7 +62,10 @@ class DispatcherSelectionTest(unittest.TestCase):
                 dispatch.main()
 
             selected = (stage / "selected.list").read_text().splitlines()
-            self.assertEqual(len(selected), len(launched))
+            self.assertEqual(len(selected), len(launched) + len(paired))
+            if paired:
+                self.assertEqual(paired, [("filesystem-resources", "filesystem-fat12")])
+                self.assertIn("filesystem-fat16", selected)
             self.assertEqual(len(set(selected)), len(selected))
             return selected, launched
 
@@ -79,6 +85,28 @@ class DispatcherSelectionTest(unittest.TestCase):
         self.assertEqual(launched, [
             ("calculator", None), ("temporal-resources", "clock-binary"),
             ("filesystem-resources", "filesystem-ntfs"),
+        ])
+
+    def test_only_fat_pair_is_coordinated(self):
+        selected, launched = self.exercise({
+            "INFILTRATOROS_SELECTED_APPLICATIONS": "",
+            "INFILTRATOROS_SELECTED_TEMPORAL": "",
+            "INFILTRATOROS_SELECTED_FILESYSTEMS": "fat12,fat16",
+        })
+        self.assertEqual(selected, ["filesystem-fat12", "filesystem-fat16"])
+        self.assertEqual(launched, [("filesystem-resources", "filesystem-fat12")])
+
+    def test_pilot_opt_out_restores_two_serial_jobs(self):
+        selected, launched = self.exercise({
+            "INFILTRATOROS_SELECTED_APPLICATIONS": "",
+            "INFILTRATOROS_SELECTED_TEMPORAL": "",
+            "INFILTRATOROS_SELECTED_FILESYSTEMS": "fat12,fat16",
+            "INFILTRATOROS_PARALLEL_FAT_PILOT": "0",
+        })
+        self.assertEqual(selected, ["filesystem-fat12", "filesystem-fat16"])
+        self.assertEqual(launched, [
+            ("filesystem-resources", "filesystem-fat12"),
+            ("filesystem-resources", "filesystem-fat16"),
         ])
 
     def test_bad_selection_fails_instead_of_silently_skipping(self):

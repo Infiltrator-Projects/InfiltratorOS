@@ -46,12 +46,15 @@ def selection(variable, entries, identifier):
     return [item for item in entries if identifier(item) in names]
 
 
-def launch(stage, launcher, slug=None):
+def launch(stage, launcher, slug=None, *, pilot_pair=False):
     args = [stage / ("start-" + launcher + "-install")]
     if slug is not None:
         args.append(slug)
     env = os.environ.copy()
     env["INFILTRATOROS_PROGRESS_MODE"] = "none"
+    env.pop("INFILTRATOROS_FAT_PAIR", None)
+    if pilot_pair:
+        env["INFILTRATOROS_FAT_PAIR"] = "1"
     env["INFILTRATOROS_INSTALL_RUNTIME"] = str(stage)
     result = subprocess.run([str(arg) for arg in args], env=env, check=False)
     if result.returncode:
@@ -131,7 +134,15 @@ def main():
         launch(stage, product)
     for provider in providers:
         launch(stage, "temporal-resources", provider)
+    # Only a two-component pilot when both FAT modules are selected; all
+    # other installer jobs preserve their existing independent launch path.
+    pilot = ({"filesystem-fat12", "filesystem-fat16"} <= set(chosen) and
+             os.environ.get("INFILTRATOROS_PARALLEL_FAT_PILOT", "1") != "0")
+    if pilot:
+        launch(stage, "filesystem-resources", "filesystem-fat12", pilot_pair=True)
     for filesystem in chosen:
+        if pilot and filesystem in ("filesystem-fat12", "filesystem-fat16"):
+            continue
         launch(stage, "filesystem-resources", filesystem)
 
 
