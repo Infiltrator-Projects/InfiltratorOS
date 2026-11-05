@@ -586,81 +586,29 @@ def ensure_dependencies(entry):
 
 
 def install(entry):
+    """Delegate installation entirely to the component's published native RUN.
+
+    The component owns dependency resolution, native compilation, packaging,
+    optional kernel modules and its PDF. The OS worker only verifies the
+    published installer and its exit status.
+    """
     release_dir = os.environ.get("INFILTRATOROS_RELEASE_DIR")
     if release_dir:
         payload = (Path(release_dir) / (entry["repository"] + ".json")).read_bytes()
     else:
         url = f"https://api.github.com/repos/Infiltrator-Projects/{entry['repository']}/releases/latest"
         with open_url(url) as response:
-            payload = response.read(4*1024*1024+1)
-    if len(payload) > 4*1024*1024:
+            payload = response.read(4 * 1024 * 1024 + 1)
+    if len(payload) > 4 * 1024 * 1024:
         raise ValueError("Oversized GitHub release metadata")
     release = json.loads(payload)
     version, location, digest, length = release_installer(entry, release)
-    revision = release["target_commitish"]
-    current = verified_current_version(entry, version, revision)
-    metadata = current[1] if current else installed_kernel_metadata(entry, version, revision)
-    repaired = False
-    if current:
-        installed, metadata = current
-        repaired = repair_manual(entry, release, version, metadata)
-        if installed != version:
-            print("Keeping newer installed release " + installed + " of " + entry["repository"], flush=True)
-            return not repaired
-    kernel = next((item for item in release["assets"] if item["name"] == kernel_asset_name(entry)), None)
-    target = KERNEL_DIR / (entry["id"] + ".ko")
-    if kernel is None and entry["id"] != "swap" and (target.exists() or target.is_symlink()):
-        raise ValueError("Selected filesystem release is missing its previously staged kernel module")
-    kernel_matches = kernel is not None and stored_kernel_matches(target, kernel, entry, metadata)
-    need_kernel = kernel is not None and (not kernel_matches or not current)
-    if current and not need_kernel:
-        if not repaired:
-            print("Already installed and verified: " + entry["repository"], flush=True)
-        return not repaired
+    status("running", 10, "Installing " + entry["name"],
+           "Executing its independently published native installer")
     with tempfile.TemporaryDirectory(dir=STATUS_DIR, prefix="filesystem-native-") as folder:
-        module = Path(folder) / "filesystem.ko"
-        kernel_release = KERNEL_TARGET
-        if need_kernel:
-            status("running", 10, "Verifying the " + entry["name"] + " kernel module",
-                   "Preparing a stored copy for manual use")
-            if kernel_matches:
-                # The old Debian package may own this path and remove it on upgrade.
-                shutil.copyfile(target, module)
-                if hashlib.sha256(module.read_bytes()).hexdigest() == metadata.get("X-Infiltrator-Kernel-SHA256"):
-                    kernel_release = metadata["X-Infiltrator-Kernel-Release"]
-            else:
-                download(kernel["browser_download_url"], module, kernel["digest"][7:], kernel["size"])
-            validate_kernel_module(module, kernel_release)
-        if not current:
-            ensure_dependencies(entry)
-            status("running", 12, "Compiling " + entry["name"],
-                   "Using its independent checksum-verified source installer")
-            installer = Path(folder) / "filesystem.run"
-            download(location, installer, digest, length)
-            output = Path(folder) / "built"
-            run([installer, "--profile", "aggressive", "--system-package-mode",
-                 "--build-only", "--output", output])
-            package = output / f"{entry['package']}_{version}+native1_amd64.deb"
-            deb_version = version + "+native1"
-            profile = "aggressive"
-        else:
-            deb_version = metadata["Version"]
-            profile = metadata["X-Infiltrator-Native-Profile"]
-            package = Path(folder) / f"{entry['package']}_{deb_version}_amd64.deb"
-        if need_kernel:
-            identity = {"Package": entry["package"], "Version": deb_version,
-                        "X-Infiltrator-Source-Revision": revision}
-            package_kernel(entry, package, module, kernel_release, identity)
-        run(["/usr/bin/dpkg", "--refuse-downgrade", "-i", package])
-        metadata = verify(entry, version, revision=revision, profile=profile)
-        if not current:
-            repair_manual(entry, release, version, metadata)
-        if need_kernel:
-            verify_owned_path(entry, target, Path("/"))
-            if (metadata.get("X-Infiltrator-Kernel-Release") != kernel_release or
-                    hashlib.sha256(target.read_bytes()).hexdigest() != metadata.get("X-Infiltrator-Kernel-SHA256")):
-                raise ValueError("Installed kernel module does not match its package metadata")
-            print("Stored and verified " + str(target), flush=True)
+        installer = Path(folder) / "filesystem.run"
+        download(location, installer, digest, length)
+        run([installer, "--profile", "aggressive", "--system-package-mode"])
     return False
 
 
