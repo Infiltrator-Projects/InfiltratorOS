@@ -1,3 +1,11 @@
+## 1.0.64 — FAT12/FAT16 parallel native build pilot
+
+- Launch two source-bearing filesystem RUNs with --build-only --output concurrently, capped at two builds.
+- Keep the existing global native lock across both builds and their serial Debian package installations.
+- Preserve individual FAT12 and FAT16 status records and post-install ownership, native SO and PDF checks.
+- Use original serial component installers when the build prerequisites are unavailable, or set INFILTRATOROS_PARALLEL_FAT_PILOT=0 to opt out.
+- All remaining applications, calendars, clocks and filesystem installers retain the previous path.
+
 # Changelog
 
 This is a concise record of **published changes**, not an alternative copy of the current architecture or a replay of every development commit. The [README](README.md) and [technical documentation](docs/README.md) describe current behaviour. [Immutable release tags](https://github.com/Infiltrator-Projects/InfiltratorOS/releases) and [Git commits](https://github.com/Infiltrator-Projects/InfiltratorOS/commits/main/) preserve detailed historical provenance; the full older changelog is retained at [v1.0.52](https://github.com/Infiltrator-Projects/InfiltratorOS/blob/v1.0.52/CHANGELOG.md).
