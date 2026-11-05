@@ -361,8 +361,19 @@ def main():
     # and graphical progress window. Shared source code is not a combined job.
     entries = catalogue()
     if sys.argv[1:] == ["--list"]:
+        # Keep selection in the orchestrator; providers own their installers.
+        # Unset means every calendar and clock is selected.
+        requested = os.environ.get("INFILTRATOROS_SELECTED_TEMPORAL")
+        selected = None if requested is None else {
+            value.strip().lower() for value in requested.split(",") if value.strip()
+        }
+        known = {entry["repository"].lower() for entry in entries}
+        if selected is not None and not selected <= known:
+            raise ValueError("Unknown selected temporal provider: " + ", ".join(sorted(selected - known)))
         for entry in entries:
-            print(entry["repository"].lower())
+            slug = entry["repository"].lower()
+            if selected is None or slug in selected:
+                print(slug)
         return
     if len(sys.argv) != 2:
         raise ValueError("Usage: install-temporal-resources PROVIDER_SLUG")
