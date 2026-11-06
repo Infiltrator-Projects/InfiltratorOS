@@ -13,6 +13,8 @@ import subprocess
 import sys
 
 APPLICATIONS = ("system-monitor", "calculator", "files", "defragmenter")
+SMART_BUILD_CANDIDATES = ("filesystem-fat12", "filesystem-fat16",
+                          "filesystem-fat32", "filesystem-exfat")
 STATUS_ROOT = Path("/Temporary/InfiltratorOS")
 
 
@@ -46,15 +48,16 @@ def selection(variable, entries, identifier):
     return [item for item in entries if identifier(item) in names]
 
 
-def launch(stage, launcher, slug=None, *, pilot_pair=False):
+def launch(stage, launcher, slug=None, *, smart_queue=False):
     args = [stage / ("start-" + launcher + "-install")]
     if slug is not None:
         args.append(slug)
     env = os.environ.copy()
     env["INFILTRATOROS_PROGRESS_MODE"] = "none"
     env.pop("INFILTRATOROS_FAT_PAIR", None)
-    if pilot_pair:
-        env["INFILTRATOROS_FAT_PAIR"] = "1"
+    env.pop("INFILTRATOROS_SMART_BUILD_QUEUE", None)
+    if smart_queue:
+        env["INFILTRATOROS_SMART_BUILD_QUEUE"] = "1"
     env["INFILTRATOROS_INSTALL_RUNTIME"] = str(stage)
     result = subprocess.run([str(arg) for arg in args], env=env, check=False)
     if result.returncode:
@@ -134,14 +137,16 @@ def main():
         launch(stage, product)
     for provider in providers:
         launch(stage, "temporal-resources", provider)
-    # Only a two-component pilot when both FAT modules are selected; all
-    # other installer jobs preserve their existing independent launch path.
-    pilot = ({"filesystem-fat12", "filesystem-fat16"} <= set(chosen) and
-             os.environ.get("INFILTRATOROS_PARALLEL_FAT_PILOT", "1") != "0")
-    if pilot:
-        launch(stage, "filesystem-resources", "filesystem-fat12", pilot_pair=True)
+    # Four eligible components may share a bounded two-worker compilation queue.
+    # One filesystem launcher owns their statuses and the existing global lock.
+    queue = [slug for slug in chosen if slug in SMART_BUILD_CANDIDATES]
+    enabled = os.environ.get("INFILTRATOROS_SMART_BUILD_PILOT",
+                             os.environ.get("INFILTRATOROS_PARALLEL_FAT_PILOT", "1")) != "0"
+    smart = enabled and len(queue) >= 2
+    if smart:
+        launch(stage, "filesystem-resources", queue[0], smart_queue=True)
     for filesystem in chosen:
-        if pilot and filesystem in ("filesystem-fat12", "filesystem-fat16"):
+        if smart and filesystem in queue:
             continue
         launch(stage, "filesystem-resources", filesystem)
 

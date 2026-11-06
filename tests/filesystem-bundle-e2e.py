@@ -60,14 +60,17 @@ with tempfile.TemporaryDirectory(prefix="native-worker.", dir=native) as tempora
         (folder / "BUILD-INFO").write_text("old build")
         (folder / "MIGRATION-PROVENANCE.md").write_text("old engineering note")
     env = dict(os.environ, INFILTRATOROS_INSTALL_RUNTIME=str(stage))
-    # Real FAT12/FAT16 build-only pilot: two builds at once, one dpkg at a time.
-    # It runs before the ordinary per-provider calls; those must reuse results.
+    # Four source-build candidates enter a two-worker queue; dpkg remains serial.
+    # Subsequent per-provider calls must reuse their independently verified state.
     (stage / "status").mkdir(exist_ok=True)
-    (stage / "selected.list").write_text("filesystem-fat12\nfilesystem-fat16\n")
+    (stage / "selected.list").write_text("".join(
+        item["repository"].lower() + "\n" for item in entries if item["id"] != "ofs"))
     snapshot = stage / "release-json"
     snapshot.mkdir()
     import urllib.request
-    for entry in entries[:2]:
+    for entry in entries:
+        if entry["id"] == "ofs":
+            continue
         name = entry["repository"]
         address = f"https://api.github.com/repos/Infiltrator-Projects/{name}/releases/latest"
         headers = {"User-Agent": "InfiltratorOS-parallel-FAT-integration",
@@ -77,13 +80,15 @@ with tempfile.TemporaryDirectory(prefix="native-worker.", dir=native) as tempora
         with urllib.request.urlopen(urllib.request.Request(address, headers=headers),
                                     timeout=120) as source:
             (snapshot / (name + ".json")).write_bytes(source.read())
-    paired_env = dict(env, INFILTRATOROS_FAT_PAIR="1",
+    queued_env = dict(env, INFILTRATOROS_SMART_BUILD_QUEUE="1",
                       INFILTRATOROS_RELEASE_DIR=str(snapshot))
     subprocess.run([stage / "workers/install-filesystem-resources", "filesystem-fat12"],
-                   check=True, env=paired_env)
-    for slug in ("filesystem-fat12", "filesystem-fat16"):
+                   check=True, env=queued_env)
+    for slug in ("filesystem-fat12", "filesystem-fat16",
+                 "filesystem-fat32", "filesystem-exfat"):
         assert "state=complete\n" in (
             stage / "status" / (slug + "-install.status")).read_text(), slug
+    assert (stage / "status/smart-build-timings.log").is_file()
     for entry in entries:
         slug = entry["repository"].lower()
         subprocess.run([stage / "workers/install-filesystem-resources", slug],

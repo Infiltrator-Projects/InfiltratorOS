@@ -8,6 +8,8 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = (ROOT / "debian/postinst").read_text()
 assert "trap 'bootstrap_on_exit $?' 0" in SOURCE
+assert "last-provision-logs.tar.gz" in SOURCE
+assert SOURCE.index('tar -czf "$archive_tmp" status selected.list') < SOURCE.index("publish_summary complete")
 assert SOURCE.index("publish_summary running") < SOURCE.index("ensure-native-fonts")
 assert SOURCE.index("publish_summary running") < SOURCE.index('"$stage/orchestrate-native-install" "$stage"')
 show_progress = SOURCE.index('"$stage/start-system-monitor-install" --show-progress')

@@ -24,7 +24,7 @@ class DispatcherSelectionTest(unittest.TestCase):
             stage = root / "native-worker.test"
             (stage / "status").mkdir(parents=True)
             launched = []
-            paired = []
+            queued = []
 
             def catalogue(stage_arg, worker, filename, expected):
                 source = ("temporal-resources.json" if worker == "install-temporal-resources"
@@ -44,11 +44,11 @@ class DispatcherSelectionTest(unittest.TestCase):
                 (stage / "filesystems-pending.list").write_text("")
                 return SimpleNamespace(returncode=0)
 
-            def launch(stage_arg, name, slug=None, *, pilot_pair=False):
+            def launch(stage_arg, name, slug=None, *, smart_queue=False):
                 self.assertEqual(stage_arg, stage)
                 launched.append((name, slug))
-                if pilot_pair:
-                    paired.append((name, slug))
+                if smart_queue:
+                    queued.append((name, slug))
 
             with (
                 patch.object(dispatch, "STATUS_ROOT", root),
@@ -62,11 +62,17 @@ class DispatcherSelectionTest(unittest.TestCase):
                 dispatch.main()
 
             selected = (stage / "selected.list").read_text().splitlines()
-            self.assertEqual(len(selected), len(launched) + len(paired))
-            if paired:
-                self.assertEqual(paired, [("filesystem-resources", "filesystem-fat12")])
-                self.assertIn("filesystem-fat16", selected)
             self.assertEqual(len(set(selected)), len(selected))
+            actual = [slug or name for name, slug in launched]
+            self.assertEqual(len(actual), len(set(actual)))
+            self.assertTrue(set(actual) <= set(selected))
+            eligible = [slug for slug in selected if slug in dispatch.SMART_BUILD_CANDIDATES]
+            if queued:
+                self.assertEqual(queued, [("filesystem-resources", eligible[0])])
+                self.assertGreaterEqual(len(eligible), 2)
+                self.assertEqual(set(selected) - set(actual), set(eligible[1:]))
+            else:
+                self.assertEqual(set(actual), set(selected))
             return selected, launched
 
     def test_all_jobs_selected_by_default(self):
@@ -96,6 +102,29 @@ class DispatcherSelectionTest(unittest.TestCase):
         self.assertEqual(selected, ["filesystem-fat12", "filesystem-fat16"])
         self.assertEqual(launched, [("filesystem-resources", "filesystem-fat12")])
 
+    def test_four_eligible_builds_share_one_queue(self):
+        selected, launched = self.exercise({
+            "INFILTRATOROS_SELECTED_APPLICATIONS": "",
+            "INFILTRATOROS_SELECTED_TEMPORAL": "",
+            "INFILTRATOROS_SELECTED_FILESYSTEMS": "fat12,fat16,fat32,exfat,ofs",
+        })
+        self.assertEqual(selected, ["filesystem-fat12", "filesystem-fat16",
+                                    "filesystem-fat32", "filesystem-ofs",
+                                    "filesystem-exfat"])
+        self.assertEqual(launched, [
+            ("filesystem-resources", "filesystem-fat12"),
+            ("filesystem-resources", "filesystem-ofs"),
+        ])
+
+    def test_non_adjacent_candidates_join_queue(self):
+        selected, launched = self.exercise({
+            "INFILTRATOROS_SELECTED_APPLICATIONS": "",
+            "INFILTRATOROS_SELECTED_TEMPORAL": "",
+            "INFILTRATOROS_SELECTED_FILESYSTEMS": "fat32,exfat",
+        })
+        self.assertEqual(selected, ["filesystem-fat32", "filesystem-exfat"])
+        self.assertEqual(launched, [("filesystem-resources", "filesystem-fat32")])
+
     def test_pilot_opt_out_restores_two_serial_jobs(self):
         selected, launched = self.exercise({
             "INFILTRATOROS_SELECTED_APPLICATIONS": "",
@@ -108,6 +137,15 @@ class DispatcherSelectionTest(unittest.TestCase):
             ("filesystem-resources", "filesystem-fat12"),
             ("filesystem-resources", "filesystem-fat16"),
         ])
+
+    def test_smart_pilot_opt_out_runs_all_serially(self):
+        selected, launched = self.exercise({
+            "INFILTRATOROS_SELECTED_APPLICATIONS": "",
+            "INFILTRATOROS_SELECTED_TEMPORAL": "",
+            "INFILTRATOROS_SELECTED_FILESYSTEMS": "fat12,fat16,fat32,exfat",
+            "INFILTRATOROS_SMART_BUILD_PILOT": "0",
+        })
+        self.assertEqual([slug for _, slug in launched], selected)
 
     def test_bad_selection_fails_instead_of_silently_skipping(self):
         with self.assertRaisesRegex(ValueError, "unknown components"):

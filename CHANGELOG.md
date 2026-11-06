@@ -1,3 +1,10 @@
+## 1.0.65 — Bounded four-provider native build queue
+
+- Add FAT32 and exFAT to the FAT12/FAT16 pilot, with up to two simultaneous builds instead of unrestricted parallel compilation.
+- Use serial compilation on constrained hosts and serialize every dpkg transaction; fall back individually if build prerequisites are missing.
+- Preserve four-provider per-component timing and build logs; archive successful installation diagnostics before temporary cleanup.
+- Retain the original opt-out and add INFILTRATOROS_SMART_BUILD_PILOT=0.
+
 ## 1.0.64 — FAT12/FAT16 parallel native build pilot
 
 - Launch two source-bearing filesystem RUNs with --build-only --output concurrently, capped at two builds.

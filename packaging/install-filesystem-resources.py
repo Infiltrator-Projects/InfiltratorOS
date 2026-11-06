@@ -245,144 +245,187 @@ def install(entry):
 
 
 
-# Only FAT12/FAT16 may build simultaneously. The standard global native lock
-# remains held throughout, so all other components retain serial behaviour.
-FAT_PILOT = ("filesystem-fat12", "filesystem-fat16")
+# Four independently owned filesystems may build without installation. Never
+# run more than two builds simultaneously; all package installation stays serial.
+SMART_BUILD_CANDIDATES = ("filesystem-fat12", "filesystem-fat16",
+                          "filesystem-fat32", "filesystem-exfat")
+SMART_BUILD_LIMIT = 2
 
 
-def pilot_status(slug, state, progress, stage, detail):
+def smart_status(slug, state, progress, label, detail):
     global STATUS_PATH
     previous = STATUS_PATH
     STATUS_PATH = STATUS_DIR / (slug + "-install.status")
     try:
-        status(state, progress, stage, detail)
+        status(state, progress, label, detail)
     finally:
         STATUS_PATH = previous
 
 
-def pilot_build(job):
+def smart_build(job):
+    """Execute one verified native RUN in build-only mode, retaining its log."""
     entry, installer, target, version = job
-    run([installer, "--profile", "aggressive", "--system-package-mode",
-         "--build-only", "--output", target])
+    slug = entry["repository"].lower()
+    started = time.monotonic()
+    with (STATUS_DIR / (slug + "-build.log")).open("w") as output:
+        subprocess.run([str(installer), "--profile", "aggressive",
+                        "--system-package-mode", "--build-only", "--output",
+                        str(target)], stdout=output, stderr=subprocess.STDOUT, check=True)
     results = list(target.glob("*.deb"))
     if len(results) != 1:
-        raise RuntimeError(entry["repository"] + ": build-only produced no unique DEB")
+        raise RuntimeError(slug + ": build-only produced no unique DEB")
     package = results[0]
-    # A single dpkg-deb field returns its plain value; multiple fields return
-    # labelled control stanzas. Compare fields independently and exactly.
     for field, expected in (("Package", entry["package"]),
                             ("Version", version + "+native1"),
                             ("Architecture", "amd64")):
         actual = subprocess.check_output(
             ["/usr/bin/dpkg-deb", "-f", str(package), field], text=True).strip()
         if actual != expected:
-            raise RuntimeError(entry["repository"] + ": invalid native " + field)
-    return package
+            raise RuntimeError(slug + ": invalid native " + field)
+    return package, time.monotonic() - started
 
 
-def pilot_can_build():
-    # Keep component-owned prerequisite resolution out of the two-build phase:
-    # on an unprepared host use the existing serial RUN path instead.
-    for name in ("build-essential", "binutils", "python3", "dpkg-dev"):
+def smart_can_build(entry):
+    """Avoid a native installer invoking APT from concurrent compilation."""
+    packages = ["build-essential", "binutils", "python3", "dpkg-dev"]
+    tools = ["cc", "readelf", "dpkg-deb", "dpkg-query"]
+    if entry["id"] == "exfat":
+        # The exFAT standalone builder has a larger prerequisite inventory.
+        packages += ["cmake", "git", "pkg-config", "libssl-dev", "libsqlite3-dev",
+                     "exfatprogs", "dosfstools"]
+        tools += ["c++", "make", "cmake", "git", "nm", "pkg-config", "ctest"]
+    for name in packages:
         result = subprocess.run(
             ["/usr/bin/dpkg-query", "-W", "-f=" + "$" + "{Status}", name],
             capture_output=True, text=True, check=False)
         if result.returncode or result.stdout.strip() != "install ok installed":
             return False
-    return all(__import__("shutil").which(name) for name in
-               ("cc", "readelf", "dpkg-deb", "dpkg-query"))
+    import shutil
+    return all(shutil.which(name) for name in tools)
 
 
-def install_fat_pilot(entries):
-    """Two independently built DEBs; one globally serial dpkg transaction."""
+def smart_build_limit():
+    """Conservative pressure gate: smaller hosts compile serially."""
+    if (os.cpu_count() or 1) < 4:
+        return 1
+    try:
+        memory = Path("/proc/meminfo").read_text()
+        available = next(int(line.split()[1]) for line in memory.splitlines()
+                         if line.startswith("MemAvailable:"))
+    except (OSError, ValueError, StopIteration):
+        return 1
+    return SMART_BUILD_LIMIT if available >= 3 * 1024 * 1024 else 1
+
+
+def install_smart_queue(entries):
+    """Schedule up to four builds, then serially install and verify each DEB."""
     global STATUS_PATH
     release_dir = os.environ.get("INFILTRATOROS_RELEASE_DIR")
     if not release_dir:
-        raise ValueError("FAT pilot requires the sealed release snapshot")
+        raise ValueError("Smart build requires the sealed release snapshot")
     manifest = (STATUS_DIR.parent / "selected.list").read_text().splitlines()
-    if not set(FAT_PILOT) <= set(manifest):
-        raise ValueError("Both FAT components must belong to this run")
-    pair = [next(x for x in entries if x["repository"].lower() == slug)
-            for slug in FAT_PILOT]
+    chosen = [slug for slug in SMART_BUILD_CANDIDATES if slug in manifest]
+    if len(chosen) < 2:
+        raise ValueError("Smart build requires at least two selected providers")
+    selected = [next(x for x in entries if x["repository"].lower() == slug)
+                for slug in chosen]
     completed = set()
     try:
         from contextlib import ExitStack
         with ExitStack() as stack:
-            for slug in FAT_PILOT:
+            for slug in chosen:
                 lock = stack.enter_context((STATUS_ROOT / (slug + ".lock")).open("a"))
                 fcntl.flock(lock, fcntl.LOCK_EX)
-                pilot_status(slug, "queued", 2, "FAT parallel pilot queued",
-                             "Waiting for the native installation lock")
+                smart_status(slug, "queued", 2, "Smart build queued",
+                             "Waiting for the shared native installation lock")
             global_lock = stack.enter_context(
                 (STATUS_ROOT / "native-install.lock").open("a"))
             fcntl.flock(global_lock, fcntl.LOCK_EX)
             os.environ["DEBIAN_FRONTEND"] = "noninteractive"
             os.environ["TMPDIR"] = str(STATUS_DIR)
-            if not pilot_can_build():
-                for entry in pair:
-                    slug = entry["repository"].lower()
-                    STATUS_PATH = STATUS_DIR / (slug + "-install.status")
-                    was_current = install(entry)
-                    pilot_status(slug, "complete", 100, "Serial fallback completed",
-                                 "Native package verified; build prerequisites were missing"
-                                 if not was_current else "Existing native package verified")
-                    completed.add(slug)
-                return
-            with tempfile.TemporaryDirectory(dir=STATUS_DIR, prefix="fat-pilot-") as tmp:
+            with tempfile.TemporaryDirectory(dir=STATUS_DIR, prefix="smart-build-") as tmp:
                 root = Path(tmp)
-                jobs = []
-                release_info = {}
-                for entry in pair:
+                builds, serial, release_info = [], [], {}
+                timings = STATUS_DIR / "smart-build-timings.log"
+                timings.write_text("Selected: " + ", ".join(chosen) +
+                                   "\nBuild concurrency ceiling: 2\n")
+                for entry in selected:
                     slug = entry["repository"].lower()
-                    metadata = (Path(release_dir) / (entry["repository"] + ".json")).read_bytes()
-                    if len(metadata) > 4 * 1024 * 1024:
+                    payload = (Path(release_dir) / (entry["repository"] + ".json")).read_bytes()
+                    if len(payload) > 4 * 1024 * 1024:
                         raise ValueError(slug + ": oversized release snapshot")
-                    release = json.loads(metadata)
+                    release = json.loads(payload)
                     version, url, digest, length = release_installer(entry, release)
                     if native_current(entry, version, release):
-                        pilot_status(slug, "complete", 100, "Already installed",
+                        smart_status(slug, "complete", 100, "Already installed",
                                      "Verified native filesystem; rebuild skipped")
+                        with timings.open("a") as output:
+                            output.write(slug + " skipped (already verified)\n")
                         completed.add(slug)
                         continue
-                    pilot_status(slug, "running", 15, "Downloading native RUN",
-                                 "Checking independently published SHA-256")
+                    if not smart_can_build(entry):
+                        serial.append(entry)
+                        smart_status(slug, "queued", 10, "Serial fallback queued",
+                                     "Native prerequisites missing; avoiding concurrent APT")
+                        continue
+                    smart_status(slug, "running", 15, "Downloading native RUN",
+                                 "Verifying independent release SHA-256")
                     installer = root / (slug + ".run")
                     download(url, installer, digest, length)
                     target = root / slug
                     target.mkdir()
-                    jobs.append((entry, installer, target, version))
+                    builds.append((entry, installer, target, version))
                     release_info[slug] = release
-                for entry, _, _, _ in jobs:
-                    pilot_status(entry["repository"].lower(), "running", 35,
-                                 "Compiling in parallel",
-                                 "Independent native RUN, maximum two builds")
                 packages = {}
-                with ThreadPoolExecutor(max_workers=2) as pool:
-                    futures = {pool.submit(pilot_build, job): job[0]
-                               for job in jobs}
-                    for task in as_completed(futures):
-                        entry = futures[task]
-                        packages[entry["repository"].lower()] = task.result()
-                for entry, _, _, version in jobs:
+                if builds:
+                    workers = min(smart_build_limit(), len(builds))
+                    with timings.open("a") as output:
+                        output.write(f"Concurrent builds used: {workers}\n")
+                    for entry, _, _, _ in builds:
+                        smart_status(entry["repository"].lower(), "running", 35,
+                                     "Queued for native compilation",
+                                     "Bounded queue: maximum two independent builds")
+                    with ThreadPoolExecutor(max_workers=workers) as pool:
+                        futures = {pool.submit(smart_build, job): job[0]
+                                   for job in builds}
+                        for task in as_completed(futures):
+                            entry = futures[task]
+                            slug = entry["repository"].lower()
+                            package, seconds = task.result()
+                            packages[slug] = package
+                            with timings.open("a") as output:
+                                output.write(f"{slug} build {seconds:.2f} seconds\n")
+                            smart_status(slug, "running", 75, "Native build verified",
+                                         "Build completed; awaiting serial dpkg")
+                for entry, _, _, version in builds:
                     slug = entry["repository"].lower()
-                    pilot_status(slug, "running", 85, "Installing native package",
+                    smart_status(slug, "running", 85, "Installing native package",
                                  "Single serial Debian package transaction")
                     run(["/usr/bin/dpkg", "--install", packages[slug]])
                     if not native_current(entry, version, release_info[slug]):
                         raise RuntimeError(slug + ": installed SO or PDF verification failed")
-                    pilot_status(slug, "complete", 100, "Native installation complete",
+                    smart_status(slug, "complete", 100, "Native installation complete",
                                  "Independently built and verified native package")
                     completed.add(slug)
+                for entry in serial:
+                    slug = entry["repository"].lower()
+                    STATUS_PATH = STATUS_DIR / (slug + "-install.status")
+                    reused = install(entry)
+                    smart_status(slug, "complete", 100, "Serial fallback complete",
+                                 "Existing native package verified" if reused else
+                                 "Component-owned installer completed and verified")
+                    with timings.open("a") as output:
+                        output.write(slug + " serial fallback\n")
+                    completed.add(slug)
     except (OSError, RuntimeError, ValueError, subprocess.SubprocessError) as error:
-        for slug in FAT_PILOT:
+        for slug in chosen:
             if slug not in completed:
-                pilot_status(slug, "failed", 100, "Parallel FAT pilot failed", error)
-        STATUS_PATH = None  # Do not overwrite a separately completed job.
+                smart_status(slug, "failed", 100, "Smart build failed", error)
+        STATUS_PATH = None
         raise
     finally:
         if STATUS_PATH is not None:
-            STATUS_PATH = STATUS_DIR / (FAT_PILOT[0] + "-install.status")
-
+            STATUS_PATH = STATUS_DIR / (chosen[0] + "-install.status")
 
 def discover_additional(release_dir):
     """Admit extra drivers only with real, complete SHA-256-bound releases.
@@ -483,8 +526,8 @@ def main():
     STATUS_PATH = STATUS_DIR / (slug + "-install.status")
     STATUS_ROOT.mkdir(mode=0o755, parents=True, exist_ok=True)
     STATUS_DIR.mkdir(mode=0o755, parents=True, exist_ok=True)
-    if slug == FAT_PILOT[0] and os.environ.get("INFILTRATOROS_FAT_PAIR") == "1":
-        install_fat_pilot(entries)
+    if slug in SMART_BUILD_CANDIDATES and os.environ.get("INFILTRATOROS_SMART_BUILD_QUEUE") == "1":
+        install_smart_queue(entries)
         return
     with (STATUS_ROOT / (slug + ".lock")).open("a") as own:
         fcntl.flock(own, fcntl.LOCK_EX)

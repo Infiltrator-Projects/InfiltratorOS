@@ -128,6 +128,21 @@ fi
         outcome=$("$stage/system-monitor-progress" --run-status "$status_root") || outcome=running
         case "$outcome" in
             complete)
+                # Keep diagnostic logs, including build timings, after success.
+                # Do not keep temporary source trees or executed native RUNs.
+                archive_tmp="$STATUS_ROOT/.last-provision-logs.$.tar.gz"
+                if (umask 077
+                    cd "$stage"
+                    tar -czf "$archive_tmp" status selected.list \
+                        native-release-preparation.log \
+                        optional-filesystem-discovery.log \
+                        filesystems-optional.list filesystems-pending.list
+                ); then
+                    chmod 0600 "$archive_tmp"
+                    mv -f -- "$archive_tmp" "$STATUS_ROOT/last-provision-logs.tar.gz"
+                else
+                    rm -f -- "$archive_tmp"
+                fi
                 publish_summary complete
                 rm -rf -- "$stage"
                 exit 0
