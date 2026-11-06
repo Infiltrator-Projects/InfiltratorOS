@@ -268,11 +268,15 @@ def pilot_build(job):
     if len(results) != 1:
         raise RuntimeError(entry["repository"] + ": build-only produced no unique DEB")
     package = results[0]
-    identity = subprocess.check_output(
-        ["/usr/bin/dpkg-deb", "-f", str(package),
-         "Package", "Version", "Architecture"], text=True).splitlines()
-    if identity != [entry["package"], version + "+native1", "amd64"]:
-        raise RuntimeError(entry["repository"] + ": unexpected native package identity")
+    # A single dpkg-deb field returns its plain value; multiple fields return
+    # labelled control stanzas. Compare fields independently and exactly.
+    for field, expected in (("Package", entry["package"]),
+                            ("Version", version + "+native1"),
+                            ("Architecture", "amd64")):
+        actual = subprocess.check_output(
+            ["/usr/bin/dpkg-deb", "-f", str(package), field], text=True).strip()
+        if actual != expected:
+            raise RuntimeError(entry["repository"] + ": invalid native " + field)
     return package
 
 
