@@ -48,50 +48,71 @@ successful OVMF test with a production-bootable installation.
 **BOOT status for sequencing:** Code/release fix is complete; physical
 qualification is an open gate. No need to redo the completed source fix.
 
-## Checkpoint 2 — Kernel first native build: VERIFIED BASELINE; NEW PACKAGING OPEN
+## Checkpoint 2 — Kernel 0.1.0: BOTH FULL BUILDS VERIFIED; STAGING BLOCKED
 
-- Repository: [Infiltrator-Projects/Kernel](https://github.com/Infiltrator-Projects/Kernel)
-- Source baseline: full Ubuntu HWE Linux source imported at repository root;
-  upstream source `7.0.14`, current test ABI `7.0.14-infiltrator`.
-- The Dell Latitude 5550 (Linux Mint 22.3) **successfully completed a full
-  native kernel build**, producing **three Debian packages**, and then
-  **successfully staged** its initial kernel image and module tree on
-  2026-11-07. This proves *compilation, packaging and staging*, not installation
-  or execution.
-- The original verified build artifacts and logs on the laptop are important
-  and must be retained: `~/Kernel/dist/`, `~/Kernel/dist/native/`,
-  `~/Kernel/.native-build/`, existing source-tree object files, and
-  `~/Kernel-build-next.log`.
-- Subsequent work introduced a distinct product version `Kernel/VERSION =
-  0.1.0`, new Debian package identities `infiltratoros-kernel-image-0.1.0`,
-  `infiltratoros-kernel-headers-0.1.0` and
-  `infiltratoros-kernel-image-0.1.0-dbg`, plus a transitional module ABI
-  recorded separately. The product identity and source-level tests passed;
-  **there is not yet verified evidence of a completed on-machine build of
-  these newly named packages**.
-- The current build wrapper uses `/Temporary/InfiltratorOS/Kernel/Build` and
-  `/Temporary/InfiltratorOS/Kernel/Packages` for **new** output, and
-  `/Temporary/InfiltratorOS/Kernel/Staging/InfiltratorOS-<VERSION>/` for new
-  uninstalled staging. Preserve the earlier `~/Kernel/dist` baseline.
-- The native module-tree layout and native module loader remain transitional;
-  writing an unfamiliar directory name over Linux's module ABI does not create
-  a working independent kernel/module interface.
+- Repository: [Infiltrator-Projects/Kernel](https://github.com/Infiltrator-Projects/Kernel).
+- Baseline: Ubuntu HWE Linux source with upstream `7.0.14` and transitional
+  `7.0.14-infiltrator` kernel/module ABI; InfiltratorOS Kernel component
+  version `0.1.0`. An inherited Linux ABI is not a qualified native module
+  loader.
+- **2026-11-07 — First full kernel build succeeded** on the Dell Latitude 5550
+  running Linux Mint 22.3. Three `linux-*` Debian packages were generated
+  and the initial `~/Kernel/dist/native/` tree was staged successfully.
+- **2026-11-07 20:19 Melbourne time — Second full kernel build also succeeded.**
+  The user has confirmed all three *genuine product-named* packages on disk
+  in `/home/ssmith/Kernel/dist/`:
+  - `infiltratoros-kernel-headers-0.1.0_0.1.0-1_amd64.deb` — approximately 11 MiB;
+  - `infiltratoros-kernel-image-0.1.0_0.1.0-1_amd64.deb` — approximately 120 MiB;
+  - `infiltratoros-kernel-image-0.1.0-dbg_0.1.0-1_amd64.deb` — approximately 1.5 GiB.
+- All three original Linux-named packages are also still present in that same
+  directory (their file timestamps are 19:27). No kernel build was running
+  when the user checked with `pgrep`.
+- The directory `/Temporary/InfiltratorOS/Kernel/Packages/` **does not
+  exist on that host** at this checkpoint. This does **not** invalidate
+  either successful build: both were produced before the new source code
+  redirected future uninstalled outputs to the native `/Temporary` tree.
+  Do not repeat the full compilation merely because that directory is absent.
+- The Kernel source has since changed to use
+  `/Temporary/InfiltratorOS/Kernel/{Build,Packages,Staging,Logs}` for *new*
+  work while retaining access to the successfully compiled historical
+  `~/Kernel/dist/` input. The old native stage `~/Kernel/dist/native/`
+  remains evidence, not the destination for new staging.
+- A prior staging attempt from `Kernel/main` passed local `make check`
+  but stopped at `mkdir: cannot create directory
+  '/Temporary/InfiltratorOS/Kernel': Permission denied`. This is a
+  **workspace permissions issue**, not a build or package failure. No live
+  kernel was installed or booted.
 
-**Next concrete engineering gate:** Confirm whether the currently running
-or most recent `Kernel 0.1.0` native package build has *actually finished*
-on the Mint laptop; inspect its final terminal status and Debian package
-metadata in the new `/Temporary/InfiltratorOS/Kernel/Packages` area. If
-not complete, diagnose the recorded error without cleaning/restarting from
-scratch. Do **not** install or boot the generated kernel yet. The authoritative
-detail and any newer local evidence belong in
+**Next concrete gate: stage the existing 0.1.0 image without recompilation.**
+On the Dell, provision **only** the Kernel child workspace and stage from
+the already-built `dist/` packages:
+
+```bash
+sudo install -d -m 0750 -o "$(id -un)" -g "$(id -gn)" /Temporary/InfiltratorOS/Kernel
+cd ~/Kernel && git pull --ff-only && bash scripts/infiltrator/stage-native.sh --packages "$PWD/dist"
+```
+
+Successful uninstalled output should appear at:
+`/Temporary/InfiltratorOS/Kernel/Staging/InfiltratorOS-0.1.0/System/Kernel/`.
+Verify `STAGING-STATUS.txt`, `SHA256SUMS.txt`, the image and module
+hierarchy before beginning any BOOT-to-native-kernel experiment.
+The staging script does **not** modify a live `/System/Kernel`, the ESP,
+GRUB or NVRAM. It refuses to replace an existing stage without explicit
+`--replace` and should be run as the normal user, not root.
+
+**Preserve all completed local work:** `~/Kernel/dist/`,
+`~/Kernel/dist/native/`, `~/Kernel/.native-build/`, source-tree compiled
+objects, `~/Kernel-build-next.log` and
+`~/Kernel-build-native-0.1.0.log` (where present).
+Do **not** run `make clean`, `mrproper`, `git clean`,
+`git reset --hard`, delete the previous artifacts or attempt to install
+the new image during staging. GitHub preserves source and status records,
+not the laptop's compiled binaries.
+
+Kernel-owned detailed history and the most recent staging instructions:
 [Kernel/docs/BUILD-STATUS.md](https://github.com/Infiltrator-Projects/Kernel/blob/main/docs/BUILD-STATUS.md)
 and
 [Kernel/docs/NATIVE-LAYOUT.md](https://github.com/Infiltrator-Projects/Kernel/blob/main/docs/NATIVE-LAYOUT.md).
-
-**Do not** run `make clean`, `mrproper`, `git clean`, delete
-`.native-build` or `dist`, replace the existing GRUB boot path, modify the
-ESP, install a test kernel or reboot as part of resolving a build-status
-question.
 
 ## Checkpoints 3–6 — NOT YET END-TO-END QUALIFIED
 
