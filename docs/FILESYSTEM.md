@@ -17,7 +17,9 @@ The native skeleton is:
 │   │   ├── Images/
 │   │   ├── Modules/
 │   │   ├── Filesystems/
-│   │   └── Firmware/
+│   │   ├── Firmware/
+│   │   ├── Headers/
+│   │   └── Debug/
 │   ├── Resources/
 │   │   ├── Calendars/
 │   │   ├── Documentation/
@@ -39,7 +41,7 @@ The native skeleton is:
 
 `/System` is reserved for operating-system capabilities and implementation components. `/System/Commands` is for genuine command helpers rather than GUI applications; `/System/Libraries`, `/System/Devices` and `/System/Filesystems` identify their corresponding infrastructure roles. There is deliberately no `/System/Programs`.
 
-`/System/Kernel` is the native namespace for kernel-owned material. `Images` is reserved for kernel images and associated boot artefacts, `Firmware` for kernel-managed hardware firmware, and `Modules` for general kernel modules. Filesystem `.ko` files go directly in `Filesystems` under a single filename per provider.
+`/System/Kernel` is the native namespace for kernel-owned material. `Images` is reserved for kernel images and associated boot artefacts, `Firmware` for kernel-managed hardware firmware, and `Modules` for general kernel modules. Filesystem `.ko` files go directly in `Filesystems` under a single filename per provider. Optional `Headers` and `Debug` contain versioned kernel-development headers and debugging symbols, respectively, rather than runtime modules. For kernel product `0.1.0`, the native kernel Debian package destinations are `/System/Kernel/Images/InfiltratorOS-0.1.0.*`, `/System/Kernel/Modules/InfiltratorOS-0.1.0/`, `/System/Kernel/Headers/InfiltratorOS-0.1.0/` and `/System/Kernel/Debug/InfiltratorOS-0.1.0/`. The ABI `7.0.14-infiltrator` remains the distinct transitional compatibility version inside module/debug metadata, not an excuse to install to the host's `/boot`, `/lib/modules`, `/usr/src` or `/usr/lib/debug`. These native paths do not alone qualify an installed bootable kernel or runtime module loader.
 
 `/System/Resources` contains discoverable capabilities and shared presentation resources. Calendars and clocks belong under `Resources`, not under `Preferences`: a calendar or clock implementation is a capability, while selecting one is a preference. `/System/Preferences` is reserved for system-wide policy and configuration.
 
