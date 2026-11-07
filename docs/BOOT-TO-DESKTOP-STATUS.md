@@ -159,3 +159,23 @@ approval."**
 Read the linked owner documents and current GitHub state before taking
 new actions. Never infer the latest local Mint terminal result from GitHub
 source or CI alone.
+
+## 2026-11-08 kernel module-discovery progress
+
+The Kernel repository now has the first-stage native kmod helper at
+`/System/Kernel/Runtime/InfiltratorOS-0.1.0/modprobe`, selected by
+`CONFIG_MODPROBE_PATH` in the first-party kernel build. It creates an
+indexed view under `/run/infiltratoros-kernel` for native kernel
+`.ko` drivers and only version-matched transitional filesystem
+`.ko` adapters. The compiled firmware lookup prefers
+`/System/Kernel/Firmware`. GitHub Actions passed the synthetic module
+resolution, incompatible-ABI rejection, packaging-path and host-isolation
+tests, and republished the small Kernel `.run`.
+
+This is **not** a verified physical native kernel boot or an early-initramfs
+loader. The Boot source and Filesystem-*.so repositories retain their own
+interfaces. In particular, ordinary userspace `.so` modules under
+`/System/Filesystems` still require the separately qualified generic
+kernel filesystem bridge; they cannot be directly passed to Linux
+`modprobe`. Actual root mounting, signed modules, hardware and boot-to-
+desktop verification remain outstanding.
