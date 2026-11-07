@@ -2,6 +2,8 @@
 
 The root [README](../README.md) is the product overview. This index separates current-state technical contracts from historical release evidence.
 
+[**Current bottom-up boot-to-desktop development status**](BOOT-TO-DESKTOP-STATUS.md) — durable checkpoints, verified BOOT release, preserved Kernel build baseline, next qualification gate and exact resume instructions.
+
 ## Product and shared standards
 
 - [Product family and UI contract](PRODUCT-FAMILY.md) — consistent identity, typography, palettes, UX and independent installation across InfiltratorOS, System Monitor, Calculator and Files.
