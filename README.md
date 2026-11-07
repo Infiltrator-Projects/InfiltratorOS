@@ -6,6 +6,10 @@ The product is **source-first and hardware-native by design**. Qualified native 
 
 The active source version is defined by [VERSION](VERSION). For published binaries and immutable release history, use [GitHub Releases](https://github.com/Infiltrator-Projects/InfiltratorOS/releases), not old version-specific instructions embedded in this README.
 
+## Bottom-up development checkpoint
+
+[**Boot-to-desktop progress and recovery handoff**](docs/BOOT-TO-DESKTOP-STATUS.md) records the current cross-repository sequence from UEFI BOOT through Kernel, native filesystem/root integration and desktop startup. It distinguishes verified releases and local builds from pending physical boot and installer qualification. **Read this checkpoint before resuming boot-to-desktop development or touching existing kernel build artifacts.**
+
 ## What is installed
 
 | Component | Current orchestration |
