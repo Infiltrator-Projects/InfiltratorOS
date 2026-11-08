@@ -86,6 +86,40 @@ class AdditionalFilesystemTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     worker.release_installer(entry, archived)
 
+    def test_native_kernel_abi_release_is_not_rejected_as_an_extra_asset(self):
+        # EXT2 1.0.9 contains a legitimate adapter targeting the new native
+        # InfiltratorOS Kernel 0.1.1. The installer must admit the published
+        # SO/PDF package without asserting the adapter can load on this host.
+        ext2 = next(e for e in worker.additional_catalogue() if e["id"] == "ext2")
+        release = release_for(ext2, "1.0.9")
+        base = (f"https://github.com/Infiltrator-Projects/{ext2['repository']}"
+                "/releases/download/v1.0.9/")
+        def asset(name):
+            return {"name": name, "browser_download_url": base + name,
+                    "digest": "sha256:" + "b" * 64, "size": 100}
+        release["assets"].extend([asset("ext2-linux-0.1.1.ko"),
+                                  asset("SHA256SUMS.txt")])
+        self.assertEqual(worker.release_installer(ext2, release)[0], "1.0.9")
+        self.assertEqual(len(release["assets"]), 4)
+
+        for name in ("ext3-linux-0.1.1.ko", "ext2-linux-unknown.ko",
+                     "extra-untrusted.bin"):
+            with self.subTest(rejected_extra=name):
+                bad = json.loads(json.dumps(release))
+                bad["assets"].append(asset(name))
+                with self.assertRaises(ValueError):
+                    worker.release_installer(ext2, bad)
+
+        multiple = json.loads(json.dumps(release))
+        multiple["assets"].append(asset("ext2-linux-6.12.107.ko"))
+        with self.assertRaisesRegex(ValueError, "Ambiguous native kernel"):
+            worker.release_installer(ext2, multiple)
+
+        tampered = json.loads(json.dumps(release))
+        tampered["assets"][-1]["digest"] = "sha256:not-a-digest"
+        with self.assertRaises(ValueError):
+            worker.release_installer(ext2, tampered)
+
     def test_discovery_records_unpublished_without_faking_installs(self):
         selected = worker.additional_catalogue()[0]
         release = release_for(selected)
