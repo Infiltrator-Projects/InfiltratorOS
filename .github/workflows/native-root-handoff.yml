@@ -1,0 +1,189 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+name: Native InfiltratorFS root to installed PID1 VM qualification
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - tests/native-root-handoff.py
+      - tests/native-root-handoff-test.py
+      - .github/workflows/native-root-handoff.yml
+permissions:
+  contents: read
+concurrency:
+  group: native-root-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  offline-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - name: Syntax and offline smoke regressions
+        run: |
+          set -euo pipefail
+          python3 -m py_compile tests/native-root-handoff.py tests/native-root-handoff-test.py
+          python3 tests/native-root-handoff-test.py -v
+
+  installed-root:
+    needs: offline-contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 110
+    steps:
+      - name: Checkout owning InfiltratorOS source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          path: os
+      - name: Checkout already-qualified independent Kernel revision
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          repository: Infiltrator-Projects/Kernel
+          ref: 394834ca5c7fbd3d9d9c4f5a88d95f00a6054bf1
+          path: kernel
+      - name: Checkout already-qualified InfiltratorFS implementation
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          repository: Infiltrator-Projects/InfiltratorFS
+          ref: 460a192b98e435120d8ad4bc2461663dd37e8fbb
+          path: fs
+          submodules: recursive
+      - name: Validate exact source and install isolated build dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C kernel rev-parse HEAD)" = 394834ca5c7fbd3d9d9c4f5a88d95f00a6054bf1
+          test "$(git -C fs rev-parse HEAD)" = 460a192b98e435120d8ad4bc2461663dd37e8fbb
+          test "$(cat kernel/VERSION)" = 0.1.1
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential bc bison flex libelf-dev libssl-dev libncurses-dev \
+            dwarves cpio rsync kmod busybox-static qemu-system-x86 qemu-utils \
+            ovmf dosfstools mtools gnu-efi cmake pkg-config python3 git wget \
+            file zstd liblz4-dev
+          file "$(command -v busybox)" | grep -Fq "statically linked"
+          test -s /usr/share/OVMF/OVMF_CODE_4M.fd
+          mkdir -p "$RUNNER_TEMP/InfiltratorOS/Kernel" "$RUNNER_TEMP/InfiltratorOS/Trial"
+      - name: Compile genuine native Kernel 0.1.1 and matching module tree
+        shell: bash
+        timeout-minutes: 75
+        run: |
+          set -euo pipefail
+          obj="$RUNNER_TEMP/InfiltratorOS/Kernel"
+          make -C kernel O="$obj" x86_64_defconfig
+          kernel/scripts/config --file "$obj/.config" \
+            -e EFI -e EFI_STUB -e PCI -e VIRTIO -e VIRTIO_PCI -e VIRTIO_BLK \
+            -e MODULES -e BLK_DEV_INITRD -e DEVTMPFS -e DEVTMPFS_MOUNT \
+            -e TTY -e SERIAL_8250 -e SERIAL_8250_CONSOLE -e RD_GZIP \
+            -d MODULE_SIG -d SYSTEM_TRUSTED_KEYRING -d DEBUG_INFO \
+            --set-str SYSTEM_TRUSTED_KEYS '' \
+            --set-str SYSTEM_REVOCATION_KEYS '' \
+            --set-str MODPROBE_PATH '/System/Kernel/Runtime/InfiltratorOS-0.1.1/modprobe'
+          make -C kernel O="$obj" KERNELRELEASE=0.1.1 olddefconfig
+          make -C kernel O="$obj" KERNELRELEASE=0.1.1 prepare
+          test "$(cat "$obj/include/config/kernel.release")" = 0.1.1
+          make -C kernel O="$obj" KERNELRELEASE=0.1.1 \
+            -j 4 bzImage modules > "$RUNNER_TEMP/InfiltratorOS/Kernel-build.log" 2>&1 || {
+            tail -n 150 "$RUNNER_TEMP/InfiltratorOS/Kernel-build.log" >&2
+            exit 1
+          }
+          test -s "$obj/arch/x86/boot/bzImage"
+          echo 'INFS_NATIVE_ROOT_KERNEL_COMPILE_PASS'
+      - name: Compile independently owned native filesystem UEFI driver and VFS module
+        shell: bash
+        timeout-minutes: 25
+        run: |
+          set -euo pipefail
+          trial="$RUNNER_TEMP/InfiltratorOS/Trial"
+          obj="$RUNNER_TEMP/InfiltratorOS/Kernel"
+          make -C fs/uefi/filesystems -f Make.gnuefi ARCH=x86_64 \
+            INFS_UEFI_TRACE=1 -j 4 > "$trial/UEFI-build.log" 2>&1 || {
+            tail -n 90 "$trial/UEFI-build.log" >&2
+            exit 1
+          }
+          cmake -S fs -B "$trial/FilesystemBuild" -DCMAKE_BUILD_TYPE=Release \
+            > "$trial/CMake.log" 2>&1
+          cmake --build "$trial/FilesystemBuild" --parallel 4 \
+            --target mkfs.infilfs infilfs-tool > "$trial/FilesystemBuild.log" 2>&1 || {
+            tail -n 90 "$trial/FilesystemBuild.log" >&2
+            exit 1
+          }
+          make -C kernel O="$obj" M="$GITHUB_WORKSPACE/fs/kernel" -j 4 modules \
+            > "$trial/FilesystemModuleBuild.log" 2>&1 || {
+            tail -n 120 "$trial/FilesystemModuleBuild.log" >&2
+            exit 1
+          }
+          test "$(modinfo -F vermagic fs/kernel/infiltratorfs.ko | awk '{print $1}')" = 0.1.1
+          test -s fs/uefi/filesystems/InfiltratorFS_x64.efi
+      - name: Stage matching Kernel modules and checksum-verified Boot EFI
+        shell: bash
+        run: |
+          set -euo pipefail
+          trial="$RUNNER_TEMP/InfiltratorOS/Trial"
+          obj="$RUNNER_TEMP/InfiltratorOS/Kernel"
+          modroot="$trial/System/Kernel/Modules/InfiltratorOS-0.1.1/kernel"
+          mkdir -p "$modroot"
+          while IFS= read -r -d '' module; do
+            relative=$(realpath --relative-to="$obj" "$module")
+            mkdir -p "$modroot/$(dirname "$relative")"
+            cp "$module" "$modroot/$relative"
+          done < <(find "$obj" -type f -name '*.ko' -print0)
+          boot_version=0.1.40
+          boot_package="infiltrator-boot_0.1.40_amd64.deb"
+          boot_url="https://github.com/Infiltrator-Projects/Boot/releases/download/v0.1.40"
+          wget -q -O "$trial/$boot_package" "$boot_url/$boot_package"
+          wget -q -O "$trial/BOOT-SHA256SUMS.txt" "$boot_url/SHA256SUMS.txt"
+          awk -v package="$boot_package" '
+            $2 == package && length($1) == 64 && $1 !~ /[^0123456789abcdef]/ {
+              print $1 "  " $2; matches++
+            }
+            END { if (matches != 1) exit 1 }
+          ' "$trial/BOOT-SHA256SUMS.txt" > "$trial/boot-verify.txt"
+          (cd "$trial" && sha256sum -c boot-verify.txt)
+          mkdir -p "$trial/Boot"
+          dpkg-deb -x "$trial/$boot_package" "$trial/Boot"
+          test -s "$trial/Boot/usr/lib/infiltrator-boot/EFI/BOOT/BOOTX64.EFI"
+      - name: Boot into installed InfiltratorFS root PID1 twice, verify persistent writes
+        shell: bash
+        timeout-minutes: 35
+        run: |
+          set -euo pipefail
+          trial="$RUNNER_TEMP/InfiltratorOS/Trial"
+          obj="$RUNNER_TEMP/InfiltratorOS/Kernel"
+          python3 os/tests/native-root-handoff.py \
+            --kernel-source "$GITHUB_WORKSPACE/kernel" \
+            --kernel "$obj/arch/x86/boot/bzImage" \
+            --kernel-config "$obj/.config" \
+            --module-root "$trial/System/Kernel/Modules/InfiltratorOS-0.1.1/kernel" \
+            --module "$GITHUB_WORKSPACE/fs/kernel/infiltratorfs.ko" \
+            --boot "$trial/Boot/usr/lib/infiltrator-boot/EFI/BOOT/BOOTX64.EFI" \
+            --driver "$GITHUB_WORKSPACE/fs/uefi/filesystems/InfiltratorFS_x64.efi" \
+            --busybox "$(command -v busybox)" \
+            --mkfs "$trial/FilesystemBuild/mkfs.infilfs" \
+            --fs-tool "$trial/FilesystemBuild/infilfs-tool" \
+            --os-source "$GITHUB_WORKSPACE/os" \
+            --output "$trial/Installed-Root" \
+            --timeout 600 > "$trial/Installed-Root-Test.log" 2>&1 || {
+              tail -n 160 "$trial/Installed-Root-Test.log" >&2
+              find "$trial/Installed-Root" -maxdepth 2 -name 'serial*.log' \
+                -exec sh -c 'echo "=== $1 ==="; tail -n 110 "$1"' _ {} \; >&2
+              exit 1
+            }
+          grep -Fq 'INFS_NATIVE_INSTALLED_ROOT_TWO_BOOT_PID1_PASS' "$trial/Installed-Root-Test.log"
+      - name: Preserve exact source identities and native guest serial evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: InfiltratorOS-native-installed-root-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/InfiltratorOS/Kernel-build.log
+            ${{ runner.temp }}/InfiltratorOS/Trial/*.log
+            ${{ runner.temp }}/InfiltratorOS/Trial/boot-verify.txt
+            ${{ runner.temp }}/InfiltratorOS/Trial/Installed-Root/serial.log
+            ${{ runner.temp }}/InfiltratorOS/Trial/Installed-Root/serial-reboot.log
+            ${{ runner.temp }}/InfiltratorOS/Trial/Installed-Root/qemu-phase-1.log
+            ${{ runner.temp }}/InfiltratorOS/Trial/Installed-Root/qemu-phase-2.log
+            ${{ runner.temp }}/InfiltratorOS/Trial/Installed-Root/source-identities.json
+            ${{ runner.temp }}/InfiltratorOS/Trial/Installed-Root/os-resource-summary.txt
+          if-no-files-found: warn
+          retention-days: 30
