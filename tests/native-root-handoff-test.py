@@ -67,6 +67,8 @@ class NativeRootHandoffTests(unittest.TestCase):
                 "INFS_INSTALLED_ROOT_HANDOFF_PASS\n"
                 "reboot: Power down\n"
             )
+            (directory / "OVMF_CODE_4M.fd").write_bytes(b"mock ovmf code")
+            (directory / "OVMF_VARS_4M.fd").write_bytes(b"mock ovmf vars")
             # A missing persistent marker must be rejected even if all of the
             # earlier stage markers were present.
             reboot = (directory / "serial-reboot.log")
