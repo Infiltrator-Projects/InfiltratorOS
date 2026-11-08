@@ -47,7 +47,7 @@ static std::vector<std::string> command_lines(const std::string &command) {
 static bool digest(const std::string &s) {
     if (s.size() != 64) return false;
     return std::all_of(s.begin(), s.end(), [](unsigned char c) {
-        return c >= '0' && c <= '9' || c >= 'a' && c <= 'f';
+        return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f');
     });
 }
 static void add(Names &names, const std::string &item) {
@@ -97,7 +97,8 @@ static Names expected() {
                               "logbook", "remote-parking"};
         demand(bits.size() == 3 && groups.count(bits[0]) &&
                (bits[1] == "default" || bits[1] == "night") &&
-               (name.size() >= 4 && name.substr(name.size()-4) == ".png" || name.size() >= 5 && name.substr(name.size()-5) == ".webp"),
+               ((name.size() >= 4 && name.substr(name.size()-4) == ".png") ||
+                (name.size() >= 5 && name.substr(name.size()-5) == ".webp")),
                "Unapproved icon identity: " + name);
         std::replace(name.begin(), name.end(), '/', '-');
         add(names, "System/Resources/Icons/" + name);
