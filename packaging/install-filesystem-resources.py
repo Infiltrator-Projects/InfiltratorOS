@@ -78,12 +78,15 @@ def run(args):
     print("+ " + " ".join(map(str, args)), flush=True)
     subprocess.run([str(x) for x in args], check=True)
 
-def open_url(url):
+def open_url(url, asset=False):
     headers = {"User-Agent": "InfiltratorOS-filesystem-installer",
                "Accept": "application/vnd.github+json"}
     token = os.getenv("GITHUB_TOKEN")
     if token and urllib.parse.urlsplit(url).hostname == "api.github.com":
         headers["Authorization"] = "Bearer " + token
+    if asset:
+        headers["Accept"] = "application/octet-stream"
+        headers.pop("Authorization", None)  # Public asset redirects must not receive credentials.
     request = urllib.request.Request(url, headers=headers)
     for attempt in range(4):
         try:
@@ -181,21 +184,61 @@ def release_installer(entry, release):
         raise ValueError("Untrusted or unchecksummed filesystem native installer")
     return version, url, digest[7:], asset["size"]
 
+
+def alternate_asset_url(url, digest, length):
+    """Resolve the exact signed release asset via the independent GitHub API route."""
+    parsed = urllib.parse.urlsplit(url)
+    match = re.fullmatch(
+        r"/Infiltrator-Projects/([A-Za-z0-9-]+)/releases/download/"
+        r"(v[0-9]+\.[0-9]+\.[0-9]+)/([A-Za-z0-9_.+-]+)", parsed.path)
+    if parsed.scheme != "https" or parsed.netloc != "github.com" or not match:
+        raise ValueError("Refusing noncanonical alternate filesystem asset lookup")
+    repository, tag, name = match.groups()
+    api = f"https://api.github.com/repos/Infiltrator-Projects/{repository}/releases/tags/{tag}"
+    with open_url(api) as response:
+        payload = response.read(4 * 1024 * 1024 + 1)
+    if len(payload) > 4 * 1024 * 1024:
+        raise ValueError("Oversized alternate filesystem release metadata")
+    release = json.loads(payload)
+    if release.get("tag_name") != tag or release.get("draft") or release.get("prerelease"):
+        raise ValueError("Alternate route returned a different filesystem release")
+    matches = [item for item in release.get("assets", [])
+               if isinstance(item, dict) and item.get("name") == name
+               and item.get("browser_download_url") == url
+               and item.get("digest") == "sha256:" + digest
+               and item.get("size") == length
+               and type(item.get("id")) is int and item["id"] > 0]
+    if len(matches) != 1:
+        raise ValueError("Alternate filesystem asset metadata does not match the pinned release")
+    return f"https://api.github.com/repos/Infiltrator-Projects/{repository}/releases/assets/{matches[0]['id']}"
+
+
 def download(url, path, digest, length):
-    count, sha = 0, hashlib.sha256()
-    with open_url(url) as src, path.open("wb") as dst:
-        while True:
-            data = src.read(1024 * 1024)
-            if not data:
-                break
-            count += len(data)
-            if count > length:
-                raise ValueError("Installer exceeds published size")
-            sha.update(data)
-            dst.write(data)
-    if count != length or sha.hexdigest() != digest:
-        raise ValueError("Installer SHA-256 or size mismatch")
-    path.chmod(0o700)
+    errors = []
+    for alternate in (False, True):
+        source = alternate_asset_url(url, digest, length) if alternate else url
+        try:
+            count, sha = 0, hashlib.sha256()
+            with open_url(source, asset=alternate) as src, path.open("wb") as dst:
+                while True:
+                    data = src.read(1024 * 1024)
+                    if not data:
+                        break
+                    count += len(data)
+                    if count > length:
+                        raise ValueError("Installer exceeds published size")
+                    sha.update(data)
+                    dst.write(data)
+            if count != length or sha.hexdigest() != digest:
+                raise ValueError("Installer SHA-256 or size mismatch")
+            path.chmod(0o700)
+            return
+        except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError, OSError) as error:
+            path.unlink(missing_ok=True)
+            errors.append(f"{'asset API' if alternate else 'release CDN'}: {error}")
+            print(f"Transient filesystem download failure; trying alternate route: {error}",
+                  flush=True)
+    raise RuntimeError("Both SHA-256-guarded filesystem download routes failed: " + "; ".join(errors))
 
 
 def native_current(entry, version, release):
