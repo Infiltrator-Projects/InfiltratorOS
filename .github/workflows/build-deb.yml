@@ -46,6 +46,11 @@ jobs:
           test "$("$RUNNER_TEMP/install-temporal-resources" --list | wc -l)" -eq 54
           test "$("$RUNNER_TEMP/install-filesystem-resources" --list | wc -l)" -eq 5
           test "$("$RUNNER_TEMP/install-filesystem-resources" --list-all | wc -l)" -eq 23
+          c++ -std=c++17 -O2 -Wall -Wextra -Werror -Wpedantic -pthread \
+            $(pkg-config --cflags libcurl json-c openssl) \
+            tests/native-component-test.cpp -o "$RUNNER_TEMP/native-component-test" \
+            $(pkg-config --libs libcurl json-c openssl)
+          "$RUNNER_TEMP/native-component-test"
           test -x "$RUNNER_TEMP/native-orchestrate"
           test -x "$RUNNER_TEMP/native-snapshot"
           test -x "$RUNNER_TEMP/native-activate-calendar"
