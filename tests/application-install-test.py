@@ -59,6 +59,52 @@ class ApplicationTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     app.download("https://github.com/test", hashlib.sha256(b"abc").hexdigest(), 3, path)
 
+    def test_gateway_timeout_retries_then_verifies_complete_download(self):
+        from urllib.error import HTTPError
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "calculator.run"
+            url = "https://github.com/test"
+            timeout = HTTPError(url, 504, "Gateway Time-out", {}, None)
+            with patch.object(app.urllib.request, "urlopen",
+                              side_effect=[timeout, io.BytesIO(b"abc")]) as fetch, \
+                 patch.object(app.time, "sleep") as sleep:
+                app.download(url, hashlib.sha256(b"abc").hexdigest(), 3, path)
+            self.assertEqual(fetch.call_count, 2)
+            sleep.assert_called_once_with(2)
+            self.assertEqual(path.read_bytes(), b"abc")
+            self.assertTrue(path.stat().st_mode & 0o100)
+            self.assertFalse((Path(tmp) / "calculator.run.part").exists())
+
+    def test_gateway_timeout_exhaustion_leaves_no_executable(self):
+        from urllib.error import HTTPError
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "calculator.run"
+            url = "https://github.com/test"
+            with patch.object(app.urllib.request, "urlopen",
+                              side_effect=HTTPError(url, 504, "Gateway Time-out", {}, None)) as fetch, \
+                 patch.object(app.time, "sleep") as sleep:
+                with self.assertRaises(HTTPError):
+                    app.download(url, hashlib.sha256(b"abc").hexdigest(), 3, path)
+            self.assertEqual(fetch.call_count, app.DOWNLOAD_ATTEMPTS)
+            self.assertEqual([call.args[0] for call in sleep.call_args_list],
+                             [2, 4, 8, 16])
+            self.assertFalse(path.exists())
+            self.assertFalse((Path(tmp) / "calculator.run.part").exists())
+
+    def test_permanent_http_error_does_not_retry(self):
+        from urllib.error import HTTPError
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "calculator.run"
+            url = "https://github.com/test"
+            with patch.object(app.urllib.request, "urlopen",
+                              side_effect=HTTPError(url, 404, "Not Found", {}, None)) as fetch, \
+                 patch.object(app.time, "sleep") as sleep:
+                with self.assertRaises(HTTPError):
+                    app.download(url, hashlib.sha256(b"abc").hexdigest(), 3, path)
+            self.assertEqual(fetch.call_count, 1)
+            sleep.assert_not_called()
+            self.assertFalse(path.exists())
+
     def test_only_matching_healthy_attestation_skips_build(self):
         with tempfile.TemporaryDirectory() as tmp:
             binary = Path(tmp) / "calculator"
