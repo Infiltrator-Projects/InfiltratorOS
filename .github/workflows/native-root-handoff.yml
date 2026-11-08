@@ -75,7 +75,7 @@ jobs:
             -e EFI -e EFI_STUB -e PCI -e VIRTIO -e VIRTIO_PCI -e VIRTIO_BLK \
             -e MODULES -e BLK_DEV_INITRD -e DEVTMPFS -e DEVTMPFS_MOUNT \
             -e TTY -e SERIAL_8250 -e SERIAL_8250_CONSOLE -e RD_GZIP \
-            -d MODULE_SIG -d SYSTEM_TRUSTED_KEYRING -d DEBUG_INFO \
+            -d 9P_FS -d MODULE_SIG -d SYSTEM_TRUSTED_KEYRING -d DEBUG_INFO \
             --set-str SYSTEM_TRUSTED_KEYS '' \
             --set-str SYSTEM_REVOCATION_KEYS '' \
             --set-str MODPROBE_PATH '/System/Kernel/Runtime/InfiltratorOS-0.1.1/modprobe'
