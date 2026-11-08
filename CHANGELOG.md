@@ -1,3 +1,10 @@
+## 1.0.67 — Verified native installer download recovery
+
+- Recover transient GitHub release CDN failures through the GitHub asset API, resolving the exact same published RUN and requiring matching release identity, SHA-256 digest and byte length before execution.
+- Preserve each independent calendar, clock and filesystem repository and its individually owned native package, module and PDF.
+- Exclude unused 9P filesystem code from the isolated InfiltratorFS installed-root VM kernel qualification build; keep the real native PID1 two-boot check as an independent release-readiness test.
+- The Debian/Linux Mint integration package is not represented as a fully qualified standalone operating system.
+
 ## 1.0.66 — Native boot readiness and independent module compatibility
 
 - Preserve the 0.1.0-4 native Kernel integration source changes and the single-source filesystem repository boundaries.
