@@ -68,7 +68,9 @@ jobs:
           cmp "$RUNNER_TEMP/first.deb" dist/*.deb
           # Enforce an exhaustive allowlist of every installed regular file;
           # no legacy /usr/bin program copies or unexpected host paths.
-          python3 tests/package-layout-test.py dist/*.deb
+          c++ -std=c++17 -O2 -Wall -Wextra -Werror -Wpedantic \
+            tests/native-package-layout-test.cpp -o "$RUNNER_TEMP/native-package-layout-test"
+          "$RUNNER_TEMP/native-package-layout-test" dist/*.deb
           version=$(tr -d '\r\n' < VERSION)
           test "$(dpkg-deb -f dist/*.deb Version)" = "$version"
           dpkg-deb -e dist/*.deb "$RUNNER_TEMP/control"
