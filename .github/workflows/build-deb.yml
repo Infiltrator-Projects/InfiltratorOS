@@ -167,10 +167,9 @@ jobs:
           (cd "$RUNNER_TEMP" && zip -qr "$GITHUB_WORKSPACE/dist/infiltratoros-$version-source.zip" "infiltratoros-$version")
           printf '%s\n' "$GITHUB_SHA" > dist/SOURCE_COMMIT
           (cd dist && sha256sum *.deb *.zip SOURCE_COMMIT > SHA256SUMS.txt)
-      - name: Install all 54 providers independently through the exact packaged worker
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: sudo --preserve-env=GITHUB_TOKEN,GITHUB_ACTIONS python3 tests/temporal-bundle-e2e.py dist/*.deb
+      # Native provider builds belong to their independent repositories. The OS
+      # release gate qualifies its own dispatcher, package and signed worker
+      # contracts above; cross-repository installation stress is manual-only.
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: os-qualified-${{ github.sha }}

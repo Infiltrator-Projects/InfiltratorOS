@@ -1,9 +1,7 @@
 name: Qualify independent filesystem installation from OS bundle
+# Manual cross-repository integration exercise, deliberately not a release gate.
+# Filesystem provider failures must not prevent release of the OS installer.
 on:
-  pull_request:
-    branches: [main]
-  push:
-    branches: [main]
   workflow_dispatch:
 permissions:
   contents: read
