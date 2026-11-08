@@ -144,6 +144,17 @@ cc -std=c11 -O2 -Wall -Wextra -Werror \
 cc -std=c11 -O2 -Wall -Wextra -Werror "$ROOT/packaging/select-theme.c" \
     -o "$PKGROOT/System/Commands/InfiltratorOS/select-theme"
 
+# Store the three static signed provider catalogues in the temporary seal,
+# not in the installed OS filesystem. All invocation paths use one C++ worker.
+c++ -std=c++17 -O2 -Wall -Wextra -Werror -Wpedantic -pthread \
+    $(pkg-config --cflags libcurl json-c openssl) \
+    "$ROOT/packaging/native-component-worker.cpp" \
+    -o "$WORK/native-component-worker" \
+    $(pkg-config --libs libcurl json-c openssl)
+for inventory in temporal-resources.json filesystem-resources.json filesystem-additional.json; do
+    install -m 0644 "$ROOT/packaging/$inventory" "$RUNTIME_BUILD/$inventory"
+done
+
 for product in system-monitor calculator files defragmenter temporal-resources filesystem-resources; do
     case "$product" in
         system-monitor) profile=INSTALL_SYSTEM_MONITOR ;;
@@ -153,40 +164,8 @@ for product in system-monitor calculator files defragmenter temporal-resources f
         temporal-resources) profile=INSTALL_TEMPORAL_RESOURCES ;;
         filesystem-resources) profile=INSTALL_FILESYSTEM_RESOURCES ;;
     esac
-    if [ "$product" = temporal-resources ]; then
-        # Embed the exact 54-provider catalogue in this installation-only worker.
-        python3 - "$ROOT" "$RUNTIME_BUILD/install-$product" <<'PY'
-import json, pathlib, sys
-root, output = pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2])
-catalogue = json.loads((root / "packaging/temporal-resources.json").read_text())
-assert len(catalogue) == 54
-source = (root / "packaging/install-temporal-resources.py").read_text()
-marker = "CATALOGUE = []  # @EMBED_TEMPORAL_CATALOGUE@"
-assert source.count(marker) == 1
-output.write_text(source.replace(marker, "CATALOGUE = " + repr(catalogue)))
-output.chmod(0o755)
-PY
-    elif [ "$product" = filesystem-resources ]; then
-        python3 - "$ROOT" "$RUNTIME_BUILD/install-$product" <<'PY'
-import json, pathlib, sys
-root, output = pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2])
-catalogue = json.loads((root / "packaging/filesystem-resources.json").read_text())
-assert len(catalogue) == 5
-additional = json.loads((root / "packaging/filesystem-additional.json").read_text())
-assert len(additional) == 18
-assert len({e["resource"] for e in catalogue + additional}) == 23
-source = (root / "packaging/install-filesystem-resources.py").read_text()
-marker = "CATALOGUE = []  # @EMBED_FILESYSTEM_CATALOGUE@"
-additional_marker = "ADDITIONAL = []  # @EMBED_FILESYSTEM_ADDITIONAL@"
-assert source.count(marker) == source.count(additional_marker) == 1
-source = source.replace(marker, "CATALOGUE = " + repr(catalogue))
-source = source.replace(additional_marker, "ADDITIONAL = " + repr(additional))
-output.write_text(source)
-output.chmod(0o755)
-PY
-    else
-        install -m 0755 "$ROOT/packaging/install-application.py" "$RUNTIME_BUILD/install-$product"
-    fi
+    # The one compiled native worker handles each signed catalogue identity.
+    install -m 0755 "$WORK/native-component-worker" "$RUNTIME_BUILD/install-$product"
     cc -std=c11 -O2 -Wall -Wextra -Werror -Wpedantic "-D$profile" \
         "$ROOT/packaging/start-native-install.c" "$ROOT/packaging/installer-process.c" \
         -o "$RUNTIME_BUILD/start-$product-install"

@@ -348,6 +348,12 @@ static Asset release_asset(const Entry &entry, json_object *meta, bool calendar_
     }
     Asset result;
     result.version = tag.substr(1);
+    if (filesystem && entry.id == "exfat") {
+        int major = 0, minor = 0, patch = 0;
+        if (sscanf(tag.c_str(), "v%d.%d.%d", &major, &minor, &patch) != 3 ||
+            (major == 0 && minor == 1 && patch < 3))
+            throw std::runtime_error("Refusing known-broken exFAT native RUN");
+    }
     const std::string run_name = entry.id == "defragmenter"
         ? "Defragmenter-" + result.version + "-local-folder.run"
         : entry.slug() + "-" + result.version + "-native-installer.run";
