@@ -124,8 +124,12 @@ done < "$FONT_MANIFEST"
 test "$(find "$FONT_DIR" -maxdepth 1 -type f -name '*.ttf' | wc -l)" -eq 23
 install -m 0644 "$ROOT/packaging/infiltrator-native-path.sh" \
     "$PKGROOT/etc/profile.d/90-infiltratoros-native-path.sh"
-install -m 0755 "$ROOT/packaging/activate-calendar.py" \
-    "$PKGROOT/System/Commands/InfiltratorOS/activate-calendar"
+# Compile the per-user Cinnamon integration with GSettings directly in C.
+cc -std=c11 -O2 -Wall -Wextra -Werror -Wpedantic \
+    $(pkg-config --cflags gio-2.0 json-c) \
+    "$ROOT/packaging/activate-calendar.c" \
+    -o "$PKGROOT/System/Commands/InfiltratorOS/activate-calendar" \
+    $(pkg-config --libs gio-2.0 json-c)
 install -m 0644 "$ROOT/packaging/infiltrator-calendar.desktop" \
     "$PKGROOT/etc/xdg/autostart/infiltrator-calendar.desktop"
 install -m 0755 "$ROOT/packaging/activate-program-icons.sh" \
@@ -196,8 +200,16 @@ PY
         -o "$RUNTIME_BUILD/$product-progress" $(pkg-config --libs gtk+-3.0 pangoft2 fontconfig)
 done
 
-install -m 0755 "$ROOT/packaging/prepare-native-releases.py" "$RUNTIME_BUILD/prepare-native-releases"
-install -m 0755 "$ROOT/packaging/orchestrate-native-install.py" "$RUNTIME_BUILD/orchestrate-native-install"
+# The controlling dispatcher and release verification are native C++.
+# Python is retained only in legacy component workers pending their migration.
+c++ -std=c++17 -O2 -Wall -Wextra -Werror -Wpedantic \
+    $(pkg-config --cflags libcurl json-c) \
+    "$ROOT/packaging/native-release-snapshot.cpp" \
+    -o "$RUNTIME_BUILD/prepare-native-releases" \
+    $(pkg-config --libs libcurl json-c)
+c++ -std=c++17 -O2 -Wall -Wextra -Werror -Wpedantic \
+    "$ROOT/packaging/native-orchestrator.cpp" \
+    -o "$RUNTIME_BUILD/orchestrate-native-install"
 test "$(file -b --mime-type "$THEME_DIR/infiltratoros.png")" = image/png
 test ! -e "$PKGROOT/usr/lib/infiltratoros"
 test -x "$PKGROOT/System/Commands/InfiltratorOS/activate-program-icons"

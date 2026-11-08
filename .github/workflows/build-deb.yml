@@ -67,6 +67,7 @@ jobs:
           test ! -e "$RUNNER_TEMP/payload/System/Programs"
           test ! -e "$RUNNER_TEMP/payload/usr/lib/infiltratoros"
           test -x "$RUNNER_TEMP/payload/System/Commands/InfiltratorOS/activate-calendar"
+          file "$RUNNER_TEMP/payload/System/Commands/InfiltratorOS/activate-calendar" | grep -q ELF
           test -f "$RUNNER_TEMP/payload/etc/xdg/autostart/infiltrator-calendar.desktop"
           grep -Fxq 'Exec=/System/Commands/InfiltratorOS/activate-calendar' "$RUNNER_TEMP/payload/etc/xdg/autostart/infiltrator-calendar.desktop"
           for directory in \
