@@ -57,13 +57,16 @@ def required(arguments):
     subprocess.run(list(map(str, arguments)), check=True)
 
 
-def open_url(url):
+def open_url(url, asset=False):
     headers = {"User-Agent": "InfiltratorOS-native-temporal-installer", "Accept": "application/vnd.github+json"}
     # CI can authenticate public API reads without adding a runtime dependency
     # on an account. Never forward an API token to release-asset hosts.
     token = os.environ.get("GITHUB_TOKEN")
     if token and urllib.parse.urlsplit(url).netloc == "api.github.com":
         headers["Authorization"] = "Bearer " + token
+    if asset:
+        headers["Accept"] = "application/octet-stream"
+        headers.pop("Authorization", None)  # Never forward API credentials to asset redirects.
     request = urllib.request.Request(url, headers=headers)
     for attempt in range(4):
         try:
@@ -111,18 +114,57 @@ def release_installer(entry, release):
     return version, asset["browser_download_url"], digest[7:], asset["size"]
 
 
+def alternate_asset_url(url, digest, size):
+    """Resolve a pinned release asset via GitHub's API when its public CDN fails."""
+    parsed = urllib.parse.urlsplit(url)
+    match = re.fullmatch(
+        r"/Infiltrator-Projects/([A-Za-z0-9-]+)/releases/download/"
+        r"(v[0-9]+\.[0-9]+\.[0-9]+)/([A-Za-z0-9_.+-]+)", parsed.path)
+    if parsed.scheme != "https" or parsed.netloc != "github.com" or not match:
+        raise ValueError("Refusing noncanonical alternate asset lookup")
+    repository, tag, name = match.groups()
+    api = f"https://api.github.com/repos/Infiltrator-Projects/{repository}/releases/tags/{tag}"
+    with open_url(api) as response:
+        payload = response.read(4 * 1024 * 1024 + 1)
+    if len(payload) > 4 * 1024 * 1024:
+        raise ValueError("Oversized release metadata from alternate route")
+    release = json.loads(payload)
+    if release.get("tag_name") != tag or release.get("draft") or release.get("prerelease"):
+        raise ValueError("Alternate route returned a different release")
+    matches = [item for item in release.get("assets", [])
+               if isinstance(item, dict) and item.get("name") == name
+               and item.get("browser_download_url") == url
+               and item.get("digest") == "sha256:" + digest
+               and item.get("size") == size
+               and type(item.get("id")) is int and item["id"] > 0]
+    if len(matches) != 1:
+        raise ValueError("Alternate asset metadata does not match the pinned release")
+    return f"https://api.github.com/repos/Infiltrator-Projects/{repository}/releases/assets/{matches[0]['id']}"
+
+
 def download_installer(url, destination, digest, size):
-    hasher, received = hashlib.sha256(), 0
-    with open_url(url) as response, destination.open("wb") as output:
-        while chunk := response.read(1024 * 1024):
-            received += len(chunk)
-            if received > size:
-                raise ValueError("Native installer exceeded its published size")
-            hasher.update(chunk)
-            output.write(chunk)
-    if received != size or hasher.hexdigest() != digest:
-        raise ValueError("Native installer does not match the published SHA-256 and size")
-    destination.chmod(0o700)
+    errors = []
+    for alternate in (False, True):
+        source = alternate_asset_url(url, digest, size) if alternate else url
+        try:
+            hasher, received = hashlib.sha256(), 0
+            with open_url(source, asset=alternate) as response, destination.open("wb") as output:
+                while chunk := response.read(1024 * 1024):
+                    received += len(chunk)
+                    if received > size:
+                        raise ValueError("Native installer exceeded its published size")
+                    hasher.update(chunk)
+                    output.write(chunk)
+            if received != size or hasher.hexdigest() != digest:
+                raise ValueError("Native installer does not match the published SHA-256 and size")
+            destination.chmod(0o700)
+            return
+        except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError, OSError) as error:
+            destination.unlink(missing_ok=True)
+            errors.append(f"{'asset API' if alternate else 'release CDN'}: {error}")
+            print(f"Transient native installer download failure; trying alternate route: {error}",
+                  flush=True)
+    raise RuntimeError("Both SHA-256-guarded GitHub download routes failed: " + "; ".join(errors))
 
 
 def native_current(entry, version, release):
