@@ -20,7 +20,7 @@ jobs:
           fetch-depth: 0
           submodules: true
       - name: Install build dependencies
-        run: sudo apt-get update && sudo apt-get install -y pkg-config libgtk-3-dev libcurl4-openssl-dev libjson-c-dev wget fontconfig
+        run: sudo apt-get update && sudo apt-get install -y pkg-config libgtk-3-dev libcurl4-openssl-dev libjson-c-dev libssl-dev wget fontconfig
       - name: Compile candidate C/C++ installer replacements
         shell: bash
         run: |
@@ -35,6 +35,17 @@ jobs:
             $(pkg-config --cflags gio-2.0 json-c) \
             packaging/activate-calendar.c -o "$RUNNER_TEMP/native-activate-calendar" \
             $(pkg-config --libs gio-2.0 json-c)
+          c++ -std=c++17 -O2 -Wall -Wextra -Werror -Wpedantic -pthread \
+            $(pkg-config --cflags libcurl json-c openssl) \
+            packaging/native-component-worker.cpp -o "$RUNNER_TEMP/native-component-worker" \
+            $(pkg-config --libs libcurl json-c openssl)
+          cp packaging/temporal-resources.json packaging/filesystem-resources.json \
+             packaging/filesystem-additional.json "$RUNNER_TEMP/"
+          ln -s native-component-worker "$RUNNER_TEMP/install-temporal-resources"
+          ln -s native-component-worker "$RUNNER_TEMP/install-filesystem-resources"
+          test "$("$RUNNER_TEMP/install-temporal-resources" --list | wc -l)" -eq 54
+          test "$("$RUNNER_TEMP/install-filesystem-resources" --list | wc -l)" -eq 5
+          test "$("$RUNNER_TEMP/install-filesystem-resources" --list-all | wc -l)" -eq 23
           test -x "$RUNNER_TEMP/native-orchestrate"
           test -x "$RUNNER_TEMP/native-snapshot"
           test -x "$RUNNER_TEMP/native-activate-calendar"
