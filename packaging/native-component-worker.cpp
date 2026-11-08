@@ -568,27 +568,55 @@ static bool application_proof(const Entry &entry) {
            data.find("PGO: trained two-pass profile") != std::string::npos &&
            data.find("-march=native") != std::string::npos;
 }
-static bool application_current(const Entry &entry, const Asset &asset, bool evidence) {
-    auto fields = tabs(pkg_query(entry.package, std::string("$") +
-        "{Status}\t$" + "{Version}\t$" + "{X-Defragmenter-Build}"));
-    const std::string suffix = entry.id == "files" || entry.id == "defragmenter" ? "+native1" : "";
-    if (fields.size() != 3 || fields[0] != "install ok installed" ||
-        fields[1] != asset.version + suffix || !regular(entry.resource) ||
-        access(entry.resource.c_str(), X_OK) != 0 ||
-        !application_proof(entry)) return false;
-    for (const auto &p : required_paths(entry.id)) if (!regular(p)) return false;
+// Query only mandatory Debian fields. dpkg-query returns an empty custom field
+// for Calculator/System Monitor/Files, and the existing tabs()/trim() helper
+// legitimately drops its trailing separator. Demanding three fields caused a
+// fully installed application to be falsely marked as failed.
+static bool application_package_matches(const Entry &entry, const Asset &asset,
+                                        const std::string &package_record) {
+    const auto fields = tabs(package_record);
+    const std::string suffix =
+        entry.id == "files" || entry.id == "defragmenter" ? "+native1" : "";
+    return fields.size() == 2 && fields[0] == "install ok installed" &&
+           fields[1] == asset.version + suffix;
+}
+static bool application_current(const Entry &entry, const Asset &asset,
+                                bool evidence, std::string *reason = nullptr) {
+    auto fail = [&](const std::string &detail) {
+        if (reason) *reason = detail;
+        return false;
+    };
+    const std::string identity = pkg_query(entry.package, std::string("$") +
+        "{Status}\t$" + "{Version}");
+    if (!application_package_matches(entry, asset, identity))
+        return fail("Installed Debian package identity/version differs from verified release");
+    if (!regular(entry.resource) || access(entry.resource.c_str(), X_OK) != 0)
+        return fail("Installed application executable is absent or not executable: " +
+                    entry.resource);
+    if (output({"/usr/bin/dpkg-query", "-S", entry.resource}) !=
+        entry.package + ": " + entry.resource)
+        return fail("Installed executable is not owned by the expected Debian package");
+    if (!application_proof(entry))
+        return fail("Independent native optimisation evidence is missing or invalid");
+    for (const auto &p : required_paths(entry.id))
+        if (!regular(p)) return fail("Expected application resource is missing: " + p);
+    // Only Calculator currently ships a packaged PDF. System Monitor's
+    // independent native Debian installer publishes BUILD-INFO, not a PDF.
+    // Never demand an unrelated project's documentation from every app.
     if (evidence) {
         fs::path file = ROOT / ("native-verified-" + entry.id + ".json");
-        if (!regular(file)) return false;
+        if (!regular(file)) return fail("InfiltratorOS native attestation is absent");
         try {
             Document proof = parse(read_file(file));
             if (str(proof.ptr, "version") != asset.version ||
                 str(proof.ptr, "installer_sha256") != asset.sha ||
                 str(proof.ptr, "program_sha256") != digest(entry.resource))
-                return false;
-        } catch (...) { return false; }
+                return fail("Native attestation does not match the installed executable");
+        } catch (...) { return fail("Native attestation cannot be verified"); }
     }
-    return execute({"/usr/bin/dpkg", "--verify", entry.package}) == 0;
+    if (execute({"/usr/bin/dpkg", "--verify", entry.package}) != 0)
+        return fail("dpkg verification rejected an installed application file");
+    return true;
 }
 static bool install(const Entry &entry, Status &status, bool application_mode,
                     bool temporal, bool filesystem) {
@@ -609,8 +637,10 @@ static bool install(const Entry &entry, Status &status, bool application_mode,
     } else if (entry.id != "defragmenter") command_line.push_back("--system-package-mode");
     required(command_line);
     if (application_mode) {
-        if (!application_current(entry, asset, false))
-            throw std::runtime_error("Independent application installation contract failed");
+        std::string verification_failure;
+        if (!application_current(entry, asset, false, &verification_failure))
+            throw std::runtime_error("Independent application installation contract failed: " +
+                                     verification_failure);
         json_object *proof = json_object_new_object();
         json_object_object_add(proof, "version", json_object_new_string(asset.version.c_str()));
         json_object_object_add(proof, "installer_sha256", json_object_new_string(asset.sha.c_str()));

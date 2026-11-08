@@ -59,6 +59,27 @@ int main() {
         check(application("system-monitor").repo == "System-Monitor", "system monitor identity");
         check(application("defragmenter").resource == "/Programs/defragmenter",
               "defragmenter destination");
+        // A missing optional Defragmenter field must never invalidate other apps.
+        Asset app_version;
+        app_version.version = "1.0.243";
+        check(application_package_matches(application("system-monitor"), app_version,
+            "install ok installed\t1.0.243"), "System Monitor Debian identity");
+        check(application_package_matches(application("system-monitor"), app_version,
+            "install ok installed\t1.0.243\t"), "trailing empty optional field");
+        check(!application_package_matches(application("system-monitor"), app_version,
+            "install ok installed\t1.0.242"), "reject stale application version");
+        check(!application_package_matches(application("system-monitor"), app_version,
+            "deinstall ok config-files\t1.0.243"), "reject uninstalled package");
+        app_version.version = "0.2.66";
+        check(application_package_matches(application("calculator"), app_version,
+            "install ok installed\t0.2.66"), "Calculator native package identity");
+        check(!application_package_matches(application("files"), app_version,
+            "install ok installed\t0.2.66"), "reject generic Files package");
+        check(application_package_matches(application("files"), app_version,
+            "install ok installed\t0.2.66+native1"), "Files trained native suffix");
+        check(application_package_matches(application("defragmenter"), app_version,
+            "install ok installed\t0.2.66+native1"), "Defragmenter trained native suffix");
+
         rejects([&]() { (void)application("unrecognised"); }, "application");
 
         {
