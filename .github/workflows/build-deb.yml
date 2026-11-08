@@ -163,6 +163,27 @@ jobs:
           # One InfiltratorOS package invokes the internal install workers.
           # The workers must NOT become permanent /System command files.
           sh "$RUNNER_TEMP/control/postinst" --verify-installer-bundle
+          # All production installation workers and Cinnamon integration must be ELF.
+          # Any regression to Python interpreters in the installed package fails CI.
+          ! dpkg-deb -f dist/*.deb Depends | grep -Eq '(^|[, ])python3([, ]|$)'
+          runtime="$RUNNER_TEMP/verified-native-worker"
+          mkdir -p "$runtime"
+          awk '
+            /^__INFILTRATOROS_NATIVE_BUNDLE_BEGIN__$/ { in_bundle=1; next }
+            /^__INFILTRATOROS_NATIVE_BUNDLE_END__$/ { exit }
+            in_bundle { print }
+          ' "$RUNNER_TEMP/control/postinst" | base64 -d | tar -xz -C "$runtime"
+          for binary in install-system-monitor install-calculator install-files \
+                        install-defragmenter install-temporal-resources \
+                        install-filesystem-resources prepare-native-releases \
+                        orchestrate-native-install; do
+            test -x "$runtime/$binary"
+            file -b "$runtime/$binary" | grep -q ELF
+          done
+          for inventory in temporal-resources.json filesystem-resources.json filesystem-additional.json; do
+            test -s "$runtime/$inventory"
+          done
+          test "$(find "$runtime" -maxdepth 1 -type f | wc -l)" -eq 23
           # Prevent OS-owned runtime files outside the native /Temporary.
           grep -Fq 'STATUS_ROOT=/Temporary/InfiltratorOS' "$RUNNER_TEMP/control/postinst"
           grep -Fq 'stage=$(mktemp -d "$STATUS_ROOT/native-worker.XXXXXXXX")' "$RUNNER_TEMP/control/postinst"
