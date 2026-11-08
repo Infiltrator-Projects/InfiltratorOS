@@ -10,6 +10,8 @@ import re
 import subprocess
 import sys
 import tempfile
+import time
+import urllib.error
 import urllib.request
 
 ROOT = Path("/Temporary/InfiltratorOS")
@@ -132,22 +134,48 @@ def current(slug, version, digest, record):
                           stderr=subprocess.DEVNULL, check=False).returncode == 0
 
 
+# A transient GitHub/CDN gateway failure must not fail all four independent apps.
+# Retry only network/server errors; never retry a rejected release or bad hash.
+TRANSIENT_HTTP = {408, 429, 500, 502, 503, 504}
+DOWNLOAD_ATTEMPTS = 5
+
+
 def download(url, digest, size, destination):
-    total, hasher = 0, hashlib.sha256()
     request = urllib.request.Request(url, headers={"User-Agent": "InfiltratorOS-native"})
-    with urllib.request.urlopen(request, timeout=120) as source, destination.open("wb") as dest:
-        while True:
-            data = source.read(1024 * 1024)
-            if not data:
-                break
-            total += len(data)
-            if total > size:
-                raise ValueError("RUN exceeds published size")
-            hasher.update(data)
-            dest.write(data)
-    if total != size or hasher.hexdigest() != digest:
-        raise ValueError("RUN checksum or length mismatch")
-    destination.chmod(0o700)
+    partial = destination.with_name(destination.name + ".part")
+    for attempt in range(DOWNLOAD_ATTEMPTS):
+        total, hasher = 0, hashlib.sha256()
+        try:
+            with urllib.request.urlopen(request, timeout=120) as source, partial.open("wb") as dest:
+                while True:
+                    data = source.read(1024 * 1024)
+                    if not data:
+                        break
+                    total += len(data)
+                    if total > size:
+                        raise ValueError("RUN exceeds published size")
+                    hasher.update(data)
+                    dest.write(data)
+            if total != size or hasher.hexdigest() != digest:
+                raise ValueError("RUN checksum or length mismatch")
+            partial.chmod(0o700)
+            partial.replace(destination)
+            return
+        except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError,
+                ConnectionError) as error:
+            partial.unlink(missing_ok=True)
+            if isinstance(error, urllib.error.HTTPError) and error.code not in TRANSIENT_HTTP:
+                raise
+            if attempt + 1 == DOWNLOAD_ATTEMPTS:
+                raise
+            delay = 2 ** (attempt + 1)
+            print(f"Temporary native installer download failure ({error}); "
+                  f"retry {attempt + 2}/{DOWNLOAD_ATTEMPTS} in {delay}s",
+                  flush=True)
+            time.sleep(delay)
+        except Exception:
+            partial.unlink(missing_ok=True)
+            raise
 
 
 def main():
