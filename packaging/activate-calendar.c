@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Per-user, reversible Cinnamon Calendar panel integration, implemented in C.
 // GSettings is accessed natively; no Python, shell parsing or root operations.
+#define _DEFAULT_SOURCE 1
 #include <gio/gio.h>
 #include <fcntl.h>
 #include <glib.h>
