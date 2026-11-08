@@ -1,5 +1,55 @@
 # InfiltratorOS — bottom-up boot-to-desktop development handoff
 
+## Active qualification checkpoint — 2026-11-08
+
+**This section supersedes the earlier historical "next concrete gate" instructions below.**
+Keep the older laptop compilation/staging evidence intact; do not repeat an old
+0.1.0 build or stage merely because that historical checkpoint remains recorded.
+
+- **Boot**: [v0.1.40](https://github.com/Infiltrator-Projects/Boot/releases/tag/v0.1.40)
+  is published. Its [release verification](https://github.com/Infiltrator-Projects/Boot/actions/runs/42446260825)
+  passed. Real hardware/ESP installation remains separately unqualified.
+- **Kernel**: `main` is at source revision `394834ca5c7fbd3d9d9c4f5a88d95f00a6054bf1`
+  with product version `0.1.1`; the most recently verified *published* release
+  remains `v0.1.0`. The [three-way UEFI Boot → native InfiltratorFS →
+  Kernel 0.1.1 VM test](https://github.com/Infiltrator-Projects/Kernel/actions/runs/42450035550)
+  **passed**, including real kernel/module compile, module staging, native boot,
+  filesystem and resource checks, and virtual-machine reboot/persistence assertions.
+  The [independent EXT2 QEMU qualification](https://github.com/Infiltrator-Projects/Kernel/actions/runs/42450035486)
+  also passed for that exact Kernel revision. Publishing `v0.1.1` is a separate
+  versioned release step controlled by the Kernel-owned workflow; do not call it
+  released before its actual tag/assets are visible.
+- **InfiltratorFS**: [v0.19.42](https://github.com/Infiltrator-Projects/InfiltratorFS/releases/tag/v0.19.42)
+  is published. A published filesystem package and a real VM boot do not
+  independently prove hardware, crash recovery, or an installed desktop.
+- **InfiltratorOS**: [v1.0.65](https://github.com/Infiltrator-Projects/InfiltratorOS/releases/tag/v1.0.65)
+  is the last verified package release. Its `main` has progressed beyond the
+  released tag. It remains a Debian/Mint integration package, **not** yet a
+  standalone native OS or Setup installer.
+- **New OS-side release gate**: `scripts/native-release-gate.py`,
+  `tests/native-release-gate-test.py` and
+  `.github/workflows/native-release-gate.yml` capture immutable version,
+  assets, source SHA, exact-source CI, and ready/blocked reasons in JSON.
+  Automated reporting is distinct from the manually run strict gate.
+  Even a successful gate means only a *CI-qualified candidate*, not a
+  physical or fully installed boot-to-desktop release.
+
+**Earliest remaining integration gate:** establish an installed native root
+with the correct kernel/module ABI, initramfs-to-root transition, persistent
+OS tree and service startup; then qualify desktop/session and the future Setup
+installer in a disposable VM. Reuse the passed Kernel VM evidence rather than
+recompiling it without cause. Do not modify a physical ESP, GRUB, NVRAM or
+replace an installed system during this CI-only phase. Every format remains
+in its own filesystem Git; InfiltratorOS integrates their published outputs,
+not their source trees.
+
+The test results above are for the exact linked CI runs. Later `main` commits,
+newer releases or unrelated green workflows do **not** inherit these passes.
+Refresh the evidence before making a new release claim.
+
+---
+
+
 **Last verified:** 2026-11-07 (Australia/Melbourne).  
 **Purpose:** A durable, cross-repository checkpoint so development can resume
 from the earliest unqualified boot-to-desktop stage without repeating completed
