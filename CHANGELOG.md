@@ -1,3 +1,10 @@
+## 1.0.69 — Native C/C++ installer and Python source removal
+
+- Install applications, calendars, clocks and selected filesystem providers using compiled C++ workers, preserving independent repository ownership and installer handoff.
+- Use native C++ orchestration and release snapshot verification and a C Cinnamon calendar integration helper; the packaged installer no longer requires Python.
+- Remove the retired Python installation code and its superseded Python-only tests. Replace package file allowlist validation with a strict C++17 test and retain native C/C++ installer and resource tests.
+- Keep provider build qualification outside the InfiltratorOS release gate. Kernel, Boot and InfiltratorFS are not built or installed by this package.
+
 ## 1.0.67 — Verified native installer download recovery
 
 - Recover transient GitHub release CDN failures through the GitHub asset API, resolving the exact same published RUN and requiring matching release identity, SHA-256 digest and byte length before execution.
