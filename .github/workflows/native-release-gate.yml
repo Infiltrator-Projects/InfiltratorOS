@@ -24,7 +24,7 @@ jobs:
       - name: Check syntax and fail-closed release policy
         run: |
           python3 -m py_compile scripts/native-release-gate.py tests/native-release-gate-test.py
-          python3 -m unittest discover -s tests -p native-release-gate-test.py -v
+          python3 tests/native-release-gate-test.py -v
 
   evidence:
     name: Capture read-only upstream evidence (report only)
