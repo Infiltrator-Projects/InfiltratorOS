@@ -75,7 +75,8 @@ jobs:
             -e EFI -e EFI_STUB -e PCI -e VIRTIO -e VIRTIO_PCI -e VIRTIO_BLK \
             -e MODULES -e BLK_DEV_INITRD -e DEVTMPFS -e DEVTMPFS_MOUNT \
             -e TTY -e SERIAL_8250 -e SERIAL_8250_CONSOLE -e RD_GZIP \
-            -d 9P_FS -d MODULE_SIG -d SYSTEM_TRUSTED_KEYRING -d DEBUG_INFO \
+            -d 9P_FS -d DRM -d SND -d MEDIA_SUPPORT \
+            -d MODULE_SIG -d SYSTEM_TRUSTED_KEYRING -d DEBUG_INFO \
             --set-str SYSTEM_TRUSTED_KEYS '' \
             --set-str SYSTEM_REVOCATION_KEYS '' \
             --set-str MODPROBE_PATH '/System/Kernel/Runtime/InfiltratorOS-0.1.1/modprobe'
@@ -117,6 +118,8 @@ jobs:
           test -s fs/uefi/filesystems/InfiltratorFS_x64.efi
       - name: Stage matching Kernel modules and checksum-verified Boot EFI
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           trial="$RUNNER_TEMP/InfiltratorOS/Trial"
@@ -130,9 +133,25 @@ jobs:
           done < <(find "$obj" -type f -name '*.ko' -print0)
           boot_version=0.1.40
           boot_package="infiltrator-boot_0.1.40_amd64.deb"
-          boot_url="https://github.com/Infiltrator-Projects/Boot/releases/download/v0.1.40"
-          wget -q -O "$trial/$boot_package" "$boot_url/$boot_package"
-          wget -q -O "$trial/BOOT-SHA256SUMS.txt" "$boot_url/SHA256SUMS.txt"
+          # The browser/CDN asset URL has intermittently returned HTTP 504.
+          # Use GitHub's release-asset API with bounded retries, then verify
+          # the independent Boot release checksum before staging any EFI byte.
+          command -v gh >/dev/null
+          for attempt in 1 2 3 4; do
+            if gh release download "v$boot_version" --repo Infiltrator-Projects/Boot \
+                 --pattern "$boot_package" --pattern SHA256SUMS.txt \
+                 --dir "$trial" --clobber; then
+              break
+            fi
+            if [ "$attempt" -eq 4 ]; then
+              echo "Cannot retrieve the pinned Boot release over the asset API" >&2
+              exit 1
+            fi
+            sleep "$((attempt * 3))"
+          done
+          test -s "$trial/$boot_package"
+          test -s "$trial/SHA256SUMS.txt"
+          mv "$trial/SHA256SUMS.txt" "$trial/BOOT-SHA256SUMS.txt"
           awk -v package="$boot_package" '
             $2 == package && length($1) == 64 && $1 !~ /[^0123456789abcdef]/ {
               print $1 "  " $2; matches++
