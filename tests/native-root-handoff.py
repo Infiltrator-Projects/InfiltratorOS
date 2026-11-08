@@ -96,7 +96,7 @@ done
 /bin/busybox echo INFS_NATIVE_ROOT_PAYLOAD_PASS >/dev/console
 # A real switch_root frees the initramfs and replaces PID 1, unlike an initrd
 # probe that merely mounts a filesystem and powers off.
-/bin/busybox exec /bin/busybox switch_root /newroot /sbin/init
+exec /bin/busybox switch_root /newroot /sbin/init
 fail SWITCH_ROOT_RETURNED
 """.replace("__RELEASE__", release).replace("__IDENTITY__", boot_identity)
 
