@@ -137,8 +137,27 @@ def release_installer(entry, release):
     elif entry["id"] in {"fat12", "fat16", "fat32"} and tuple(map(int, version.split("."))) >= milestone:
         expected.update({f"FAT{bits}.efi", kernel_name})
     elif entry.get("abi") and entry["id"] != "swap" and isinstance(assets, list):
-        if any(isinstance(item, dict) and item.get("name") == kernel_name for item in assets):
-            expected.add(kernel_name)
+        # Additional filesystem providers own their kernel adapters. Their
+        # released .ko may target the native InfiltratorOS kernel ABI (0.1.1)
+        # rather than this OS worker's older 6.12.107 compatibility target.
+        # Admit at most one *versioned* provider-owned adapter as a published
+        # asset, without treating it as loaded or compatible with this host.
+        adapter_pattern = re.compile(
+            r"^" + re.escape(entry["id"]) + r"-linux-[0-9]+\.[0-9]+\.[0-9]+\.ko$")
+        adapters = [
+            item["name"] for item in assets
+            if isinstance(item, dict) and isinstance(item.get("name"), str)
+            and adapter_pattern.fullmatch(item["name"])
+        ]
+        if len(adapters) > 1:
+            raise ValueError("Ambiguous native kernel adapter assets")
+        expected.update(adapters)
+        # Providers may publish their own checksum listing in addition to
+        # GitHub's required SHA-256 digest on every immutable release asset.
+        for checksum_name in ("SHA256SUMS", "SHA256SUMS.txt"):
+            if any(isinstance(item, dict) and item.get("name") == checksum_name
+                   for item in assets):
+                expected.add(checksum_name)
     if (not isinstance(assets, list) or len(assets) != len(expected) or
             {x.get("name") for x in assets if isinstance(x, dict)} != expected):
         raise ValueError("Filesystem release is missing required native driver assets")
