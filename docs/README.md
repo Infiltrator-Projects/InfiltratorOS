@@ -2,7 +2,6 @@
 
 The root [README](../README.md) is the product overview. This index separates current-state technical contracts from historical release evidence.
 
-[**Current bottom-up boot-to-desktop development status**](BOOT-TO-DESKTOP-STATUS.md) — durable checkpoints, verified BOOT release, preserved Kernel build baseline, next qualification gate and exact resume instructions.
 
 ## Product and shared standards
 

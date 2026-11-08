@@ -10,7 +10,7 @@
 - Preserve the 0.1.0-4 native Kernel integration source changes and the single-source filesystem repository boundaries.
 - Admit exactly one independently published, versioned Linux kernel adapter per additional filesystem release, including the native 0.1.1 ABI, without confusing a stored driver with a loadable host module. Continue to reject unexpected files and require exact GitHub SHA-256 asset metadata.
 - Add automated exact-commit Boot / Kernel / InfiltratorFS / InfiltratorOS release-readiness evidence, regression tests and an optional strict manual gate. A green evidence-report workflow does not certify a standalone operating system.
-- Record the successful native UEFI three-way VM test and the still-unfinished native init, installed root, desktop, Setup and physical hardware gates. See docs/BOOT-TO-DESKTOP-STATUS.md.
+- Historical boot-to-desktop experiments were recorded here; those independent Boot, Kernel and InfiltratorFS qualifications are not part of the InfiltratorOS installer release gate.
 - This release remains a **Debian/Linux Mint integration package**, not a standalone bootable ISO or a completed Setup installer.
 
 ## 1.0.65 — Bounded four-provider native build queue

@@ -8,7 +8,6 @@ The active source version is defined by [VERSION](VERSION). For published binari
 
 ## Bottom-up development checkpoint
 
-[**Boot-to-desktop progress and recovery handoff**](docs/BOOT-TO-DESKTOP-STATUS.md) records the current cross-repository sequence from UEFI BOOT through Kernel, native filesystem/root integration and desktop startup. It distinguishes verified releases and local builds from pending physical boot and installer qualification. **Read this checkpoint before resuming boot-to-desktop development or touching existing kernel build artifacts.**
 
 ## What is installed
 
