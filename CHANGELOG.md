@@ -1,3 +1,10 @@
+## 1.0.71 — Eight-provider resource-aware native compilation queue
+
+- Add OFS, NTFS, FFS and HFS to the existing FAT12/FAT16/FAT32/exFAT queue without changing independent filesystem ownership.
+- Share one queue catalogue between the orchestrator and worker to prevent mismatched candidate sets; preserve optional-release admission.
+- Refill build slots when individual compilations finish, with resource-aware 1–2 build capacity, serialized Debian installations and existing per-provider fallback and verification.
+- Extend native C++ regression coverage for queue membership.
+
 ## 1.0.69 — Native C/C++ installer and Python source removal
 
 - Install applications, calendars, clocks and selected filesystem providers using compiled C++ workers, preserving independent repository ownership and installer handoff.

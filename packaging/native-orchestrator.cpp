@@ -19,6 +19,7 @@
 #include <sys/wait.h>
 #include <unistd.h>
 #include <vector>
+#include "native-build-queue.h"
 
 namespace fs = std::filesystem;
 using Strings = std::vector<std::string>;
@@ -251,16 +252,15 @@ static void dispatch(const fs::path &stage) {
     for (const auto &s : apps) launch(canonical, s);
     for (const auto &s : temporal) launch(canonical, "temporal-resources", s);
 
-    const std::set<std::string> candidates{
-        "filesystem-fat12", "filesystem-fat16", "filesystem-fat32", "filesystem-exfat"};
     Strings queue;
-    for (const auto &s : chosen) if (candidates.count(s)) queue.push_back(s);
+    for (const auto &s : chosen)
+        if (infiltrator_native::queue_candidate(s)) queue.push_back(s);
     const bool smart_enabled = getenv_or("INFILTRATOROS_SMART_BUILD_PILOT",
                                    getenv_or("INFILTRATOROS_PARALLEL_FAT_PILOT", "1")) != "0";
     const bool smart = smart_enabled && queue.size() >= 2;
     if (smart) launch(canonical, "filesystem-resources", queue.front(), true);
     for (const auto &s : chosen) {
-        if (smart && candidates.count(s)) continue;
+        if (smart && infiltrator_native::queue_candidate(s)) continue;
         launch(canonical, "filesystem-resources", s);
     }
 }

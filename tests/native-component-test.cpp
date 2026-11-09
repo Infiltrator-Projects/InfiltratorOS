@@ -55,6 +55,13 @@ int main() {
         check(temporal.size() == 54, "temporal cardinality");
         check(established.size() == 5, "established cardinality");
         check(additional.size() == 18, "additional cardinality");
+        check(infiltrator_native::build_queue.size() == 8, "smart queue cardinality");
+        for (auto slug : {"filesystem-fat12", "filesystem-fat16", "filesystem-fat32",
+                          "filesystem-exfat", "filesystem-ofs", "filesystem-ntfs",
+                          "filesystem-ffs", "filesystem-hfs"})
+            check(infiltrator_native::queue_candidate(slug), "smart queue membership");
+        check(!infiltrator_native::queue_candidate("filesystem-ext2"),
+              "do not admit unrelated independent providers");
         check(established[0].slug() == "filesystem-fat12", "FAT12 identity");
         check(application("system-monitor").repo == "System-Monitor", "system monitor identity");
         check(application("defragmenter").resource == "/Programs/defragmenter",

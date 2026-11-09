@@ -31,6 +31,7 @@
 #include <unistd.h>
 #include <vector>
 #include <curl/curl.h>
+#include "native-build-queue.h"
 namespace fs = std::filesystem;
 using Strings = std::vector<std::string>;
 static const fs::path ROOT("/Temporary/InfiltratorOS");
@@ -732,13 +733,11 @@ static int smart_queue(const std::vector<Entry> &entries) {
         throw std::runtime_error("Smart queue requires a native run snapshot");
     std::set<std::string> selected;
     for (const auto &item : lines(read_file(stage / "selected.list"))) selected.insert(item);
-    const Strings candidates{"filesystem-fat12", "filesystem-fat16",
-                              "filesystem-fat32", "filesystem-exfat"};
     std::vector<Entry> chosen;
-    for (const auto &slug : candidates)
-        if (selected.count(slug)) {
+    for (auto slug : infiltrator_native::build_queue)
+        if (selected.count(std::string(slug))) {
             auto it = std::find_if(entries.begin(), entries.end(),
-                                   [&](const Entry &e) { return e.slug() == slug; });
+                                   [&](const Entry &e) { return e.slug() == std::string(slug); });
             if (it == entries.end()) throw std::runtime_error("Unknown smart queue candidate");
             chosen.push_back(*it);
         }
@@ -750,7 +749,8 @@ static int smart_queue(const std::vector<Entry> &entries) {
     setenv("DEBIAN_FRONTEND", "noninteractive", 1);
     setenv("TMPDIR", statuses.c_str(), 1);
     TempDir scratch(statuses, "smart-build-");
-    save(statuses / "smart-build-timings.log", "Build concurrency ceiling: 2\n");
+    save(statuses / "smart-build-timings.log",
+         "Build concurrency ceiling: 2; live CPU and memory checks may reduce this to 1\n");
     std::vector<Job> jobs;
     std::vector<Entry> serial;
     std::set<std::string> completed;
@@ -777,17 +777,31 @@ static int smart_queue(const std::vector<Entry> &entries) {
             fs::create_directory(job.folder);
             jobs.push_back(job);
         }
-        size_t limit = static_cast<size_t>(parallel_limit());
-        for (size_t index = 0; index < jobs.size(); index += limit) {
-            std::vector<std::future<void>> futures;
-            for (size_t j = index; j < std::min(index + limit, jobs.size()); ++j) {
-                Status(statuses, jobs[j].entry.slug()).write(
-                    "running", 35, "Compiling native filesystem", "Maximum two simultaneous builds");
-                futures.emplace_back(std::async(std::launch::async, [&, j]() {
-                    build(jobs[j], statuses);
+        // Refill a free slot immediately; recalculate resource limits between launches.
+        std::vector<std::future<void>> active;
+        size_t next = 0;
+        while (next < jobs.size() || !active.empty()) {
+            while (next < jobs.size() &&
+                   active.size() < static_cast<size_t>(parallel_limit())) {
+                const size_t job = next++;
+                Status(statuses, jobs[job].entry.slug()).write(
+                    "running", 35, "Compiling native filesystem",
+                    "Resource-aware queue: one or two builds at once");
+                active.emplace_back(std::async(std::launch::async, [&, job]() {
+                    build(jobs[job], statuses);
                 }));
             }
-            for (auto &task : futures) task.get();
+            bool finished = false;
+            for (size_t i = 0; i < active.size(); ++i) {
+                if (active[i].wait_for(std::chrono::milliseconds(0)) !=
+                    std::future_status::ready) continue;
+                active[i].get();
+                active.erase(active.begin() + static_cast<std::ptrdiff_t>(i));
+                finished = true;
+                break;
+            }
+            if (!finished && !active.empty())
+                std::this_thread::sleep_for(std::chrono::milliseconds(50));
         }
         for (auto &job : jobs) {
             Status status(statuses, job.entry.slug());
