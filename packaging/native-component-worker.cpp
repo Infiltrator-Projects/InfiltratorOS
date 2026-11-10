@@ -349,6 +349,18 @@ static Asset release_asset(const Entry &entry, json_object *meta, bool calendar_
     }
     Asset result;
     result.version = tag.substr(1);
+    if (filesystem && entry.id == "fat12") {
+        // FAT12 releases up to 0.1.23 shipped a forbidden FUSE host and
+        // package dependencies. Refuse them BEFORE downloading or invoking
+        // a native installer so no machine can acquire those dependencies
+        // through InfiltratorOS component installation.
+        int major = 0, minor = 0, patch = 0;
+        if (sscanf(tag.c_str(), "v%d.%d.%d", &major, &minor, &patch) != 3 ||
+            (major == 0 && (minor < 1 || (minor == 1 && patch < 24))))
+            throw std::runtime_error(
+                "Refusing FAT12 release containing forbidden FUSE dependencies; "
+                "requires FAT12 0.1.24 or newer");
+    }
     if (filesystem && entry.id == "exfat") {
         int major = 0, minor = 0, patch = 0;
         if (sscanf(tag.c_str(), "v%d.%d.%d", &major, &minor, &patch) != 3 ||
