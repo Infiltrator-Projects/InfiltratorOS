@@ -116,9 +116,9 @@ fi
 # The monitor must only inspect statuses for this exact installation. A
 # subsequent package upgrade has another stage and cannot overwrite these.
 # The subshell inherits FD 9 and holds provision.lock until all launched jobs
-# reach a terminal state (or the existing 24-hour diagnostic timeout). This
-# prevents a second apt reinstall from launching a duplicate native run.
-# All statuses are terminal before this run's binaries can be removed.
+# reach a terminal state. A diagnostic deadline must NEVER unlock an active run:
+# detached workers close inherited descriptors and cannot protect this lock.
+# All statuses must be terminal before this run's binaries can be removed.
 (
     # The background monitor, not the parent's bootstrap handler, now owns
     # the final status, with its independent lock and run directory.
@@ -126,7 +126,7 @@ fi
     trap '' HUP INT TERM
     status_root="$stage/status"
     elapsed=0
-    while [ "$elapsed" -lt 86400 ]; do
+    while :; do
         # The GUI and monitor share the manifest and status parsers.
         outcome=$("$stage/system-monitor-progress" --run-status "$status_root") || outcome=running
         case "$outcome" in
@@ -156,11 +156,14 @@ fi
                 exit 0
                 ;;
         esac
+        # A 24-hour deadline is diagnostic, not evidence of worker exit.
+        # Never release FD 9 while a worker status is still non-terminal.
+        if [ "$elapsed" -ge 86400 ] && [ ! -f "$stage/LONG_RUNNING" ]; then
+            printf '%s\n' 'Installation exceeded 24 hours; retaining the provisioning lock until every worker reaches a terminal state. Investigate retained status and log files.' > "$stage/LONG_RUNNING"
+        fi
         sleep 5
         elapsed=$((elapsed + 5))
     done
-    printf '%s\n' 'Installation monitor timed out; worker files and diagnostics retained.' > "$stage/TIMEOUT"
-    publish_summary timeout
 ) </dev/null >/dev/null 2>&1 &
 
 # Disable the bootstrap handler only after spawning the terminal monitor.
