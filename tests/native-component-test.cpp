@@ -116,9 +116,12 @@ int main() {
                     "asset owner");
         }
         {
-            auto release = sample_release(established[0], "0.1.14", false);
+            auto old_release = sample_release(established[0], "0.1.23", false);
+            rejects([&]() { (void)release_asset(established[0], old_release.ptr, false, true); },
+                    "reject legacy FAT12 release with forbidden FUSE dependencies");
+            auto release = sample_release(established[0], "0.1.24", false);
             auto asset = release_asset(established[0], release.ptr, false, true);
-            check(asset.version == "0.1.14", "filesystem version");
+            check(asset.version == "0.1.24", "minimum permitted FAT12 release");
         }
         {
             auto it = std::find_if(established.begin(), established.end(),
