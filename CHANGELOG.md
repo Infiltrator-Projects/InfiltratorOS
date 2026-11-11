@@ -1,3 +1,9 @@
+## 1.0.72 — Retain provisioning lock until all native workers finish
+
+- Keep the run-wide installation lock until every selected component reports a terminal state; crossing the 24-hour diagnostic threshold never unlocks unfinished work.
+- Record a long-running installation diagnostic without publishing a false terminal result or discarding worker logs.
+- Qualify mixed failed/running worker status, and correct FAT12 test fixtures to enforce the existing 0.1.24 minimum rather than weakening the forbidden-FUSE safeguard.
+
 ## 1.0.71 — Eight-provider resource-aware native compilation queue
 
 - Add OFS, NTFS, FFS and HFS to the existing FAT12/FAT16/FAT32/exFAT queue without changing independent filesystem ownership.
