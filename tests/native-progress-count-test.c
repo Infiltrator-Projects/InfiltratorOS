@@ -57,6 +57,16 @@ int main(void)
     CHECK(strcmp(native_progress_run_status(status), "complete") == 0);
     CHECK(write_status(path, "failed") == 0);
     CHECK(strcmp(native_progress_run_status(status), "failed") == 0);
+    /* Failure in one worker is not a terminal run while any other worker
+     * is still running. The post-install monitor must continue holding FD 9. */
+    CHECK(snprintf(path, sizeof(path), "%s/%s-install.status", status,
+                   jobs.slugs[0]) < (int)sizeof(path));
+    CHECK(write_status(path, "running") == 0);
+    CHECK(strcmp(native_progress_run_status(status), "running") == 0);
+    CHECK(write_status(path, "complete") == 0);
+    CHECK(strcmp(native_progress_run_status(status), "failed") == 0);
+    CHECK(snprintf(path, sizeof(path), "%s/%s-install.status", status,
+                   jobs.slugs[jobs.count - 1]) < (int)sizeof(path));
     CHECK(write_status(path, "complete\nstate=failed") == 0);
     CHECK(strcmp(native_progress_run_status(status), "running") == 0);
     for (int i = 0; i < jobs.count; ++i) {
