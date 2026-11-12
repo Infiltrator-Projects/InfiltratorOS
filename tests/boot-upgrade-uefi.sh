@@ -29,7 +29,7 @@ mkdir -p "$guest/lib/modules" "$guest/proc" "$guest/sys" "$guest/dev" "$guest/bo
 cp -a "$module_root" "$guest/lib/modules/"
 depmod -b "$guest" "$release"
 
-for program in bash efibootmgr findmnt lsblk sha256sum cmp od id mktemp mv rm sync cat tail \
+for program in bash efibootmgr findmnt lsblk blkid sha256sum cmp od id mktemp mv rm sync cat tail \
                dirname find cp mkdir grep rmdir sed modprobe mount env; do
     path=$(command -v "$program")
     cp -L --parents "$path" "$guest"

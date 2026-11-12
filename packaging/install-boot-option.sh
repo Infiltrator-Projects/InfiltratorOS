@@ -137,7 +137,7 @@ main() {
     local esp=/boot/efi
     local vars=/sys/firmware/efi/efivars
     local payload=/usr/lib/infiltrator-boot/EFI/BOOT/BOOTX64.EFI
-    local secure source info parent partition part type uuid extra snapshot order
+    local secure source info parent partition part type= uuid= extra snapshot order key value
     local var_options esp_options
     var_options=$(findmnt -rnM "$vars" -t efivarfs -o OPTIONS) || var_options=
     if [[ ,$var_options, != *,rw,* || $(cat /sys/firmware/efi/fw_platform_size 2>/dev/null || true) != 64 ]]; then
@@ -157,11 +157,20 @@ main() {
     fi
     source=$(findmnt -rnM "$esp" -o SOURCE) || return 1
     [[ -b $source ]] || skip 'The ESP is not a direct block partition.'
-    info=$(lsblk -dnro PKNAME,KNAME,PARTTYPE,PARTUUID -- "$source") || return 1
-    read -r parent partition type uuid extra <<< "$info"
+    info=$(lsblk -dnro PKNAME,KNAME -- "$source") || return 1
+    read -r parent partition extra <<< "$info"
     [[ $partition =~ ^[a-zA-Z0-9_.-]+$ ]] || return 1
     part=$(cat "/sys/class/block/$partition/partition" 2>/dev/null) ||
         skip 'The ESP is not a direct block partition.'
+    # Probe the GPT entry directly, including before udev has cached metadata.
+    info=$(blkid -p -s PART_ENTRY_TYPE -s PART_ENTRY_UUID -o export -- "$source") ||
+        skip 'The ESP partition metadata could not be read.'
+    while IFS='=' read -r key value; do
+        case "$key" in
+            PART_ENTRY_TYPE) type=$value ;;
+            PART_ENTRY_UUID) uuid=$value ;;
+        esac
+    done <<< "$info"
     if [[ ! $parent =~ ^[a-zA-Z0-9_.-]+$ || ! $part =~ ^[1-9][0-9]*$ ||
           ${type,,} != c12a7328-f81f-11d2-ba4b-00a0c93ec93b ||
           ! $uuid =~ ^[[:xdigit:]]{8}(-[[:xdigit:]]{4}){3}-[[:xdigit:]]{12}$ || -n $extra ||
