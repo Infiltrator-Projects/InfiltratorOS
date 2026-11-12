@@ -1,3 +1,7 @@
+## 1.0.75 — Add eight repositories to the native build queue
+
+- Add Files, Clock-Chinese-Ke, Calendar-Byzantine, Clock-Babylonian-Hours, Calendar-Indian, Calendar-Swedish-Historical, Calendar-Gregorian and Calendar-Islamic-Umalqura to the two-slot queue. Retain serial package installation and component-owned fallback for missing build prerequisites.
+
 ## 1.0.74 — Stop creating the filesystem kernel-module directory
 
 - Keep `/System/Filesystems` for filesystem libraries without creating `/System/Kernel/Filesystems` in the InfiltratorOS package.

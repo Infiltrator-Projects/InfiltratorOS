@@ -249,20 +249,31 @@ static void dispatch(const fs::path &stage) {
     write_text(manifest, joined(selected));
     fs::rename(manifest, canonical / "selected.list");
     setenv("INFILTRATOROS_INSTALL_RUNTIME", canonical.c_str(), 1);
-    for (const auto &s : apps) launch(canonical, s);
-    for (const auto &s : temporal) launch(canonical, "temporal-resources", s);
-
     Strings queue;
-    for (const auto &s : chosen)
-        if (infiltrator_native::queue_candidate(s)) queue.push_back(s);
+    for (auto slug : infiltrator_native::build_queue)
+        if (std::find(selected.begin(), selected.end(), slug) != selected.end())
+            queue.emplace_back(slug);
     const bool smart_enabled = getenv_or("INFILTRATOROS_SMART_BUILD_PILOT",
                                    getenv_or("INFILTRATOROS_PARALLEL_FAT_PILOT", "1")) != "0";
     const bool smart = smart_enabled && queue.size() >= 2;
-    if (smart) launch(canonical, "filesystem-resources", queue.front(), true);
-    for (const auto &s : chosen) {
-        if (smart && infiltrator_native::queue_candidate(s)) continue;
-        launch(canonical, "filesystem-resources", s);
+    auto queued = [smart](const std::string &slug) {
+        return smart && infiltrator_native::queue_candidate(slug);
+    };
+    for (const auto &s : apps)
+        if (!queued(s)) launch(canonical, s);
+    for (const auto &s : temporal)
+        if (!queued(s)) launch(canonical, "temporal-resources", s);
+    if (smart) {
+        const auto &first = queue.front();
+        if (first.rfind("filesystem-", 0) == 0)
+            launch(canonical, "filesystem-resources", first, true);
+        else if (first.rfind("calendar-", 0) == 0 || first.rfind("clock-", 0) == 0)
+            launch(canonical, "temporal-resources", first, true);
+        else
+            launch(canonical, first, "", true);
     }
+    for (const auto &s : chosen)
+        if (!queued(s)) launch(canonical, "filesystem-resources", s);
 }
 int main(int argc, char **argv) {
     try {

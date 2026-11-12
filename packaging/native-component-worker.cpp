@@ -545,6 +545,7 @@ static bool provider_current(const Entry &entry, const Asset &asset) {
 static Entry application(const std::string &slug) {
     Entry e;
     e.id = slug;
+    e.kind = "application";
     if (slug == "system-monitor") {
         e.repo = "System-Monitor"; e.package = "system-monitor"; e.resource = "/Programs/system-monitor";
     } else if (slug == "calculator") {
@@ -664,6 +665,28 @@ static bool application_current(const Entry &entry, const Asset &asset,
         return fail("dpkg verification rejected an installed application file");
     return true;
 }
+static void verify_install(const Entry &entry, const Asset &asset, bool application_mode) {
+    if (!application_mode) {
+        if (!provider_current(entry, asset))
+            throw std::runtime_error("Independent provider did not install its native SO and PDF");
+        return;
+    }
+    std::string verification_failure;
+    if (!application_current(entry, asset, false, &verification_failure))
+        throw std::runtime_error("Independent application installation contract failed: " +
+                                 verification_failure);
+    json_object *proof = json_object_new_object();
+    json_object_object_add(proof, "version", json_object_new_string(asset.version.c_str()));
+    json_object_object_add(proof, "installer_sha256", json_object_new_string(asset.sha.c_str()));
+    std::string value = digest(entry.resource);
+    json_object_object_add(proof, "program_sha256", json_object_new_string(value.c_str()));
+    std::string content = json_object_to_json_string_ext(proof, JSON_C_TO_STRING_PLAIN);
+    json_object_put(proof);
+    TempDir staging(ROOT, "verified-native-");
+    fs::path record = staging.path / "attestation";
+    save(record, content);
+    fs::rename(record, ROOT / ("native-verified-" + entry.id + ".json"));
+}
 static bool install(const Entry &entry, Status &status, bool application_mode,
                     bool temporal, bool filesystem) {
     Document meta = release(entry);
@@ -684,25 +707,7 @@ static bool install(const Entry &entry, Status &status, bool application_mode,
         command_line.push_back("--system-package-mode");
     }
     required(command_line);
-    if (application_mode) {
-        std::string verification_failure;
-        if (!application_current(entry, asset, false, &verification_failure))
-            throw std::runtime_error("Independent application installation contract failed: " +
-                                     verification_failure);
-        json_object *proof = json_object_new_object();
-        json_object_object_add(proof, "version", json_object_new_string(asset.version.c_str()));
-        json_object_object_add(proof, "installer_sha256", json_object_new_string(asset.sha.c_str()));
-        std::string value = digest(entry.resource);
-        json_object_object_add(proof, "program_sha256", json_object_new_string(value.c_str()));
-        std::string content = json_object_to_json_string_ext(proof, JSON_C_TO_STRING_PLAIN);
-        json_object_put(proof);
-        TempDir staging(ROOT, "verified-native-");
-        fs::path record = staging.path / "attestation";
-        save(record, content);
-        fs::rename(record, ROOT / ("native-verified-" + entry.id + ".json"));
-    } else if (!provider_current(entry, asset)) {
-        throw std::runtime_error("Independent provider did not install its native SO and PDF");
-    }
+    verify_install(entry, asset, application_mode);
     return false;
 }
 static int individual(const Entry &entry, bool app, bool temporal, bool filesystem) {
@@ -733,9 +738,13 @@ struct Job {
     fs::path run, folder, package;
 };
 static void build(Job &job, const fs::path &logs) {
-    required({job.run.string(), "--profile", "aggressive",
-              "--system-package-mode", "--build-only", "--output", job.folder.string()},
-             logs / (job.entry.slug() + "-build.log"));
+    Strings arguments{job.run.string()};
+    // Files always trains its aggressive build. The provider RUNs take a profile.
+    if (job.entry.kind != "application")
+        arguments.insert(arguments.end(), {"--profile", "aggressive"});
+    arguments.insert(arguments.end(), {"--system-package-mode", "--build-only",
+                                      "--output", job.folder.string()});
+    required(arguments, logs / (job.entry.slug() + "-build.log"));
     std::vector<fs::path> packages;
     for (auto &item : fs::directory_iterator(job.folder))
         if (item.path().extension() == ".deb") packages.push_back(item.path());
@@ -764,6 +773,21 @@ static int parallel_limit() {
 }
 static bool can_build(const Entry &e) {
     Strings packages{"build-essential", "binutils", "dpkg-dev"};
+    // A build-only RUN cannot install its own prerequisites. Keep those jobs
+    // on their original, serial path so the component can provision them.
+    if (e.kind == "application") {
+        packages.insert(packages.end(), {"cmake", "ninja-build", "pkg-config", "xvfb",
+                                         "xauth", "dbus-daemon"});
+        if (execute({"pkg-config", "--exists", "gtk4 >= 4.10", "libarchive"}) != 0)
+            return false;
+    } else if (e.kind == "calendar" || e.kind == "clock") {
+        packages.insert(packages.end(), {"pkg-config", "jq", "ghostscript", "gettext"});
+        if (e.kind == "calendar" && execute({"pkg-config", "--exists", "glib-2.0"}) != 0)
+            return false;
+        if ((e.id == "gregorian" || e.id == "indian" || e.id == "islamic-umalqura") &&
+            execute({"pkg-config", "--exists", "icu-i18n"}) != 0)
+            return false;
+    }
     if (e.id == "exfat")
         packages.insert(packages.end(), {"cmake", "git", "pkg-config", "libssl-dev",
                                          "libsqlite3-dev", "exfatprogs", "dosfstools"});
@@ -803,12 +827,14 @@ static int smart_queue(const std::vector<Entry> &entries) {
     std::set<std::string> completed;
     try {
         for (const auto &e : chosen) {
+            const bool app = e.kind == "application";
+            const bool temporal = e.kind == "calendar" || e.kind == "clock";
             Status status(statuses, e.slug());
             status.write("queued", 2, "Smart build queued", "Awaiting native package lock");
             Document meta = release(e);
-            Asset asset = release_asset(e, meta.ptr, false, true);
-            if (provider_current(e, asset)) {
-                status.write("complete", 100, "Already installed", "Native filesystem verified");
+            Asset asset = release_asset(e, meta.ptr, temporal, !app && !temporal);
+            if (app ? application_current(e, asset, true) : provider_current(e, asset)) {
+                status.write("complete", 100, "Already installed", "Native package verified");
                 completed.insert(e.slug());
                 continue;
             }
@@ -832,7 +858,7 @@ static int smart_queue(const std::vector<Entry> &entries) {
                    active.size() < static_cast<size_t>(parallel_limit())) {
                 const size_t job = next++;
                 Status(statuses, jobs[job].entry.slug()).write(
-                    "running", 35, "Compiling native filesystem",
+                    "running", 35, "Compiling native component",
                     "Resource-aware queue: one or two builds at once");
                 active.emplace_back(std::async(std::launch::async, [&, job]() {
                     build(jobs[job], statuses);
@@ -852,16 +878,24 @@ static int smart_queue(const std::vector<Entry> &entries) {
         }
         for (auto &job : jobs) {
             Status status(statuses, job.entry.slug());
-            status.write("running", 85, "Installing native package", "Serial dpkg transaction");
-            required({"/usr/bin/dpkg", "--install", job.package.string()});
-            if (!provider_current(job.entry, job.asset))
-                throw std::runtime_error("Independent native filesystem verification failed");
+            status.write("running", 85, "Installing native package", "Serial package transaction");
+            const bool app = job.entry.kind == "application";
+            if (app) {
+                // Preserve Files' dependency handling and same-version repairs.
+                required({"/usr/bin/apt-get", "-o", "DPkg::Lock::Timeout=300", "install",
+                          "-y", "--reinstall", job.package.string()});
+            } else {
+                required({"/usr/bin/dpkg", "--install", job.package.string()});
+            }
+            verify_install(job.entry, job.asset, app);
             status.write("complete", 100, "Native installation complete", "Verified installed package");
             completed.insert(job.entry.slug());
         }
         for (const auto &e : serial) {
             Status status(statuses, e.slug());
-            bool already = install(e, status, false, false, true);
+            const bool app = e.kind == "application";
+            const bool temporal = e.kind == "calendar" || e.kind == "clock";
+            bool already = install(e, status, app, temporal, !app && !temporal);
             status.write("complete", 100, "Serial fallback complete",
                          already ? "Already installed" : "Component-owned RUN installed");
             completed.insert(e.slug());
@@ -910,6 +944,20 @@ int main(int argc, char **argv) {
         curl_global_init(CURL_GLOBAL_DEFAULT);
         const std::string name = fs::path(argv[0]).filename().string();
         const fs::path directory = fs::path(argv[0]).parent_path();
+        if (environment("INFILTRATOROS_SMART_BUILD_QUEUE") == "1") {
+            const std::string leader = name == "install-files" && argc == 1 ? "files" :
+                (name == "install-filesystem-resources" || name == "install-temporal-resources") &&
+                    argc == 2 ? argv[1] : "";
+            if (!infiltrator_native::queue_candidate(leader))
+                throw std::runtime_error("Invalid smart build launcher");
+            auto entries = catalogue(directory / "filesystem-resources.json", 5);
+            auto additional = catalogue(directory / "filesystem-additional.json", 18);
+            auto temporal = catalogue(directory / "temporal-resources.json", 54);
+            entries.insert(entries.end(), additional.begin(), additional.end());
+            entries.insert(entries.end(), temporal.begin(), temporal.end());
+            entries.push_back(application("files"));
+            return smart_queue(entries);
+        }
         if (name == "install-temporal-resources") {
             auto entries = catalogue(directory / "temporal-resources.json", 54);
             if (argc == 2 && std::string(argv[1]) == "--list") {
@@ -943,7 +991,6 @@ int main(int argc, char **argv) {
             auto found = std::find_if(all.begin(), all.end(),
                           [&](const Entry &e) { return e.slug() == argv[1]; });
             if (found == all.end()) throw std::runtime_error("Unknown signed filesystem");
-            if (environment("INFILTRATOROS_SMART_BUILD_QUEUE") == "1") return smart_queue(all);
             return individual(*found, false, false, true);
         }
         if (name.rfind("install-", 0) == 0)

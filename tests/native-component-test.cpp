@@ -56,10 +56,13 @@ int main() {
         check(temporal.size() == 54, "temporal cardinality");
         check(established.size() == 5, "established cardinality");
         check(additional.size() == 18, "additional cardinality");
-        check(infiltrator_native::build_queue.size() == 8, "smart queue cardinality");
+        check(infiltrator_native::build_queue.size() == 16, "smart queue cardinality");
         for (auto slug : {"filesystem-fat12", "filesystem-fat16", "filesystem-fat32",
                           "filesystem-exfat", "filesystem-ofs", "filesystem-ntfs",
-                          "filesystem-ffs", "filesystem-hfs"})
+                          "filesystem-ffs", "filesystem-hfs", "files", "clock-chinese-ke",
+                          "calendar-byzantine", "clock-babylonian-hours", "calendar-indian",
+                          "calendar-swedish-historical", "calendar-gregorian",
+                          "calendar-islamic-umalqura"})
             check(infiltrator_native::queue_candidate(slug), "smart queue membership");
         check(!infiltrator_native::queue_candidate("filesystem-ext2"),
               "do not admit unrelated independent providers");
