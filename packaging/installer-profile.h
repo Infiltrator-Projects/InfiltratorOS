@@ -2,7 +2,7 @@
 #define INFILTRATOR_INSTALL_PROFILE_H
 
 #if (defined(INSTALL_SYSTEM_MONITOR) + defined(INSTALL_CALCULATOR) + \
-     defined(INSTALL_CALENDAR) + defined(INSTALL_FILES) + defined(INSTALL_DEFRAGMENTER) + \
+     defined(INSTALL_CALENDAR) + defined(INSTALL_FILES) + defined(INSTALL_DEFRAGMENTER) + defined(INSTALL_BOOT) + \
      defined(INSTALL_TEMPORAL_RESOURCES) + defined(INSTALL_FILESYSTEM_RESOURCES)) != 1
 #error "Select exactly one provisioning product"
 #elif defined(INSTALL_SYSTEM_MONITOR)
@@ -20,6 +20,9 @@
 #elif defined(INSTALL_DEFRAGMENTER)
 #define INSTALL_NAME "Defragmenter"
 #define INSTALL_SLUG "defragmenter"
+#elif defined(INSTALL_BOOT)
+#define INSTALL_NAME "BOOT"
+#define INSTALL_SLUG "boot"
 #elif defined(INSTALL_TEMPORAL_RESOURCES)
 #define INSTALL_NAME "Calendars and clocks"
 #define INSTALL_SLUG "temporal-resources"

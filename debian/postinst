@@ -51,7 +51,7 @@ unpack_native_workers() {
     printf '%s  %s\n' "$BUNDLE_SHA256" "$bundle" | sha256sum -c - >/dev/null || return 1
     tar -xzf "$bundle" -C "$stage" --no-same-owner --no-same-permissions || return 1
     rm -f -- "$bundle" || return 1
-    for product in system-monitor calculator calendar files defragmenter temporal-resources filesystem-resources; do
+    for product in system-monitor calculator calendar files defragmenter boot temporal-resources filesystem-resources; do
         test -x "$stage/start-$product-install" || return 1
         test -x "$stage/install-$product" || return 1
         test -x "$stage/$product-progress" || return 1
@@ -64,29 +64,6 @@ unpack_native_workers() {
     done
 }
 
-configure_boot() (
-    boot_stage=$1
-    boot_log="$boot_stage/status/boot-install.log"
-    mkdir -p "$boot_stage/status"
-    # APT has configured the independent BOOT dependency. This step makes
-    # no nested APT calls and can run while an earlier native build is active.
-    boot_result=0
-    "$boot_stage/install-boot-option" > "$boot_log" 2>&1 || boot_result=$?
-    case "$boot_result" in
-        0)
-            tail -n 1 "$boot_log"
-            printf '%s\n' state=complete progress=100 'stage=Available in the UEFI boot menu' detail= \
-                > "$boot_stage/status/boot-install.status"
-            ;;
-        77) tail -n 1 "$boot_log" ;;
-        *)
-            echo "Could not add or update BOOT. See $boot_log" >&2
-            printf '%s\n' state=failed progress=100 'stage=BOOT upgrade failed' 'detail=See boot-install.log.' \
-                > "$boot_stage/status/boot-install.status"
-            ;;
-    esac
-)
-
 # CI inspection never mutates the installed system or launches applications.
 if [ "${1:-}" = "--verify-installer-bundle" ]; then
     inspect=$(mktemp -d)
@@ -95,7 +72,7 @@ if [ "${1:-}" = "--verify-installer-bundle" ]; then
         echo 'Invalid embedded InfiltratorOS native installer bundle.' >&2
         exit 1
     fi
-    test "$(find "$inspect" -maxdepth 1 -type f | wc -l)" -eq 27
+    test "$(find "$inspect" -maxdepth 1 -type f | wc -l)" -eq 30
     exit 0
 fi
 
@@ -118,19 +95,16 @@ if ! command -v flock >/dev/null 2>&1; then
 fi
 exec 9>"$STATUS_ROOT/provision.lock"
 if ! flock -n 9; then
-    echo 'InfiltratorOS native provisioning is already active; not launching a duplicate run.'
-    (
-        boot_stage=$(mktemp -d "$STATUS_ROOT/boot-upgrade.XXXXXXXX")
-        trap 'rm -rf -- "$boot_stage"' 0
-        if ! unpack_native_workers "$boot_stage"; then
-            echo 'InfiltratorOS could not verify its BOOT installation worker.' >&2
-            exit 1
-        fi
-        configure_boot "$boot_stage"
-        chmod 0600 "$boot_stage/status/boot-install.log"
-        mv -fT -- "$boot_stage/status/boot-install.log" "$STATUS_ROOT/last-boot-upgrade.log"
-        printf '%s\n' "BOOT diagnostics: $STATUS_ROOT/last-boot-upgrade.log"
-    )
+    echo 'InfiltratorOS provisioning is active; scheduling the upgraded installer after it finishes.'
+    exec 8>"$STATUS_ROOT/provision-pending.lock"
+    if flock -n 8; then
+        (
+            flock 9
+            flock -u 9
+            flock -u 8
+            exec /bin/sh "$0" configure
+        ) </dev/null >>"$STATUS_ROOT/deferred-provision.log" 2>&1 &
+    fi
     exit 0
 fi
 TMPDIR="$STATUS_ROOT"
@@ -178,7 +152,7 @@ fi
 # Every run owns its own status and log directory beneath its temporary
 # worker stage. No run may remove shared /Temporary/InfiltratorOS or files
 # belonging to a previous or concurrent installation.
-configure_boot "$stage"
+mkdir -p "$stage/status"
 # One dispatcher owns enumeration, release preparation and component launches.
 # Individual component workers remain responsible for their own installations.
 if ! INFILTRATOROS_INSTALL_RUNTIME="$stage" "$stage/orchestrate-native-install" "$stage"; then

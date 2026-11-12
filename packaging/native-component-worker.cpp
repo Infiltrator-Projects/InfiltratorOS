@@ -412,7 +412,7 @@ static Document release(const Entry &entry) {
     const std::string directory = environment("INFILTRATOROS_RELEASE_DIR");
     // The v3 catalogue has a fixed 63-repository contract shared with
     // earlier InfiltratorOS releases. Calendar resolves its own release.
-    return parse(directory.empty() || entry.id == "calendar"
+    return parse(directory.empty() || entry.id == "calendar" || entry.id == "boot"
         ? fetch("https://api.github.com/repos/Infiltrator-Projects/" +
                 entry.repo + "/releases/latest")
         : read_file(fs::path(directory) / (entry.repo + ".json")));
@@ -562,11 +562,16 @@ static Entry application(const std::string &slug) {
         e.repo = "Files"; e.package = "files"; e.resource = "/Programs/files";
     } else if (slug == "defragmenter") {
         e.repo = "Defragmenter"; e.package = "defragmenter"; e.resource = "/Programs/defragmenter";
+    } else if (slug == "boot") {
+        e.repo = "Boot"; e.package = "infiltrator-boot";
+        e.resource = "/usr/lib/infiltrator-boot/EFI/BOOT/BOOTX64.EFI";
     } else throw std::runtime_error("Unknown native application");
     e.name = e.repo;
     return e;
 }
 static Strings required_paths(const std::string &slug) {
+    if (slug == "boot") return {"/usr/sbin/infiltrator-boot-deploy", "/usr/lib/infiltrator-boot/deploy-core",
+                                "/usr/lib/infiltrator-boot/EFI/BOOT/boot.conf"};
     if (slug == "system-monitor") return {"/usr/share/doc/system-monitor/BUILD-INFO"};
     if (slug == "calculator")
         return {"/System/Resources/Documentation/Calculator.pdf",
@@ -586,6 +591,13 @@ static Strings required_paths(const std::string &slug) {
 }
 static bool application_proof(const Entry &entry) {
     if (entry.id == "calculator") return true;
+    if (entry.id == "boot") {
+        const fs::path proof = "/usr/share/doc/infiltrator-boot/BUILD-INFO";
+        if (!regular(proof)) return false;
+        const auto data = read_file(proof);
+        return data.find("Profile: aggressive") != std::string::npos &&
+               data.find("-march=native -mgeneral-regs-only") != std::string::npos;
+    }
     if (entry.id == "calendar") {
         const fs::path proof = "/usr/share/doc/calendar/BUILD-INFO";
         if (!regular(proof)) return false;
@@ -626,7 +638,7 @@ static bool application_package_matches(const Entry &entry, const Asset &asset,
                revision.find_first_not_of("0123456789") == std::string::npos;
     }
     const std::string suffix =
-        entry.id == "files" || entry.id == "defragmenter" ? "+native1" : "";
+        entry.id == "files" || entry.id == "defragmenter" || entry.id == "boot" ? "+native1" : "";
     return fields[1] == asset.version + suffix;
 }
 static bool application_current(const Entry &entry, const Asset &asset,
@@ -639,7 +651,7 @@ static bool application_current(const Entry &entry, const Asset &asset,
         "{Status}\t$" + "{Version}");
     if (!application_package_matches(entry, asset, identity))
         return fail("Installed Debian package identity/version differs from verified release");
-    if (!regular(entry.resource) || access(entry.resource.c_str(), X_OK) != 0)
+    if (!regular(entry.resource) || (entry.id != "boot" && access(entry.resource.c_str(), X_OK) != 0))
         return fail("Installed application executable is absent or not executable: " +
                     entry.resource);
     if (output({"/usr/bin/dpkg-query", "-S", entry.resource}) !=
@@ -730,6 +742,16 @@ static int individual(const Entry &entry, bool app, bool temporal, bool filesyst
         setenv("TMPDIR", status_dir.c_str(), 1);
         status.write("running", 5, "Checking native release", entry.repo);
         bool already = install(entry, status, app, temporal, filesystem);
+        if (entry.id == "boot") {
+            status.write("running", 95, "Configuring firmware option", "Checking the EFI system partition");
+            const int result = execute({(stage_dir() / "install-boot-option").string()});
+            if (result != 0 && result != 77)
+                throw std::runtime_error("BOOT firmware setup failed; see boot-install.log");
+            if (result == 77) {
+                status.write("complete", 100, "BOOT compiled; firmware setup skipped", "See boot-install.log for details");
+                return 0;
+            }
+        }
         status.write("complete", 100, already ? "Already installed" : "Installed",
                      "Native package and required files verified");
     } catch (const std::exception &e) {

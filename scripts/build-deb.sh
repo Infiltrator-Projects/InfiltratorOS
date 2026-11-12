@@ -155,13 +155,14 @@ for inventory in temporal-resources.json filesystem-resources.json filesystem-ad
 done
 install -m 0755 "$ROOT/packaging/install-boot-option.sh" "$RUNTIME_BUILD/install-boot-option"
 
-for product in system-monitor calculator calendar files defragmenter temporal-resources filesystem-resources; do
+for product in system-monitor calculator calendar files defragmenter boot temporal-resources filesystem-resources; do
     case "$product" in
         system-monitor) profile=INSTALL_SYSTEM_MONITOR ;;
         calculator) profile=INSTALL_CALCULATOR ;;
         calendar) profile=INSTALL_CALENDAR ;;
         files) profile=INSTALL_FILES ;;
         defragmenter) profile=INSTALL_DEFRAGMENTER ;;
+        boot) profile=INSTALL_BOOT ;;
         temporal-resources) profile=INSTALL_TEMPORAL_RESOURCES ;;
         filesystem-resources) profile=INSTALL_FILESYSTEM_RESOURCES ;;
     esac
@@ -199,7 +200,7 @@ grep -Fxq "Exec=/System/Commands/InfiltratorOS/activate-program-icons" \
 test -x "$PKGROOT/System/Commands/InfiltratorOS/activate-calendar"
 grep -Fxq 'Exec=/System/Commands/InfiltratorOS/activate-calendar' \
     "$PKGROOT/etc/xdg/autostart/infiltrator-calendar.desktop"
-for product in system-monitor calculator calendar files defragmenter temporal-resources filesystem-resources; do
+for product in system-monitor calculator calendar files defragmenter boot temporal-resources filesystem-resources; do
     for tool in "install-$product" "start-$product-install" "$product-progress"; do
         test -x "$RUNTIME_BUILD/$tool"
         test ! -e "$PKGROOT/System/Commands/InfiltratorOS/$tool"

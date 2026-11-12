@@ -113,6 +113,15 @@ int main() {
               "do not admit unrelated independent providers");
         check(established[0].slug() == "filesystem-fat12", "FAT12 identity");
         check(application("system-monitor").repo == "System-Monitor", "system monitor identity");
+        const auto boot = application("boot");
+        const Asset boot_version{"0.1.43", "", "", 0};
+        check(application_package_matches(boot, boot_version, "install ok installed\t0.1.43+native1"),
+              "BOOT accepts its locally compiled package");
+        check(!application_package_matches(boot, boot_version, "install ok installed\t0.1.43"),
+              "BOOT rejects the portable package as native evidence");
+        auto boot_release = sample_release(boot, "0.1.43", false);
+        check(release_asset(boot, boot_release.ptr, false, false).url.find("boot-0.1.43-native-installer.run") != std::string::npos,
+              "BOOT resolves its independent source installer");
         check(application("defragmenter").resource == "/Programs/defragmenter",
               "defragmenter destination");
         // A missing optional Defragmenter field must never invalidate other apps.

@@ -7,12 +7,17 @@ work=$(realpath -m "$2")
 guest="$work/guest"
 mkdir -p "$guest" "$work/kernel"
 
-# Qualify against a real independent BOOT package and a matching Ubuntu kernel.
-boot_deb="$work/infiltrator-boot_0.1.42_amd64.deb"
-curl -fsSL --retry 2 \
-    https://github.com/Infiltrator-Projects/Boot/releases/download/v0.1.42/infiltrator-boot_0.1.42_amd64.deb \
-    -o "$boot_deb"
-printf '%s  %s\n' e28a3d2699a5f2f4328a86d8bc18bf20b671fd06ddf9b05583d9dd621184885e "$boot_deb" | sha256sum -c -
+# Compile BOOT locally from its independently released source installer.
+version=0.1.44
+run="boot-${version}-native-installer.run"
+url="https://github.com/Infiltrator-Projects/Boot/releases/download/v$version"
+curl -fsSL --retry 2 "$url/$run" -o "$work/$run"
+curl -fsSL --retry 2 "$url/SHA256SUMS.txt" -o "$work/SHA256SUMS.txt"
+(cd "$work" && grep -F "  $run" SHA256SUMS.txt | sha256sum -c -)
+chmod 0755 "$work/$run"
+mkdir "$work/native"
+"$work/$run" --build-only --output-dir "$work/native"
+boot_deb="$work/native/infiltrator-boot_${version}+native1_amd64.deb"
 dpkg-deb -x "$boot_deb" "$guest"
 install -m 0755 "$helper" "$guest/install-boot-option"
 

@@ -79,6 +79,7 @@ jobs:
           cmp assets/infiltratoros.png "$RUNNER_TEMP/payload/usr/share/plymouth/themes/infiltratoros/infiltratoros.png"
           test ! -e "$RUNNER_TEMP/payload/usr/lib/infiltrator/temporal"
           ! dpkg-deb -f dist/*.deb Depends | grep -Fq "infiltrator-calendar-resources"
+          ! dpkg-deb -f dist/*.deb Depends | grep -Eq '(^|[, ])infiltrator-boot([ (,:]|$)'
           if dpkg-deb -f dist/*.deb Depends | grep -Eq '(^|[, ])calendar([, ]|$)'; then
             echo "Calendar belongs in the native app queue."
             exit 1
@@ -184,7 +185,7 @@ jobs:
             /^__INFILTRATOROS_NATIVE_BUNDLE_END__$/ { exit }
             in_bundle { print }
           ' "$RUNNER_TEMP/control/postinst" | base64 -d | tar -xz -C "$runtime"
-          for binary in install-system-monitor install-calculator install-calendar install-files \
+          for binary in install-system-monitor install-calculator install-calendar install-files install-boot \
                         install-defragmenter install-temporal-resources \
                         install-filesystem-resources prepare-native-releases \
                         orchestrate-native-install; do
@@ -196,7 +197,7 @@ jobs:
           done
           cmp packaging/install-boot-option.sh "$runtime/install-boot-option"
           bash tests/boot-upgrade.sh "$runtime/install-boot-option"
-          test "$(find "$runtime" -maxdepth 1 -type f | wc -l)" -eq 27
+          test "$(find "$runtime" -maxdepth 1 -type f | wc -l)" -eq 30
           # Prevent OS-owned runtime files outside the native /Temporary.
           grep -Fq 'STATUS_ROOT=/Temporary/InfiltratorOS' "$RUNNER_TEMP/control/postinst"
           grep -Fq 'stage=$(mktemp -d "$STATUS_ROOT/native-worker.XXXXXXXX")' "$RUNNER_TEMP/control/postinst"
@@ -215,7 +216,7 @@ jobs:
             echo "Installer accepted a tampered archive digest" >&2
             exit 1
           fi
-          for product in system-monitor calculator calendar files defragmenter temporal-resources filesystem-resources; do
+          for product in system-monitor calculator calendar files defragmenter boot temporal-resources filesystem-resources; do
             for program in "install-$product" "start-$product-install" "$product-progress"; do
               test ! -e "$RUNNER_TEMP/payload/System/Commands/InfiltratorOS/$program"
             done
@@ -270,7 +271,7 @@ jobs:
         shell: bash
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends qemu-system-x86 ovmf efibootmgr busybox-static gdisk dosfstools cpio
+          sudo apt-get install -y --no-install-recommends qemu-system-x86 ovmf efibootmgr busybox-static gdisk dosfstools cpio gcc make binutils gnu-efi
           bash tests/boot-upgrade-uefi.sh packaging/install-boot-option.sh "$RUNNER_TEMP/boot-uefi"
   publish:
     needs: [verify, boot-uefi]

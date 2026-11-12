@@ -1,3 +1,8 @@
+## 1.0.80 — Compile BOOT locally during the upgrade
+
+- Resolve BOOT through its independent verified source installer and compile it for the local processor after APT releases its package lock.
+- Deploy the compiled BOOT payload alongside GRUB on eligible UEFI systems.
+
 ## 1.0.79 — Add BOOT automatically alongside GRUB
 
 - Install the independent BOOT package through APT. On eligible UEFI systems, deploy it to its own EFI directory and append it to the firmware boot order. Keep the original default and any one-time boot selection.
