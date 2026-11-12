@@ -39,6 +39,10 @@ for program in bash efibootmgr findmnt lsblk blkid sha256sum cmp od id mktemp mv
 done
 cp "$(command -v busybox)" "$guest/bin/busybox"
 ln -s busybox "$guest/bin/sh"
+# The BOOT deployment wrapper invokes /bin/bash on the target system.
+if [[ ! -e "$guest/bin/bash" ]]; then
+    ln -s /usr/bin/bash "$guest/bin/bash"
+fi
 
 cat > "$guest/init" <<'GUEST'
 #!/bin/sh
