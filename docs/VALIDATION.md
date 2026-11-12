@@ -28,7 +28,12 @@ The 63 central catalogue jobs (four applications, 54 temporal providers, five es
 
 ## Installed-state acceptance rules
 
-Each independently installed product must match its exact published native release and package ownership; required executable or `.so` paths, companion PDF where specified, release/source identity, build provenance, checksum and ABI must be checked by the owning worker. Filesystem verification now requires the exact published source commit in Debian metadata and checks exact defined ELF dynamic exports rather than permissive text-substring matches.
+Each independently installed product must match its published native version,
+package ownership and build profile. The worker checks the installed files
+with Debian verification. For filesystem providers it also checks for a
+defined Common V2 function in the x86-64 ELF dynamic symbol table without
+executing the module. The worker test covers a valid export, an obsolete
+entry point, a data symbol and an undefined import.
 
 Calendar/clock and filesystem two-file packages have the `.so` and one illustrated PDF as their expected installed provider files, with native source, optimisation and SHA-256 attestations held in Debian metadata. Obsolete persistent `BUILD-INFO` files are not required for these providers. A verified cached build may skip recompilation only if it still satisfies the exact release and installed-state checks. Pre-existing unowned legacy documents are preserved: a familiar filename and missing dpkg ownership cannot prove origin. New packages still own only one illustrated PDF. Removing older files requires independently established provenance.
 

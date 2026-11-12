@@ -8,6 +8,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <elf.h>
 #include <fcntl.h>
 #include <filesystem>
 #include <fstream>
@@ -534,6 +535,32 @@ static bool regular(const fs::path &p) {
 static std::string pkg_query(const std::string &name, const std::string &format) {
     return output({"/usr/bin/dpkg-query", "-W", "-f=" + format, name});
 }
+static bool exports_common_filesystem_api(const fs::path &path) {
+    // Inspect the installed ELF without loading executable provider code into
+    // the root installer. Consumer-specific capabilities are checked by each
+    // consumer, including the separate firmware validator in BOOT.
+    std::ifstream module(path, std::ios::binary);
+    Elf64_Ehdr header{};
+    if (!module.read(reinterpret_cast<char *>(&header), sizeof(header)) ||
+        std::memcmp(header.e_ident, ELFMAG, SELFMAG) != 0 ||
+        header.e_ident[EI_CLASS] != ELFCLASS64 || header.e_ident[EI_DATA] != ELFDATA2LSB ||
+        header.e_machine != EM_X86_64 || header.e_type != ET_DYN)
+        return false;
+
+    std::istringstream symbols(output({"/usr/bin/env", "LC_ALL=C", "/usr/bin/readelf",
+                                      "--dyn-syms", "--wide", "--", path.string()}));
+    for (std::string line; std::getline(symbols, line);) {
+        std::istringstream fields(line);
+        std::string number, value, size, type, binding, visibility, section, name;
+        if (fields >> number >> value >> size >> type >> binding >> visibility >> section >> name &&
+            type == "FUNC" && (binding == "GLOBAL" || binding == "WEAK") &&
+            (visibility == "DEFAULT" || visibility == "PROTECTED") &&
+            section.find_first_not_of("0123456789") == std::string::npos &&
+            section != "0" && name == "infiltrator_filesystem_api_v2")
+            return true;
+    }
+    return false;
+}
 static bool provider_current(const Entry &entry, const Asset &asset) {
     const std::string fmt = std::string("$") + "{Status}\t$" + "{Version}\t$" +
                             "{X-Infiltrator-Native-Profile}\t$" + "{X-Infiltrator-PGO}";
@@ -551,7 +578,9 @@ static bool provider_current(const Entry &entry, const Asset &asset) {
     if (!pdf.read(magic, 5) || std::memcmp(magic, "%PDF-", 5) != 0) return false;
     std::string verification;
     return execute({"/usr/bin/dpkg", "--verify", entry.package}, &verification) == 0 &&
-           trim(verification).empty();
+           trim(verification).empty() &&
+           (entry.slug().rfind("filesystem-", 0) != 0 ||
+            exports_common_filesystem_api(entry.resource));
 }
 static Entry application(const std::string &slug) {
     Entry e;
@@ -692,7 +721,8 @@ static bool application_current(const Entry &entry, const Asset &asset,
 static void verify_install(const Entry &entry, const Asset &asset, bool application_mode) {
     if (!application_mode) {
         if (!provider_current(entry, asset))
-            throw std::runtime_error("Independent provider did not install its native SO and PDF");
+            throw std::runtime_error("Independent provider did not install its verified native SO and PDF"
+                                     " with the required module export");
         return;
     }
     std::string verification_failure;

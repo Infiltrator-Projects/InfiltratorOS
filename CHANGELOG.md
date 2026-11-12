@@ -1,3 +1,8 @@
+## 1.0.83 — Verify the Common V2 filesystem export
+
+- Require a defined Common V2 function in installed filesystem shared objects before accepting the provider.
+- Remove obsolete filesystem ABI fields from the installer catalogue.
+
 ## 1.0.82 — Deploy Common V2 BOOT with its installed filesystem modules
 
 - Wait for the selected filesystem workers before configuring BOOT.

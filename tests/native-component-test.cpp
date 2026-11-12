@@ -101,6 +101,23 @@ int main() {
         check(temporal.size() == 54, "temporal cardinality");
         check(established.size() == 5, "established cardinality");
         check(additional.size() == 18, "additional cardinality");
+        TempDir module_fixture(fs::temp_directory_path(), "native-module-");
+        const auto source = module_fixture.path / "provider.c";
+        const auto module = module_fixture.path / "provider.so";
+        const auto compile_provider = [&](const char *declaration) {
+            save(source, declaration);
+            required({"/usr/bin/cc", "-shared", "-fPIC", "-nostdlib",
+                      "-o", module.string(), source.string()});
+        };
+        compile_provider("void infiltrator_filesystem_api_v2(void) {}\n");
+        check(exports_common_filesystem_api(module), "Common V2 function export");
+        compile_provider("void infiltrator_filesystem_api_v1(void) {}\n");
+        check(!exports_common_filesystem_api(module), "obsolete filesystem export refused");
+        compile_provider("int infiltrator_filesystem_api_v2;\n");
+        check(!exports_common_filesystem_api(module), "filesystem data symbol refused");
+        compile_provider("extern void infiltrator_filesystem_api_v2(void);\n"
+                         "void run(void) { infiltrator_filesystem_api_v2(); }\n");
+        check(!exports_common_filesystem_api(module), "undefined filesystem import refused");
         check(infiltrator_native::build_queue.size() == 16, "smart queue cardinality");
         for (auto slug : {"filesystem-fat12", "filesystem-fat16", "filesystem-fat32",
                           "filesystem-exfat", "filesystem-ofs", "filesystem-ntfs",
