@@ -56,6 +56,7 @@ trap 'result=$?; if (( result != 0 )); then echo "BOOT UEFI qualification failed
 mount -t proc proc /proc
 mount -t sysfs sysfs /sys
 mount -t devtmpfs devtmpfs /dev
+/bin/busybox ln -s /proc/self/fd /dev/fd
 modprobe efivarfs
 mount -t efivarfs efivarfs /sys/firmware/efi/efivars
 modprobe virtio_pci

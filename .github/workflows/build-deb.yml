@@ -252,11 +252,6 @@ jobs:
               LD_PRELOAD="$fixture/inspect.so" PROGRESS_EXPECT=complete \
               "$progress" "$fixture/status/done.status"
           done
-      - name: Qualify the automatic BOOT upgrade in disposable UEFI firmware
-        shell: bash
-        run: |
-          sudo apt-get install -y --no-install-recommends qemu-system-x86 ovmf efibootmgr busybox-static gdisk dosfstools cpio
-          bash tests/boot-upgrade-uefi.sh "$RUNNER_TEMP/verified-native-worker/install-boot-option" "$RUNNER_TEMP/boot-uefi"
       # Native provider builds belong to their independent repositories. The OS
       # release gate qualifies its own dispatcher, package and signed worker
       # contracts above; cross-repository installation stress is manual-only.
@@ -266,8 +261,19 @@ jobs:
           path: dist/*
           if-no-files-found: error
           retention-days: 14
+  boot-uefi:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - name: Qualify the automatic BOOT upgrade in disposable UEFI firmware
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends qemu-system-x86 ovmf efibootmgr busybox-static gdisk dosfstools cpio
+          bash tests/boot-upgrade-uefi.sh packaging/install-boot-option.sh "$RUNNER_TEMP/boot-uefi"
   publish:
-    needs: verify
+    needs: [verify, boot-uefi]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
