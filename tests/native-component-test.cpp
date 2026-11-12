@@ -48,8 +48,53 @@ static Document sample_release(const Entry &e, const std::string &version, bool 
     json_object_object_add(data, "assets", assets);
     return Document(data);
 }
+static void check_build_resources() {
+    using namespace infiltrator_native;
+    std::vector<int> cpus;
+    for (int cpu = 0; cpu < 16; ++cpu) cpus.push_back(cpu * 2);
+    const BuildResources roomy{cpus, cpus.size(), 24 * 1024};
+    std::vector<BuildReservation> active;
+    std::set<int> assigned;
+    for (std::size_t i = 0; i < build_queue.size(); ++i) {
+        const auto kind = build_queue[i] == "files" ? BuildKind::files :
+            build_queue[i] == "filesystem-exfat" ? BuildKind::exfat : BuildKind::module;
+        auto job = reserve_build(roomy, active, kind, build_queue.size() - i);
+        check(job.has_value(), "a machine with room can admit the full 16-repo queue");
+        check(job->cpus.size() == 1 && assigned.insert(job->cpus.front()).second,
+              "concurrent jobs get distinct CPUs from the allowed affinity mask");
+        active.push_back(*job);
+    }
+    check(!reserve_build(roomy, active, BuildKind::module, 1), "CPU slots are not oversubscribed");
+    active.pop_back();
+    check(reserve_build(roomy, active, BuildKind::module, 1).has_value(),
+          "a finished build frees its CPU and memory reservation");
+
+    TempDir fixture(fs::temp_directory_path(), "native-resources-");
+    const auto proc = fixture.path;
+    const auto groups = fixture.path / "cgroup";
+    fs::create_directories(groups / "parent" / "worker");
+    save(proc / "meminfo", "MemTotal: 33554432 kB\nMemAvailable: 25165824 kB\n");
+    save(proc / "membership", "0::/parent/worker\n");
+    save(groups / "parent" / "cpu.max", "400000 100000\n");
+    save(groups / "parent" / "worker" / "cpu.max", "max 100000\n");
+    save(groups / "parent" / "memory.max", "4294967296\n");
+    save(groups / "parent" / "memory.current", "1073741824\n");
+    auto sampled = build_resources(cpus, proc / "meminfo", proc / "membership", groups);
+    check(sampled.cpu_budget == 4 && sampled.memory_mib == 2560,
+          "parent cgroup quota and memory headroom limit host resources");
+    auto files = reserve_build(sampled, {}, BuildKind::files, 1);
+    check(files.has_value() && !reserve_build(sampled, {*files}, BuildKind::module, 1),
+          "the heavier Files build consumes more of the available RAM");
+
+    save(groups / "parent" / "memory.current", "3758096384\n");
+    sampled = build_resources(cpus, proc / "meminfo", proc / "membership", groups);
+    auto alone = reserve_build(sampled, {}, BuildKind::module, 2);
+    check(alone.has_value() && !reserve_build(sampled, {*alone}, BuildKind::module, 1),
+          "live memory pressure prevents another start but allows serial progress");
+}
 int main() {
     try {
+        check_build_resources();
         auto temporal = catalogue("packaging/temporal-resources.json", 54);
         auto established = catalogue("packaging/filesystem-resources.json", 5);
         auto additional = catalogue("packaging/filesystem-additional.json", 18);

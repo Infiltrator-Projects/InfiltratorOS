@@ -1,3 +1,7 @@
+## 1.0.76 — Adapt native build concurrency to the machine
+
+- Admit as many of the 16 aggressive native builds as available CPU slots and RAM permit, including cgroup limits. Reserve more RAM for Files and exFAT and check resources again before starting each build. Install the resulting packages serially.
+
 ## 1.0.75 — Add eight repositories to the native build queue
 
 - Add Files, Clock-Chinese-Ke, Calendar-Byzantine, Clock-Babylonian-Hours, Calendar-Indian, Calendar-Swedish-Historical, Calendar-Gregorian and Calendar-Islamic-Umalqura to the two-slot queue. Retain serial package installation and component-owned fallback for missing build prerequisites.

@@ -32,6 +32,7 @@
 #include <vector>
 #include <curl/curl.h>
 #include "native-build-queue.h"
+#include "native-build-resources.h"
 namespace fs = std::filesystem;
 using Strings = std::vector<std::string>;
 static const fs::path ROOT("/Temporary/InfiltratorOS");
@@ -136,10 +137,17 @@ static Strings tabs(const std::string &text) {
 }
 static int execute(const Strings &args, std::string *capture = nullptr, const fs::path &log = {}) {
     if (args.empty()) throw std::runtime_error("Empty native command");
+    // Prepare argv before forking. Build workers call this concurrently.
+    std::vector<char *> argv;
+    for (const auto &arg : args) argv.push_back(const_cast<char *>(arg.c_str()));
+    argv.push_back(nullptr);
     int pipes[2] = {-1, -1};
-    if (capture && pipe(pipes)) throw std::runtime_error("Cannot create output pipe");
+    if (capture && pipe2(pipes, O_CLOEXEC)) throw std::runtime_error("Cannot create output pipe");
     pid_t child = fork();
-    if (child < 0) throw std::runtime_error("Cannot fork native command");
+    if (child < 0) {
+        if (capture) { close(pipes[0]); close(pipes[1]); }
+        throw std::runtime_error("Cannot fork native command");
+    }
     if (child == 0) {
         if (capture) {
             close(pipes[0]);
@@ -151,10 +159,8 @@ static int execute(const Strings &args, std::string *capture = nullptr, const fs
                 _exit(126);
             close(fd);
         }
-        std::vector<char *> argv;
-        for (const auto &arg : args) argv.push_back(const_cast<char *>(arg.c_str()));
-        argv.push_back(nullptr);
-        execvp(argv.front(), argv.data());
+        if (argv.front()[0] == '/') execv(argv.front(), argv.data());
+        else execvp(argv.front(), argv.data());
         _exit(127);
     }
     if (capture) {
@@ -737,14 +743,28 @@ struct Job {
     Asset asset;
     fs::path run, folder, package;
 };
-static void build(Job &job, const fs::path &logs) {
-    Strings arguments{job.run.string()};
+static void build(Job &job, const fs::path &logs, const std::vector<int> &cpus) {
+    const auto slots = std::to_string(std::max<std::size_t>(1, cpus.size()));
+    Strings arguments;
+    if (!cpus.empty()) {
+        std::string mask;
+        for (int cpu : cpus) {
+            if (!mask.empty()) mask += ',';
+            mask += std::to_string(cpu);
+        }
+        arguments = {"/usr/bin/taskset", "--cpu-list", mask};
+    }
+    arguments.insert(arguments.end(), {"/usr/bin/env", "MAKEFLAGS=-j" + slots,
+                     "CMAKE_BUILD_PARALLEL_LEVEL=" + slots, job.run.string()});
     // Files always trains its aggressive build. The provider RUNs take a profile.
     if (job.entry.kind != "application")
         arguments.insert(arguments.end(), {"--profile", "aggressive"});
+    if (job.entry.kind == "calendar" || job.entry.kind == "clock")
+        arguments.insert(arguments.end(), {"--jobs", slots});
     arguments.insert(arguments.end(), {"--system-package-mode", "--build-only",
                                       "--output", job.folder.string()});
-    required(arguments, logs / (job.entry.slug() + "-build.log"));
+    if (execute(arguments, nullptr, logs / (job.entry.slug() + "-build.log")) != 0)
+        throw std::runtime_error("Native build failed: " + job.entry.slug());
     std::vector<fs::path> packages;
     for (auto &item : fs::directory_iterator(job.folder))
         if (item.path().extension() == ".deb") packages.push_back(item.path());
@@ -758,18 +778,60 @@ static void build(Job &job, const fs::path &logs) {
         if (output({"/usr/bin/dpkg-deb", "-f", job.package.string(), name}) != value)
             throw std::runtime_error("Invalid component-built DEB identity");
 }
-static int parallel_limit() {
-    if (std::thread::hardware_concurrency() < 4) return 1;
-    try {
-        for (auto &line : lines(read_file("/proc/meminfo", 16384))) {
-            if (line.rfind("MemAvailable:", 0) != 0) continue;
-            std::istringstream stream(line.substr(13));
-            long kib = 0;
-            stream >> kib;
-            return kib >= 3 * 1024 * 1024 ? 2 : 1;
+static void build_packages(std::vector<Job> &jobs, const fs::path &statuses) {
+    using namespace infiltrator_native;
+    std::ofstream timings(statuses / "smart-build-timings.log");
+    if (!timings) throw std::runtime_error("Cannot open native build timing log");
+    timings << "Build admission uses available CPUs and RAM. Selected builds: " << jobs.size() << '\n';
+    const auto started = std::chrono::steady_clock::now();
+    auto elapsed = [&] {
+        return std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - started).count();
+    };
+    struct Active {
+        std::size_t job;
+        BuildReservation resources;
+        std::future<void> result;
+    };
+    std::vector<Active> active;
+    std::size_t next = 0;
+    while (next < jobs.size() || !active.empty()) {
+        for (auto it = active.begin(); it != active.end();) {
+            if (it->result.wait_for(std::chrono::milliseconds(0)) != std::future_status::ready) {
+                ++it;
+                continue;
+            }
+            it->result.get();
+            timings << elapsed() << "ms finished " << jobs[it->job].entry.slug() << std::endl;
+            it = active.erase(it);
         }
-    } catch (...) {}
-    return 1;
+        if (next < jobs.size()) {
+            const auto resources = build_resources(allowed_build_cpus());
+            std::vector<BuildReservation> reservations;
+            for (const auto &job : active) reservations.push_back(job.resources);
+            const auto &entry = jobs[next].entry;
+            const auto kind = entry.kind == "application" ? BuildKind::files :
+                entry.id == "exfat" ? BuildKind::exfat : BuildKind::module;
+            auto reservation = reserve_build(resources, reservations, kind, jobs.size() - next);
+            if (reservation) {
+                const auto job = next++;
+                const auto count = std::to_string(active.size() + 1);
+                const auto slots = std::max<std::size_t>(1, reservation->cpus.size());
+                Status(statuses, entry.slug()).write("running", 35, "Compiling native component",
+                    count + " builds active, " + std::to_string(slots) + " CPU slots for this build");
+                timings << elapsed() << "ms started " << entry.slug() << "; active=" << count
+                        << "; cpu_slots=" << slots << '/' << resources.cpu_budget
+                        << "; reserved_mib=" << reservation->memory_mib
+                        << "; memory_budget_mib=" << resources.memory_mib << std::endl;
+                auto result = std::async(std::launch::async, [&, job, cpus = reservation->cpus] {
+                    build(jobs[job], statuses, cpus);
+                });
+                active.push_back({job, std::move(*reservation), std::move(result)});
+                continue;
+            }
+        }
+        if (!active.empty()) std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    }
 }
 static bool can_build(const Entry &e) {
     Strings packages{"build-essential", "binutils", "dpkg-dev"};
@@ -820,8 +882,6 @@ static int smart_queue(const std::vector<Entry> &entries) {
     setenv("DEBIAN_FRONTEND", "noninteractive", 1);
     setenv("TMPDIR", statuses.c_str(), 1);
     TempDir scratch(statuses, "smart-build-");
-    save(statuses / "smart-build-timings.log",
-         "Build concurrency ceiling: 2; live CPU and memory checks may reduce this to 1\n");
     std::vector<Job> jobs;
     std::vector<Entry> serial;
     std::set<std::string> completed;
@@ -850,32 +910,7 @@ static int smart_queue(const std::vector<Entry> &entries) {
             fs::create_directory(job.folder);
             jobs.push_back(job);
         }
-        // Refill a free slot immediately; recalculate resource limits between launches.
-        std::vector<std::future<void>> active;
-        size_t next = 0;
-        while (next < jobs.size() || !active.empty()) {
-            while (next < jobs.size() &&
-                   active.size() < static_cast<size_t>(parallel_limit())) {
-                const size_t job = next++;
-                Status(statuses, jobs[job].entry.slug()).write(
-                    "running", 35, "Compiling native component",
-                    "Resource-aware queue: one or two builds at once");
-                active.emplace_back(std::async(std::launch::async, [&, job]() {
-                    build(jobs[job], statuses);
-                }));
-            }
-            bool finished = false;
-            for (size_t i = 0; i < active.size(); ++i) {
-                if (active[i].wait_for(std::chrono::milliseconds(0)) !=
-                    std::future_status::ready) continue;
-                active[i].get();
-                active.erase(active.begin() + static_cast<std::ptrdiff_t>(i));
-                finished = true;
-                break;
-            }
-            if (!finished && !active.empty())
-                std::this_thread::sleep_for(std::chrono::milliseconds(50));
-        }
+        build_packages(jobs, statuses);
         for (auto &job : jobs) {
             Status status(statuses, job.entry.slug());
             status.write("running", 85, "Installing native package", "Serial package transaction");
