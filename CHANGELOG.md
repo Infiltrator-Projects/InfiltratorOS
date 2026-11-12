@@ -1,3 +1,8 @@
+## 1.0.79 — Add BOOT automatically alongside GRUB
+
+- Install the independent BOOT package through APT. On eligible UEFI systems, deploy it to its own EFI directory and append it to the firmware boot order. Keep the original default and any one-time boot selection.
+- Refresh upgrader-managed BOOT copies on later upgrades and preserve their configuration and independent drivers.
+
 ## 1.0.78 — Refresh the upgrader window and migrate the legacy Calendar pin
 
 - Group progress, the current component and job counts in a compact GTK panel. Give Close its own high-contrast label and button colours.

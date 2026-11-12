@@ -49,6 +49,12 @@ int main(void)
     CHECK(strcmp(jobs.slugs[0], "system-monitor") == 0);
     CHECK(strcmp(jobs.slugs[2], "calendar") == 0);
     CHECK(strcmp(jobs.slugs[81], "filesystem-test-22") == 0);
+    file = fopen(manifest, "a");
+    CHECK(file != NULL);
+    CHECK(fputs("boot\n", file) >= 0);
+    CHECK(fclose(file) == 0);
+    CHECK(native_progress_load_jobs(status, &jobs) == 83);
+    CHECK(strcmp(jobs.slugs[82], "boot") == 0);
     CHECK(strcmp(native_progress_run_status(status), "running") == 0);
     for (int i = 0; i < jobs.count; ++i) {
         CHECK(snprintf(path, sizeof(path), "%s/%s-install.status", status,

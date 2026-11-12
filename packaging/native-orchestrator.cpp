@@ -243,6 +243,8 @@ static void dispatch(const fs::path &stage) {
     all_fs.insert(all_fs.end(), optional.begin(), optional.end());
     Strings chosen = selection("INFILTRATOROS_SELECTED_FILESYSTEMS", all_fs, true);
     Strings selected = apps;
+    if (fs::is_regular_file(canonical / "status/boot-install.status"))
+        selected.emplace_back("boot");
     selected.insert(selected.end(), temporal.begin(), temporal.end());
     selected.insert(selected.end(), chosen.begin(), chosen.end());
     const fs::path manifest = canonical / ".selected.list.tmp";

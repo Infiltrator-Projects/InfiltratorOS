@@ -4,12 +4,15 @@ Section: misc
 Priority: optional
 Architecture: amd64
 Maintainer: Infiltrator Projects <noreply@infiltrator-projects.invalid>
-Depends: plymouth, apt, wget, ca-certificates, bash, fontconfig, util-linux, coreutils, libcurl4t64 | libcurl4, libjson-c5, libgtk-3-0 | libgtk-3-0t64
+Depends: plymouth, apt, wget, ca-certificates, bash, fontconfig, util-linux, coreutils, libcurl4t64 | libcurl4, libjson-c5, libgtk-3-0 | libgtk-3-0t64, infiltrator-boot (>= 0.1.42), efibootmgr
 Description: InfiltratorOS branding and native application integration
  Installs the canonical InfiltratorOS Plymouth splash for Debian and
  Linux Mint derived systems, selects it as the active theme, rebuilds
  initramfs, and replaces distribution System Monitor and Calculator packages
  with Infiltrator builds compiled aggressively for the local CPU.
+ .
+ BOOT is added automatically as a separate firmware option on supported
+ x86-64 UEFI systems with Secure Boot disabled and GRUB as the default.
  .
  Calendar is compiled locally through its independently published native
  installer. Once available, a backed-up per-user Cinnamon login migration

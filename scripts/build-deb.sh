@@ -153,6 +153,7 @@ c++ -std=c++17 -O2 -Wall -Wextra -Werror -Wpedantic -pthread \
 for inventory in temporal-resources.json filesystem-resources.json filesystem-additional.json; do
     install -m 0644 "$ROOT/packaging/$inventory" "$RUNTIME_BUILD/$inventory"
 done
+install -m 0755 "$ROOT/packaging/install-boot-option.sh" "$RUNTIME_BUILD/install-boot-option"
 
 for product in system-monitor calculator calendar files defragmenter temporal-resources filesystem-resources; do
     case "$product" in

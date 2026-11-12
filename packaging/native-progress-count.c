@@ -17,6 +17,7 @@ static bool valid_slug(const char *slug)
     if (strcmp(slug, "system-monitor") == 0 ||
         strcmp(slug, "calculator") == 0 ||
         strcmp(slug, "calendar") == 0 ||
+        strcmp(slug, "boot") == 0 ||
         strcmp(slug, "files") == 0 ||
         strcmp(slug, "defragmenter") == 0) return true;
     return starts_with(slug, "calendar-") || starts_with(slug, "clock-") ||

@@ -194,7 +194,9 @@ jobs:
           for inventory in temporal-resources.json filesystem-resources.json filesystem-additional.json; do
             test -s "$runtime/$inventory"
           done
-          test "$(find "$runtime" -maxdepth 1 -type f | wc -l)" -eq 26
+          cmp packaging/install-boot-option.sh "$runtime/install-boot-option"
+          bash tests/boot-upgrade.sh "$runtime/install-boot-option"
+          test "$(find "$runtime" -maxdepth 1 -type f | wc -l)" -eq 27
           # Prevent OS-owned runtime files outside the native /Temporary.
           grep -Fq 'STATUS_ROOT=/Temporary/InfiltratorOS' "$RUNNER_TEMP/control/postinst"
           grep -Fq 'stage=$(mktemp -d "$STATUS_ROOT/native-worker.XXXXXXXX")' "$RUNNER_TEMP/control/postinst"
@@ -250,6 +252,11 @@ jobs:
               LD_PRELOAD="$fixture/inspect.so" PROGRESS_EXPECT=complete \
               "$progress" "$fixture/status/done.status"
           done
+      - name: Qualify the automatic BOOT upgrade in disposable UEFI firmware
+        shell: bash
+        run: |
+          sudo apt-get install -y --no-install-recommends qemu-system-x86 ovmf efibootmgr busybox-static gdisk dosfstools cpio
+          bash tests/boot-upgrade-uefi.sh "$RUNNER_TEMP/verified-native-worker/install-boot-option" "$RUNNER_TEMP/boot-uefi"
       # Native provider builds belong to their independent repositories. The OS
       # release gate qualifies its own dispatcher, package and signed worker
       # contracts above; cross-repository installation stress is manual-only.
