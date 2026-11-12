@@ -172,6 +172,7 @@ for product in system-monitor calculator calendar files defragmenter temporal-re
     # pkg-config emits compiler arguments, intentionally split by the shell.
     # shellcheck disable=SC2086
     cc -std=c11 -O2 -Wall -Wextra -Werror -Wpedantic "-D$profile" \
+        "-DINFILTRATOROS_VERSION=\"$VERSION\"" \
         $(pkg-config --cflags gtk+-3.0 pangoft2 fontconfig) \
         -I"$ROOT/src/infiltratr-common/include" \
         "$ROOT/packaging/native-install-progress.c" "$ROOT/packaging/native-progress-count.c" \

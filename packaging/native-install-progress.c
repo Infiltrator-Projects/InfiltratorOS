@@ -325,7 +325,7 @@ static bool install_common_theme(void)
         "#installer-title { font-family:'MB Corpo S Title WEB'; color:#%06x;"
         " font-size:19px; font-weight:700; }"
         "#installer-stage { font-family:'MB Corpo S Text WEB Cond'; color:#%06x; font-size:14px; }"
-        "#installer-detail { color:#%06x; font-size:13px; }"
+        "#installer-detail, #installer-subtitle { color:#%06x; font-size:13px; }"
         "progressbar trough { background-color:#%06x; border:1px solid #%06x;"
         " border-radius:%upx; min-height:15px; }"
         "progressbar progress { background-color:#%06x; border-radius:%upx; }"
@@ -403,7 +403,7 @@ int main(int argc, char **argv)
 #endif
 
     ui.window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
-    gtk_window_set_title(GTK_WINDOW(ui.window), "InfiltratorOS");
+    gtk_window_set_title(GTK_WINDOW(ui.window), "InfiltratorOS " INFILTRATOROS_VERSION);
     gtk_window_set_default_size(GTK_WINDOW(ui.window), 600, 240);
     gtk_window_set_resizable(GTK_WINDOW(ui.window), TRUE);
     gtk_container_set_border_width(GTK_CONTAINER(ui.window),
@@ -412,10 +412,18 @@ int main(int argc, char **argv)
     GtkWidget *box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 10);
     gtk_container_add(GTK_CONTAINER(ui.window), box);
 
+    GtkWidget *brand_header = gtk_box_new(GTK_ORIENTATION_VERTICAL, 2);
+    gtk_box_pack_start(GTK_BOX(box), brand_header, FALSE, FALSE, 0);
+
     GtkWidget *brand = gtk_label_new("InfiltratorOS");
     gtk_widget_set_name(brand, "installer-brand");
     gtk_widget_set_halign(brand, GTK_ALIGN_START);
-    gtk_box_pack_start(GTK_BOX(box), brand, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(brand_header), brand, FALSE, FALSE, 0);
+
+    GtkWidget *subtitle = gtk_label_new("Upgrader for Debian-based systems");
+    gtk_widget_set_name(subtitle, "installer-subtitle");
+    gtk_widget_set_halign(subtitle, GTK_ALIGN_START);
+    gtk_box_pack_start(GTK_BOX(brand_header), subtitle, FALSE, FALSE, 0);
 
     ui.title = gtk_label_new(NULL);
     gtk_widget_set_name(ui.title, "installer-title");

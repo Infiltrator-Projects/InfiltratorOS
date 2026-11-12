@@ -1,3 +1,7 @@
+## 1.0.77 — Identify the upgrader in its progress window
+
+- Show the Debian package version in the GTK window title and describe InfiltratorOS as an upgrader for Debian-based systems.
+
 ## 1.0.76 — Adapt native build concurrency to the machine
 
 - Admit as many of the 16 aggressive native builds as available CPU slots and RAM permit, including cgroup limits. Reserve more RAM for Files and exFAT and check resources again before starting each build. Install the resulting packages serially.
