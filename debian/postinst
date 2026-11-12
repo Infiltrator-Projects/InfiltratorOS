@@ -7,6 +7,39 @@ STATUS_ROOT=/Temporary/InfiltratorOS
 # All InfiltratorOS-owned installation files stay under the native /Temporary root.
 BUNDLE_SHA256='@NATIVE_RUNTIME_SHA256@'
 
+migrate_legacy_calendar_pin() (
+    pin=$1
+    [ -f "$pin" ] && [ ! -L "$pin" ] || exit 0
+    original=$(sha256sum -- "$pin") || exit 1
+    # Earlier repository setup forced a downgrade from Ubuntu's namesake.
+    # Replace only that complete legacy rule, including on existing machines.
+    if ! awk '
+        /^[[:space:]]*(#.*)?$/ { next }
+        { sub(/^[[:space:]]+/, ""); sub(/[[:space:]]+$/, ""); gsub(/[[:blank:]]+/, " "); line[++count] = $0 }
+        END { exit !(count == 3 && line[1] == "Package: calendar" &&
+            line[2] == "Pin: origin infiltrator-projects.github.io" &&
+            line[3] == "Pin-Priority: 1001") }
+    ' "$pin"; then
+        exit 0
+    fi
+    replacement=$(mktemp "${pin%/*}/.infiltrator-calendar.XXXXXXXX") || exit 1
+    trap 'rm -f -- "$replacement"' EXIT HUP INT TERM
+    cat > "$replacement" <<'CALENDAR_POLICY' || exit 1
+# Keep the CPU-native Calendar as the candidate and prefer Infiltrator builds.
+Package: calendar
+Pin: version /.*[+]nativepgo.*/
+Pin-Priority: 1000
+
+Package: calendar
+Pin: release o=Infiltrator
+Pin-Priority: 999
+CALENDAR_POLICY
+    chmod 0644 "$replacement" || exit 1
+    [ ! -L "$pin" ] && [ "$(sha256sum -- "$pin")" = "$original" ] || exit 1
+    mv -fT -- "$replacement" "$pin" || exit 1
+    printf '%s\n' 'Updated the legacy Calendar APT preference to preserve the native build.'
+)
+
 unpack_native_workers() {
     stage=$1
     bundle="$stage/runtime.tar.gz"
@@ -45,6 +78,10 @@ fi
 # Package configuration and reinstall share one canonical installation path.
 if [ "${1:-}" != configure ]; then
     exit 0
+fi
+
+if ! migrate_legacy_calendar_pin /etc/apt/preferences.d/infiltrator-calendar.pref; then
+    echo 'Could not migrate the legacy Calendar APT preference.' >&2
 fi
 
 mkdir -p "$STATUS_ROOT"

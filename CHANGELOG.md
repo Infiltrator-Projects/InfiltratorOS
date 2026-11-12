@@ -1,3 +1,8 @@
+## 1.0.78 — Refresh the upgrader window and migrate the legacy Calendar pin
+
+- Group progress, the current component and job counts in a compact GTK panel. Give Close its own high-contrast label and button colours.
+- Migrate the recognised legacy Calendar priority-1001 file to the current APT policy so a repository refresh preserves an installed native build.
+
 ## 1.0.77 — Identify the upgrader in its progress window
 
 - Show the Debian package version in the GTK window title and describe InfiltratorOS as an upgrader for Debian-based systems.
