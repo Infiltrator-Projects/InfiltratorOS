@@ -1,3 +1,8 @@
+## 1.0.82 — Deploy Common V2 BOOT with its installed filesystem modules
+
+- Wait for the selected filesystem workers before configuring BOOT.
+- Pass verified firmware-compatible filesystem shared objects to the independent BOOT deployment helper and refresh their EFI copies on provider upgrades.
+
 ## 1.0.81 — Upgrade existing firmware-registered BOOT installations
 
 - Update a previous BOOT installation that predates the upgrader's ownership marker when its active firmware entry identifies the same EFI partition and loader.

@@ -114,14 +114,18 @@ int main() {
         check(established[0].slug() == "filesystem-fat12", "FAT12 identity");
         check(application("system-monitor").repo == "System-Monitor", "system monitor identity");
         const auto boot = application("boot");
-        const Asset boot_version{"0.1.43", "", "", 0};
-        check(application_package_matches(boot, boot_version, "install ok installed\t0.1.43+native1"),
+        const Asset boot_version{"0.1.45", "", "", 0};
+        check(application_package_matches(boot, boot_version, "install ok installed\t0.1.45+native1"),
               "BOOT accepts its locally compiled package");
-        check(!application_package_matches(boot, boot_version, "install ok installed\t0.1.43"),
+        check(!application_package_matches(boot, boot_version, "install ok installed\t0.1.45"),
               "BOOT rejects the portable package as native evidence");
-        auto boot_release = sample_release(boot, "0.1.43", false);
-        check(release_asset(boot, boot_release.ptr, false, false).url.find("boot-0.1.43-native-installer.run") != std::string::npos,
+        auto boot_release = sample_release(boot, "0.1.45", false);
+        check(release_asset(boot, boot_release.ptr, false, false).url.find("boot-0.1.45-native-installer.run") != std::string::npos,
               "BOOT resolves its independent source installer");
+        rejects([&]() {
+            auto old_boot = sample_release(boot, "0.1.44", false);
+            (void)release_asset(boot, old_boot.ptr, false, false);
+        }, "legacy BOOT filesystem release");
         check(application("defragmenter").resource == "/Programs/defragmenter",
               "defragmenter destination");
         // A missing optional Defragmenter field must never invalidate other apps.
@@ -234,6 +238,17 @@ int main() {
             status.write("queued", 2, "Waiting", "Native status");
             check(read_file(path / "test-driver-install.status").find("state=queued\n") == 0,
                   "atomic status contract");
+            fs::copy_file("packaging/filesystem-resources.json", path / "filesystem-resources.json");
+            fs::copy_file("packaging/filesystem-additional.json", path / "filesystem-additional.json");
+            save(path / "selected.list", "boot\nfiles\nfilesystem-fat16\nfilesystem-hfs\n");
+            auto selected = boot_filesystems(path);
+            check(selected.size() == 2 && selected[0].id == "fat16" && selected[1].id == "hfs",
+                  "BOOT uses only selected filesystem providers");
+            Status(path, "filesystem-fat16").write("complete", 100, "Installed", "");
+            Status(path, "filesystem-hfs").write("failed", 100, "Failed", "");
+            wait_for_boot_filesystems(path, selected);
+            check(provider_state(path, selected[0]) == "complete" &&
+                  provider_state(path, selected[1]) == "failed", "BOOT waits for terminal provider states");
             save(path / "sha.txt", "abc");
             check(digest(path / "sha.txt") ==
                   "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",

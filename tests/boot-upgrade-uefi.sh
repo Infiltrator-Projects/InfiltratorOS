@@ -8,7 +8,7 @@ guest="$work/guest"
 mkdir -p "$guest" "$work/kernel"
 
 # Compile BOOT locally from its independently released source installer.
-version=0.1.44
+version=0.1.45
 run="boot-${version}-native-installer.run"
 url="https://github.com/Infiltrator-Projects/Boot/releases/download/v$version"
 curl -fsSL --retry 2 "$url/$run" -o "$work/$run"
@@ -20,6 +20,16 @@ mkdir "$work/native"
 boot_deb="$work/native/infiltrator-boot_${version}+native1_amd64.deb"
 dpkg-deb -x "$boot_deb" "$guest"
 install -m 0755 "$helper" "$guest/install-boot-option"
+
+# Use the exact independent provider package qualified for Common V2. Only
+# its shared object goes into the guest's system module directory.
+fat16=infiltrator-filesystem-fat16_0.1.18_amd64.deb
+curl -fsSL --retry 2 "https://github.com/Infiltrator-Projects/Filesystem-FAT16/releases/download/v0.1.18/$fat16" -o "$work/$fat16"
+printf '%s  %s\n' 905e94f3fc563c6d07cdf90601a38237c0637f213e790c64c9b54bd85ec9df6b "$work/$fat16" | sha256sum -c -
+dpkg-deb -x "$work/$fat16" "$work/provider"
+module=/System/Filesystems/FAT16.so
+install -D -m 0644 "$work/provider$module" "$guest$module"
+"$guest/usr/lib/infiltrator-boot/validate-module" "$guest$module"
 
 image=$(apt-cache depends linux-image-generic | awk '/Depends: linux-image-[0-9]/ { image=$2 } END { print image }')
 release=${image#linux-image-}
@@ -35,9 +45,10 @@ cp -a "$module_root" "$guest/lib/modules/"
 depmod -b "$guest" "$release"
 
 for program in bash efibootmgr findmnt lsblk blkid sha256sum cmp od id mktemp mv rm sync cat tail \
-               dirname find cp mkdir grep rmdir sed modprobe mount env; do
+               dirname find cp mkdir grep rmdir sed modprobe mount env stat \
+               "$guest/usr/lib/infiltrator-boot/validate-module"; do
     path=$(command -v "$program")
-    cp -L --parents "$path" "$guest"
+    if [[ $path != "$guest/"* ]]; then cp -L --parents "$path" "$guest"; fi
     while IFS= read -r library; do
         cp -L --parents "$library" "$guest"
     done < <(ldd "$path" | awk '$2 == "=>" && $3 ~ /^\// {print $3} $1 ~ /^\// {print $1}')
@@ -74,7 +85,7 @@ for _ in {1..50}; do
     /bin/busybox sleep 0.1
 done
 esp=/boot/efi
-mount -t vfat /dev/vda1 "$esp"
+mount -t vfat -o iocharset=iso8859-1 /dev/vda1 "$esp"
 mkdir -p "$esp/EFI/ubuntu" "$esp/EFI/Other"
 printf 'GRUB unchanged\n' > "$esp/EFI/ubuntu/shimx64.efi"
 printf 'Other loader unchanged\n' > "$esp/EFI/Other/BOOTX64.EFI"
@@ -87,7 +98,8 @@ other=$(sed -nE 's/^Boot([0-9A-F]{4})\*[[:space:]]+Fixture Other.*/\1/p' <<< "$b
 efibootmgr --bootorder "$grub,$other"
 efibootmgr --bootnext "$other"
 
-/install-boot-option
+module=/System/Filesystems/FAT16.so
+/install-boot-option "$module"
 registered=$(efibootmgr -v)
 printf '%s\n' "$registered"
 option=$(sed -nE 's/^Boot([0-9A-F]{4})\*[[:space:]]+Infiltrator BOOT.*/\1/p' <<< "$registered")
@@ -97,7 +109,12 @@ grep -Fxq "BootNext: $other" <<< "$registered"
 installed="$esp/EFI/InfiltratorBoot"
 payload=/usr/lib/infiltrator-boot/EFI/BOOT/BOOTX64.EFI
 cmp "$payload" "$installed/BOOTX64.EFI"
-/install-boot-option
+cmp "$module" "$installed/filesystems_x64/FAT16.so"
+/install-boot-option "$module"
+[[ $(efibootmgr -v) == "$registered" ]]
+rm "$installed/filesystems_x64/FAT16.so"
+/install-boot-option "$module"
+cmp "$module" "$installed/filesystems_x64/FAT16.so"
 [[ $(efibootmgr -v) == "$registered" ]]
 
 # Exercise an existing firmware-registered BOOT loader that predates the
@@ -111,7 +128,7 @@ printf 'old BOOT loader\n' > "$installed/BOOTX64.EFI"
 rm "$installed/.infiltratoros-loader.sha256"
 printf 'user boot configuration\n' > "$installed/boot.conf"
 printf 'independent driver\n' > "$installed/drivers_x64/user.efi"
-/install-boot-option
+/install-boot-option "$module"
 cmp "$payload" "$installed/BOOTX64.EFI"
 grep -Fxq 'user boot configuration' "$installed/boot.conf"
 grep -Fxq 'independent driver' "$installed/drivers_x64/user.efi"
@@ -123,7 +140,7 @@ grep -Fxq 'Other loader unchanged' "$esp/EFI/Other/BOOTX64.EFI"
 printf 'previous managed BOOT loader\n' > "$installed/BOOTX64.EFI"
 old=$(sha256sum < "$installed/BOOTX64.EFI")
 printf '%s\n' "${old%% *}" > "$installed/.infiltratoros-loader.sha256"
-/install-boot-option
+/install-boot-option "$module"
 cmp "$payload" "$installed/BOOTX64.EFI"
 grep -Fxq 'user boot configuration' "$installed/boot.conf"
 grep -Fxq 'independent driver' "$installed/drivers_x64/user.efi"

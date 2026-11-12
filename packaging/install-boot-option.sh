@@ -11,7 +11,11 @@ boot_label='Infiltrator BOOT'
 note() { printf 'Infiltrator BOOT: %s\n' "$*"; }
 skip() { note "$*"; exit 77; }
 firmware() { efibootmgr "$@"; }
-deploy() { /usr/sbin/infiltrator-boot-deploy "$1" --confirm; }
+deploy() {
+    local mode=$1
+    shift
+    /usr/sbin/infiltrator-boot-deploy "$mode" --confirm "$@"
+}
 
 boot_order() {
     local line order= count=0
@@ -66,20 +70,26 @@ default_is_grub() {
 
 deploy_boot() {
     local payload=$1 directory=$2 registered_option=${3:-}
+    if (( $# >= 3 )); then shift 3; else shift 2; fi
     local executable="$directory/BOOTX64.EFI" marker="$directory/.infiltratoros-loader.sha256"
-    local installed packaged staged_marker
+    local installed packaged staged_marker module refresh_modules=0
     packaged=$(sha256sum < "$payload") || return 1
     packaged=${packaged%% *}
 
     if [[ ! -e $directory && ! -L $directory ]]; then
-        deploy --install-new || return 1
+        deploy --install-new "$@" || return 1
     else
         if [[ -L $directory || ! -f $executable || -L $executable || -L $marker ]]; then
             skip 'An existing BOOT deployment needs review.'
         fi
         installed=$(sha256sum < "$executable") || return 1
         installed=${installed%% *}
-        if [[ $installed != "$packaged" ]]; then
+        for module; do
+            if ! cmp -s -- "$module" "$directory/filesystems_x64/${module##*/}"; then
+                refresh_modules=1
+            fi
+        done
+        if [[ $installed != "$packaged" || $refresh_modules == 1 ]]; then
             # Existing BOOT installations may predate the upgrader's marker.
             # An active firmware entry for this exact loader on this ESP is
             # also evidence that this is the BOOT installation to upgrade.
@@ -87,13 +97,16 @@ deploy_boot() {
                   ! $registered_option =~ ^[[:xdigit:]]{4}$ ]]; then
                 skip 'The existing BOOT installation has no matching firmware entry.'
             fi
-            deploy --update-existing || return 1
+            deploy --update-existing "$@" || return 1
         elif [[ -f $marker && $(< "$marker") == "$packaged" ]]; then
             return 0
         fi
     fi
 
     cmp -s -- "$payload" "$executable" || return 1
+    for module; do
+        cmp -s -- "$module" "$directory/filesystems_x64/${module##*/}" || return 1
+    done
     staged_marker=$(mktemp "$directory/.infiltratoros-loader.XXXXXXXX") || return 1
     if ! printf '%s\n' "$packaged" > "$staged_marker" || ! mv -fT -- "$staged_marker" "$marker"; then
         rm -f -- "$staged_marker"
@@ -135,7 +148,12 @@ register_option() {
 }
 
 main() {
-    [[ $# == 0 ]] || { note 'Usage: install-boot-option' >&2; return 2; }
+    local module
+    for module; do
+        [[ $module =~ ^/System/Filesystems/[A-Za-z0-9_-]+\.so$ ]] || {
+            note "Invalid filesystem module: $module" >&2; return 2;
+        }
+    done
     [[ $(id -u) == 0 ]] || { note 'Run as root.' >&2; return 1; }
     local esp=/boot/efi
     local vars=/sys/firmware/efi/efivars
@@ -189,7 +207,7 @@ main() {
     if [[ -z $option ]] && ! default_is_grub "$snapshot" "$order" "$part" "$uuid" "$esp"; then
         skip 'GRUB is not the default entry on this ESP.'
     fi
-    deploy_boot "$payload" "$esp/EFI/InfiltratorBoot" "$option" || return 1
+    deploy_boot "$payload" "$esp/EFI/InfiltratorBoot" "$option" "$@" || return 1
     [[ $(findmnt -rnM "$esp" -o SOURCE) == "$source" ]] || return 1
     register_option "/dev/$parent" "$part" "$uuid" "$snapshot" "$order"
 }

@@ -355,6 +355,9 @@ static Asset release_asset(const Entry &entry, json_object *meta, bool calendar_
     }
     Asset result;
     result.version = tag.substr(1);
+    if (entry.id == "boot" &&
+        execute({"/usr/bin/dpkg", "--compare-versions", result.version, "ge", "0.1.45"}) != 0)
+        throw std::runtime_error("BOOT requires version 0.1.45 or newer for Common V2 deployment");
     // Older Calendar RUNs invoke the Python scanner during a native build.
     if (entry.id == "calendar" &&
         execute({"/usr/bin/dpkg", "--compare-versions", result.version, "ge", "1.0.131"}) != 0)
@@ -546,7 +549,9 @@ static bool provider_current(const Entry &entry, const Asset &asset) {
     std::ifstream pdf(manual, std::ios::binary);
     char magic[5];
     if (!pdf.read(magic, 5) || std::memcmp(magic, "%PDF-", 5) != 0) return false;
-    return execute({"/usr/bin/dpkg", "--verify", entry.package}) == 0;
+    std::string verification;
+    return execute({"/usr/bin/dpkg", "--verify", entry.package}, &verification) == 0 &&
+           trim(verification).empty();
 }
 static Entry application(const std::string &slug) {
     Entry e;
@@ -571,6 +576,7 @@ static Entry application(const std::string &slug) {
 }
 static Strings required_paths(const std::string &slug) {
     if (slug == "boot") return {"/usr/sbin/infiltrator-boot-deploy", "/usr/lib/infiltrator-boot/deploy-core",
+                                "/usr/lib/infiltrator-boot/validate-module",
                                 "/usr/lib/infiltrator-boot/EFI/BOOT/boot.conf"};
     if (slug == "system-monitor") return {"/usr/share/doc/system-monitor/BUILD-INFO"};
     if (slug == "calculator")
@@ -728,14 +734,82 @@ static bool install(const Entry &entry, Status &status, bool application_mode,
     verify_install(entry, asset, application_mode);
     return false;
 }
+static std::vector<Entry> boot_filesystems(const fs::path &stage) {
+    if (stage == ROOT || !regular(stage / "selected.list")) return {};
+    auto catalogue_entries = catalogue(stage / "filesystem-resources.json", 5);
+    auto additional = catalogue(stage / "filesystem-additional.json", 18);
+    catalogue_entries.insert(catalogue_entries.end(), additional.begin(), additional.end());
+    std::vector<Entry> selected;
+    for (const auto &slug : lines(read_file(stage / "selected.list"))) {
+        if (slug.rfind("filesystem-", 0) != 0) continue;
+        auto entry = std::find_if(catalogue_entries.begin(), catalogue_entries.end(),
+                                  [&](const Entry &e) { return e.slug() == slug; });
+        if (entry == catalogue_entries.end())
+            throw std::runtime_error("Unrecognised BOOT filesystem selection: " + slug);
+        selected.push_back(*entry);
+    }
+    return selected;
+}
+static std::string provider_state(const fs::path &statuses, const Entry &provider) {
+    const Status status(statuses, provider.slug());
+    if (!regular(status.path)) return {};
+    for (const auto &field : lines(read_file(status.path))) {
+        if (field.rfind("state=", 0) == 0) return field.substr(6);
+    }
+    return {};
+}
+static void wait_for_boot_filesystems(const fs::path &statuses,
+                                      const std::vector<Entry> &providers) {
+    // Native filesystem workers need the same global package lock. Wait
+    // outside that lock, after the dispatcher has launched every provider.
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::hours(23) +
+                          std::chrono::minutes(50);
+    while (std::any_of(providers.begin(), providers.end(), [&](const Entry &provider) {
+        const auto state = provider_state(statuses, provider);
+        return state != "complete" && state != "failed";
+    })) {
+        if (std::chrono::steady_clock::now() >= deadline)
+            throw std::runtime_error("Filesystem workers did not finish in time for BOOT deployment");
+        std::this_thread::sleep_for(std::chrono::seconds(1));
+    }
+}
+static Strings boot_deployment(const fs::path &stage, const fs::path &statuses,
+                               const std::vector<Entry> &providers) {
+    Strings command{(stage / "install-boot-option").string()};
+    for (const auto &provider : providers) {
+        if (provider_state(statuses, provider) != "complete") continue;
+        const auto meta = release(provider);
+        const auto asset = release_asset(provider, meta.ptr, false, true);
+        if (!provider_current(provider, asset))
+            throw std::runtime_error("Filesystem package changed before BOOT deployment: " + provider.package);
+        const int result = execute({"/usr/lib/infiltrator-boot/validate-module", provider.resource});
+        if (result == 1) {
+            std::cout << "BOOT firmware profile unavailable for " << provider.resource << "\n";
+            continue;
+        }
+        if (result != 0)
+            throw std::runtime_error("Could not verify BOOT filesystem module: " + provider.resource);
+        command.push_back(provider.resource);
+    }
+    return command;
+}
 static int individual(const Entry &entry, bool app, bool temporal, bool filesystem) {
     if (geteuid() != 0) throw std::runtime_error("Native installation requires root");
     fs::create_directories(ROOT);
-    fs::path status_dir = stage_dir() / (stage_dir() == ROOT ? "" : "status");
+    const auto stage = stage_dir();
+    const auto status_dir = stage / (stage == ROOT ? "" : "status");
     fs::create_directories(status_dir);
     Status status(status_dir, app ? entry.id : entry.slug());
     try {
         Lock owner(ROOT / ((app ? entry.id : entry.slug()) + ".lock"));
+        std::vector<Entry> providers;
+        if (entry.id == "boot") {
+            providers = boot_filesystems(stage);
+            if (!providers.empty()) {
+                status.write("queued", 2, "Waiting for filesystem providers", "BOOT stages compatible modules after installation");
+                wait_for_boot_filesystems(status_dir, providers);
+            }
+        }
         status.write("queued", 2, "Waiting for package lock", entry.repo);
         Lock global(ROOT / "native-install.lock");
         setenv("DEBIAN_FRONTEND", "noninteractive", 1);
@@ -744,7 +818,7 @@ static int individual(const Entry &entry, bool app, bool temporal, bool filesyst
         bool already = install(entry, status, app, temporal, filesystem);
         if (entry.id == "boot") {
             status.write("running", 95, "Configuring firmware option", "Checking the EFI system partition");
-            const int result = execute({(stage_dir() / "install-boot-option").string()});
+            const int result = execute(boot_deployment(stage, status_dir, providers));
             if (result != 0 && result != 77)
                 throw std::runtime_error("BOOT firmware setup failed; see boot-install.log");
             if (result == 77) {

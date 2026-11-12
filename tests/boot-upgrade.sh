@@ -52,6 +52,9 @@ deploy() {
     esac
     printf '%s\n' "$1" >> "$operations"
     cp "$payload" "$directory/BOOTX64.EFI"
+    shift
+    mkdir -p "$directory/filesystems_x64"
+    for module; do cp "$module" "$directory/filesystems_x64/"; done
 }
 
 printf 'first verified BOOT loader\n' > "$payload"
@@ -95,4 +98,19 @@ if register_option /dev/vda 1 "$uuid" "$(cat "$original")" 0005,0003,0001; then
 fi
 cmp "$operations" <(printf '%s\n' --install-new create append --update-existing --update-existing)
 grep -Fxq 'GRUB loader' "$esp/EFI/ubuntu/shimx64.efi"
+
+# Provider upgrades must also refresh an ESP copy when the loader itself is current.
+printf 'verified loader\n' > "$payload"
+deploy_boot "$payload" "$directory" "$option"
+module="$work/FAT16.so"
+printf 'verified module\n' > "$module"
+deploy_boot "$payload" "$directory" "$option" "$module"
+cmp "$module" "$directory/filesystems_x64/FAT16.so"
+count=$(wc -l < "$operations")
+deploy_boot "$payload" "$directory" "$option" "$module"
+[[ $(wc -l < "$operations") == "$count" ]]
+printf 'upgraded module\n' > "$module"
+deploy_boot "$payload" "$directory" "$option" "$module"
+cmp "$module" "$directory/filesystems_x64/FAT16.so"
+[[ $(wc -l < "$operations") == $((count + 1)) ]]
 echo 'BOOT deployment and firmware order contracts passed.'

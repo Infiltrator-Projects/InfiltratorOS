@@ -11,9 +11,10 @@ Description: InfiltratorOS branding and native application integration
  initramfs, and replaces distribution System Monitor and Calculator packages
  with Infiltrator builds compiled aggressively for the local CPU.
  .
- BOOT is compiled locally by its independent native installer, then added as
- a separate firmware option on supported x86-64 UEFI systems with Secure Boot
- disabled and GRUB as the default.
+ Common V2 BOOT is compiled locally by its independent native installer.
+ After the selected filesystem jobs finish, BOOT stages compatible installed
+ shared objects and its own EFI application. New firmware entries are added
+ alongside GRUB on supported x86-64 UEFI systems with Secure Boot disabled.
  .
  Calendar is compiled locally through its independently published native
  installer. Once available, a backed-up per-user Cinnamon login migration

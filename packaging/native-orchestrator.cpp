@@ -260,7 +260,6 @@ static void dispatch(const fs::path &stage) {
     auto queued = [smart](const std::string &slug) {
         return smart && infiltrator_native::queue_candidate(slug);
     };
-    launch(canonical, "boot");
     for (const auto &s : apps)
         if (!queued(s)) launch(canonical, s);
     for (const auto &s : temporal)
@@ -276,6 +275,7 @@ static void dispatch(const fs::path &stage) {
     }
     for (const auto &s : chosen)
         if (!queued(s)) launch(canonical, "filesystem-resources", s);
+    launch(canonical, "boot");
 }
 int main(int argc, char **argv) {
     try {
