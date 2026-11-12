@@ -27,7 +27,7 @@ Five filesystem releases are resolved through the [central 63-component release 
 
 - `/Programs` is the native location of user-launchable applications.
 - `/System/Commands` contains operating-system command helpers; `/System/Filesystems` is the canonical location for separately installed filesystem `.so` modules.
-- `/System/Kernel/Filesystems` stores one verified `.ko` per supported filesystem for manual use. See the [filesystem build outputs](docs/FILESYSTEM.md#filesystem-build-outputs).
+- InfiltratorOS does not create a filesystem-specific kernel-module directory. Older independent provider packages may still create `/System/Kernel/Filesystems` until they are updated. See the [filesystem build outputs](docs/FILESYSTEM.md#filesystem-build-outputs).
 - `/System/Resources/Calendars` and `/System/Resources/Clocks` contain independent temporal providers.
 - `/System/Resources/Fonts` contains 23 verified MB Corpo/Daimler fonts; `/System/Resources/Icons` contains 1,233 verified named icons. InfiltratorOS owns these shared files, which are placed directly in the native directories without permanent `Seed` folders or duplicate installed archives.
 - `/Temporary/InfiltratorOS` holds run-scoped workers, downloads, progress, logs and locks. Successful provisioning cleans up temporary installers; failure diagnostics are retained. Installation does not clear `/Volumes`.

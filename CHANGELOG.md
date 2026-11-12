@@ -1,3 +1,7 @@
+## 1.0.74 — Stop creating the filesystem kernel-module directory
+
+- Keep `/System/Filesystems` for filesystem libraries without creating `/System/Kernel/Filesystems` in the InfiltratorOS package.
+
 ## 1.0.73 — Provision Calendar through its native installer
 
 - Remove Calendar from the InfiltratorOS package dependencies. Run its verified hardware-native installer as a selectable application job and report its result in aggregate progress.

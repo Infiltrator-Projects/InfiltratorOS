@@ -49,7 +49,6 @@ mkdir -p \
     "$SYSTEM_ROOT/Filesystems" \
     "$SYSTEM_ROOT/Kernel/Images" \
     "$SYSTEM_ROOT/Kernel/Modules" \
-    "$SYSTEM_ROOT/Kernel/Filesystems" \
     "$SYSTEM_ROOT/Kernel/Firmware" \
     "$SYSTEM_ROOT/Resources/Calendars" \
     "$SYSTEM_ROOT/Resources/Documentation" \

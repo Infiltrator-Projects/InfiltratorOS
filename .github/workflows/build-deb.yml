@@ -86,6 +86,7 @@ jobs:
           test -f "$RUNNER_TEMP/payload/etc/profile.d/90-infiltratoros-native-path.sh"
           sh -n "$RUNNER_TEMP/payload/etc/profile.d/90-infiltratoros-native-path.sh"
           test ! -e "$RUNNER_TEMP/payload/System/Programs"
+          test ! -e "$RUNNER_TEMP/payload/System/Kernel/Filesystems"
           test ! -e "$RUNNER_TEMP/payload/usr/lib/infiltratoros"
           test -x "$RUNNER_TEMP/payload/System/Commands/InfiltratorOS/activate-calendar"
           file "$RUNNER_TEMP/payload/System/Commands/InfiltratorOS/activate-calendar" | grep -q ELF
