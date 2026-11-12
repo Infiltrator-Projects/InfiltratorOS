@@ -22,9 +22,9 @@ Publication consumes the qualified archive/DEB/commit identity and verifies remo
 - **Temporal:** `tests/temporal-install-test.py` and `tests/temporal-bundle-e2e.py` exercise the 31 calendar and 23 clock providers, their independent releases, sealed installer workflow, per-provider package ownership, one `.so` and illustrated PDF, and source/build metadata.
 - **Established filesystems:** `tests/filesystem-install-test.py` checks the five fixed identities, SHA-256/asset rules, package/PDF/ABI validation, runtime dependencies and safe legacy-file cleanup. `tests/filesystem-bundle-e2e.py` installs the sealed actual workers on disposable GitHub Actions hosts.
 - **Additional filesystems:** `tests/filesystem-additional-test.py` verifies the 18 other identities and discovery/qualification rules. The filesystem bundle end-to-end test exercises **all 23** independent native `.so` and PDF packages using published release assets. This is evidence on ephemeral CI machines, not a claim they have been installed or tested on the user's PC.
-- **Aggregate progress:** `tests/native-progress-count-test.c` verifies the real 81-job manifest-derived total and rejection of missing/malformed manifests, avoiding a progress display capped at a historical 63/79 count.
+- **Aggregate progress:** `tests/native-progress-count-test.c` verifies the 82-job manifest-derived total, including Calendar, and rejection of missing or malformed manifests.
 
-The first 63 jobs (four applications, 54 temporal providers, five established filesystems) use one central checksum-checked native release snapshot. The temporal bundle test feeds the bundled preparer's live snapshot output to all 54 temporal and five established filesystem workers. The separate filesystem qualification workflow also exercises the additional 18 releases and their discovery path. Unqualified optional releases remain pending.
+The 63 central catalogue jobs (four applications, 54 temporal providers, five established filesystems) use one checksum-checked native release snapshot. Calendar's app job checks its independent release. `tests/native-component-test.cpp` checks its asset name, pinned source identity and native Debian version contract. Unqualified optional filesystem releases remain pending.
 
 ## Installed-state acceptance rules
 

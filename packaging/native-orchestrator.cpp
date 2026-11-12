@@ -237,7 +237,7 @@ static void dispatch(const fs::path &stage) {
         write_text(STATUS_ROOT / "filesystems-pending.list", read_text(pending_path));
     }
     Strings apps = selection("INFILTRATOROS_SELECTED_APPLICATIONS",
-                            {"system-monitor", "calculator", "files", "defragmenter"});
+                            {"system-monitor", "calculator", "calendar", "files", "defragmenter"});
     temporal = selection("INFILTRATOROS_SELECTED_TEMPORAL", temporal);
     Strings all_fs = established;
     all_fs.insert(all_fs.end(), optional.begin(), optional.end());

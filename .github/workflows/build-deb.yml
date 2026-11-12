@@ -79,7 +79,10 @@ jobs:
           cmp assets/infiltratoros.png "$RUNNER_TEMP/payload/usr/share/plymouth/themes/infiltratoros/infiltratoros.png"
           test ! -e "$RUNNER_TEMP/payload/usr/lib/infiltrator/temporal"
           ! dpkg-deb -f dist/*.deb Depends | grep -Fq "infiltrator-calendar-resources"
-          dpkg-deb -f dist/*.deb Depends | grep -Fq "calendar (>= 1.0.125)"
+          if dpkg-deb -f dist/*.deb Depends | grep -Eq '(^|[, ])calendar([, ]|$)'; then
+            echo "Calendar belongs in the native app queue."
+            exit 1
+          fi
           test -f "$RUNNER_TEMP/payload/etc/profile.d/90-infiltratoros-native-path.sh"
           sh -n "$RUNNER_TEMP/payload/etc/profile.d/90-infiltratoros-native-path.sh"
           test ! -e "$RUNNER_TEMP/payload/System/Programs"
@@ -180,7 +183,7 @@ jobs:
             /^__INFILTRATOROS_NATIVE_BUNDLE_END__$/ { exit }
             in_bundle { print }
           ' "$RUNNER_TEMP/control/postinst" | base64 -d | tar -xz -C "$runtime"
-          for binary in install-system-monitor install-calculator install-files \
+          for binary in install-system-monitor install-calculator install-calendar install-files \
                         install-defragmenter install-temporal-resources \
                         install-filesystem-resources prepare-native-releases \
                         orchestrate-native-install; do
@@ -190,7 +193,7 @@ jobs:
           for inventory in temporal-resources.json filesystem-resources.json filesystem-additional.json; do
             test -s "$runtime/$inventory"
           done
-          test "$(find "$runtime" -maxdepth 1 -type f | wc -l)" -eq 23
+          test "$(find "$runtime" -maxdepth 1 -type f | wc -l)" -eq 26
           # Prevent OS-owned runtime files outside the native /Temporary.
           grep -Fq 'STATUS_ROOT=/Temporary/InfiltratorOS' "$RUNNER_TEMP/control/postinst"
           grep -Fq 'stage=$(mktemp -d "$STATUS_ROOT/native-worker.XXXXXXXX")' "$RUNNER_TEMP/control/postinst"
@@ -209,7 +212,7 @@ jobs:
             echo "Installer accepted a tampered archive digest" >&2
             exit 1
           fi
-          for product in system-monitor calculator files defragmenter temporal-resources filesystem-resources; do
+          for product in system-monitor calculator calendar files defragmenter temporal-resources filesystem-resources; do
             for program in "install-$product" "start-$product-install" "$product-progress"; do
               test ! -e "$RUNNER_TEMP/payload/System/Commands/InfiltratorOS/$program"
             done

@@ -26,7 +26,8 @@ static void add_asset(json_object *assets, const std::string &name, const std::s
     json_object_object_add(asset, "size", json_object_new_int64(123));
     json_object_array_add(assets, asset);
 }
-static Document sample_release(const Entry &e, const std::string &version, bool temporal) {
+static Document sample_release(const Entry &e, const std::string &version, bool temporal,
+                               std::string run = {}) {
     auto *data = json_object_new_object();
     json_object_object_add(data, "draft", json_object_new_boolean(0));
     json_object_object_add(data, "prerelease", json_object_new_boolean(0));
@@ -36,7 +37,7 @@ static Document sample_release(const Entry &e, const std::string &version, bool 
     auto *assets = json_object_new_array();
     const auto prefix = "https://github.com/Infiltrator-Projects/" + e.repo +
                         "/releases/download/v" + version + "/";
-    const std::string run = e.slug() + "-" + version + "-native-installer.run";
+    if (run.empty()) run = e.slug() + "-" + version + "-native-installer.run";
     const std::string deb = e.package + "_" + version + "_amd64.deb";
     add_asset(assets, run, prefix + run);
     add_asset(assets, deb, prefix + deb);
@@ -87,6 +88,34 @@ int main() {
         check(application_package_matches(application("defragmenter"), app_version,
             "install ok installed\t0.2.66+native1"), "Defragmenter trained native suffix");
 
+        {
+            const auto calendar = application("calendar");
+            check(calendar.repo == "Calendar" && calendar.package == "calendar" &&
+                  calendar.resource == "/usr/libexec/calendar-about", "Calendar applet identity");
+            auto legacy = sample_release(calendar, "1.0.130", false,
+                                         "calendar-1.0.130-local-folder.run");
+            rejects([&]() { (void)release_asset(calendar, legacy.ptr, false, false); },
+                    "Calendar release that still invokes the Python scanner");
+            auto release = sample_release(calendar, "1.0.131", false,
+                                          "calendar-1.0.131-local-folder.run");
+            auto asset = release_asset(calendar, release.ptr, false, false);
+            check(asset.version == "1.0.131" &&
+                  asset.url == "https://github.com/Infiltrator-Projects/Calendar/releases/download/"
+                               "v1.0.131/calendar-1.0.131-local-folder.run",
+                  "Calendar release installer");
+            check(application_package_matches(calendar, asset,
+                  "install ok installed\t1.0.131+nativepgo1"), "Calendar native Debian identity");
+            for (auto version : {"1.0.131", "1.0.130+nativepgo1", "1.0.131+nativepgo1bad"})
+                check(!application_package_matches(calendar, asset,
+                      std::string("install ok installed\t") + version),
+                      "Reject generic, stale and malformed Calendar versions");
+            json_object_object_add(release.ptr, "target_commitish", json_object_new_string("main"));
+            rejects([&]() { (void)release_asset(calendar, release.ptr, false, false); },
+                    "unpinned Calendar release");
+            auto wrong = sample_release(calendar, "1.0.131", false);
+            rejects([&]() { (void)release_asset(calendar, wrong.ptr, false, false); },
+                    "wrong Calendar installer filename");
+        }
         rejects([&]() { (void)application("unrecognised"); }, "application");
 
         {

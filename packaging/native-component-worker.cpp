@@ -342,13 +342,17 @@ static Asset release_asset(const Entry &entry, json_object *meta, bool calendar_
     const std::string tag = str(meta, "tag_name");
     if (!std::regex_match(tag, std::regex("v[0-9]+\\.[0-9]+\\.[0-9]+(?:-[A-Za-z0-9.-]+)?")))
         throw std::runtime_error("Invalid native component version");
-    if (calendar_or_clock || filesystem) {
+    if (calendar_or_clock || filesystem || entry.id == "calendar") {
         std::string source = str(meta, "target_commitish");
         if (!std::regex_match(source, std::regex("[a-f0-9]{40}")))
             throw std::runtime_error("Provider is missing immutable source identity");
     }
     Asset result;
     result.version = tag.substr(1);
+    // Older Calendar RUNs invoke the Python scanner during a native build.
+    if (entry.id == "calendar" &&
+        execute({"/usr/bin/dpkg", "--compare-versions", result.version, "ge", "1.0.131"}) != 0)
+        throw std::runtime_error("Native Calendar requires version 1.0.131 or newer");
     if (filesystem && entry.id == "fat12") {
         // FAT12 releases up to 0.1.23 shipped a forbidden FUSE host and
         // package dependencies. Refuse them BEFORE downloading or invoking
@@ -367,9 +371,10 @@ static Asset release_asset(const Entry &entry, json_object *meta, bool calendar_
             (major == 0 && minor == 1 && patch < 3))
             throw std::runtime_error("Refusing known-broken exFAT native RUN");
     }
-    const std::string run_name = entry.id == "defragmenter"
-        ? "Defragmenter-" + result.version + "-local-folder.run"
-        : entry.slug() + "-" + result.version + "-native-installer.run";
+    const std::string run_prefix = entry.id == "defragmenter" ? entry.repo : entry.slug();
+    const std::string run_suffix = entry.id == "calendar" || entry.id == "defragmenter"
+        ? "-local-folder.run" : "-native-installer.run";
+    const std::string run_name = run_prefix + "-" + result.version + run_suffix;
     const std::string prefix = "https://github.com/Infiltrator-Projects/" +
                                entry.repo + "/releases/download/" + tag + "/";
     auto *assets = field(meta, "assets");
@@ -399,7 +404,9 @@ static Asset release_asset(const Entry &entry, json_object *meta, bool calendar_
 }
 static Document release(const Entry &entry) {
     const std::string directory = environment("INFILTRATOROS_RELEASE_DIR");
-    return parse(directory.empty()
+    // The v3 catalogue has a fixed 63-repository contract shared with
+    // earlier InfiltratorOS releases. Calendar resolves its own release.
+    return parse(directory.empty() || entry.id == "calendar"
         ? fetch("https://api.github.com/repos/Infiltrator-Projects/" +
                 entry.repo + "/releases/latest")
         : read_file(fs::path(directory) / (entry.repo + ".json")));
@@ -542,6 +549,8 @@ static Entry application(const std::string &slug) {
         e.repo = "System-Monitor"; e.package = "system-monitor"; e.resource = "/Programs/system-monitor";
     } else if (slug == "calculator") {
         e.repo = "Calculator"; e.package = "calculator"; e.resource = "/Programs/calculator";
+    } else if (slug == "calendar") {
+        e.repo = "Calendar"; e.package = "calendar"; e.resource = "/usr/libexec/calendar-about";
     } else if (slug == "files") {
         e.repo = "Files"; e.package = "files"; e.resource = "/Programs/files";
     } else if (slug == "defragmenter") {
@@ -557,6 +566,11 @@ static Strings required_paths(const std::string &slug) {
                 "/usr/share/applications/net.ssmith.calculator.desktop",
                 "/usr/share/icons/hicolor/scalable/apps/calculator.svg",
                 "/usr/share/metainfo/calculator.metainfo.xml"};
+    if (slug == "calendar")
+        return {"/usr/share/cinnamon/applets/calendar@the-infiltratr/metadata.json",
+                "/usr/lib/x86_64-linux-gnu/libcalendar.so.0.0.0",
+                "/usr/lib/x86_64-linux-gnu/girepository-1.0/Calendar-1.0.typelib",
+                "/System/Resources/Documentation/Calendar.pdf"};
     if (slug == "files") return {"/usr/share/applications/files.desktop"};
     return {"/Programs/defragmenter-test-media",
             "/System/Commands/Defragmenter/defragmenter-operation-engine",
@@ -565,6 +579,14 @@ static Strings required_paths(const std::string &slug) {
 }
 static bool application_proof(const Entry &entry) {
     if (entry.id == "calculator") return true;
+    if (entry.id == "calendar") {
+        const fs::path proof = "/usr/share/doc/calendar/BUILD-INFO";
+        if (!regular(proof)) return false;
+        const auto data = read_file(proof);
+        return data.find("Build mode: local hardware-native PGO-trained ") != std::string::npos &&
+               data.find("-march=native") != std::string::npos &&
+               data.find("-fprofile-use") != std::string::npos;
+    }
     if (entry.id == "defragmenter") {
         auto fields = tabs(pkg_query("defragmenter", std::string("$") +
             "{Status}\t$" + "{Version}\t$" + "{X-Defragmenter-Build}"));
@@ -588,10 +610,17 @@ static bool application_proof(const Entry &entry) {
 static bool application_package_matches(const Entry &entry, const Asset &asset,
                                         const std::string &package_record) {
     const auto fields = tabs(package_record);
+    if (fields.size() != 2 || fields[0] != "install ok installed") return false;
+    if (entry.id == "calendar") {
+        const std::string prefix = asset.version + "+nativepgo";
+        if (fields[1].rfind(prefix, 0) != 0) return false;
+        const auto revision = fields[1].substr(prefix.size());
+        return !revision.empty() && revision[0] != '0' &&
+               revision.find_first_not_of("0123456789") == std::string::npos;
+    }
     const std::string suffix =
         entry.id == "files" || entry.id == "defragmenter" ? "+native1" : "";
-    return fields.size() == 2 && fields[0] == "install ok installed" &&
-           fields[1] == asset.version + suffix;
+    return fields[1] == asset.version + suffix;
 }
 static bool application_current(const Entry &entry, const Asset &asset,
                                 bool evidence, std::string *reason = nullptr) {
@@ -611,11 +640,12 @@ static bool application_current(const Entry &entry, const Asset &asset,
         return fail("Installed executable is not owned by the expected Debian package");
     if (!application_proof(entry))
         return fail("Independent native optimisation evidence is missing or invalid");
-    for (const auto &p : required_paths(entry.id))
+    for (const auto &p : required_paths(entry.id)) {
         if (!regular(p)) return fail("Expected application resource is missing: " + p);
-    // Only Calculator currently ships a packaged PDF. System Monitor's
-    // independent native Debian installer publishes BUILD-INFO, not a PDF.
-    // Never demand an unrelated project's documentation from every app.
+        if (entry.id == "calendar" && output({"/usr/bin/dpkg-query", "-S", p}) !=
+                                      entry.package + ": " + p)
+            return fail("Expected Calendar resource is not owned by its package: " + p);
+    }
     if (evidence) {
         fs::path file = ROOT / ("native-verified-" + entry.id + ".json");
         if (!regular(file)) return fail("InfiltratorOS native attestation is absent");
@@ -627,7 +657,10 @@ static bool application_current(const Entry &entry, const Asset &asset,
                 return fail("Native attestation does not match the installed executable");
         } catch (...) { return fail("Native attestation cannot be verified"); }
     }
-    if (execute({"/usr/bin/dpkg", "--verify", entry.package}) != 0)
+    std::string verification;
+    if (execute({"/usr/bin/dpkg", "--verify", entry.package},
+                entry.id == "calendar" ? &verification : nullptr) != 0 ||
+        !trim(verification).empty())
         return fail("dpkg verification rejected an installed application file");
     return true;
 }
@@ -647,7 +680,9 @@ static bool install(const Entry &entry, Status &status, bool application_mode,
     Strings command_line{run.string()};
     if (temporal || filesystem) {
         command_line.insert(command_line.end(), {"--profile", "aggressive", "--system-package-mode"});
-    } else if (entry.id != "defragmenter") command_line.push_back("--system-package-mode");
+    } else if (entry.id != "defragmenter" && entry.id != "calendar") {
+        command_line.push_back("--system-package-mode");
+    }
     required(command_line);
     if (application_mode) {
         std::string verification_failure;

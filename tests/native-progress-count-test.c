@@ -39,15 +39,16 @@ int main(void)
     CHECK(native_progress_total_jobs(status) == -1);
     FILE *file = fopen(manifest, "w");
     CHECK(file != NULL);
-    CHECK(fputs("system-monitor\ncalculator\nfiles\ndefragmenter\n", file) >= 0);
+    CHECK(fputs("system-monitor\ncalculator\ncalendar\nfiles\ndefragmenter\n", file) >= 0);
     for (int i = 0; i < 54; ++i) CHECK(fprintf(file, "calendar-test-%d\n", i) > 0);
     for (int i = 0; i < 23; ++i) CHECK(fprintf(file, "filesystem-test-%d\n", i) > 0);
     CHECK(fclose(file) == 0);
-    CHECK(native_progress_total_jobs(status) == 81);
+    CHECK(native_progress_total_jobs(status) == 82);
     NativeProgressJobs jobs;
-    CHECK(native_progress_load_jobs(status, &jobs) == 81);
+    CHECK(native_progress_load_jobs(status, &jobs) == 82);
     CHECK(strcmp(jobs.slugs[0], "system-monitor") == 0);
-    CHECK(strcmp(jobs.slugs[80], "filesystem-test-22") == 0);
+    CHECK(strcmp(jobs.slugs[2], "calendar") == 0);
+    CHECK(strcmp(jobs.slugs[81], "filesystem-test-22") == 0);
     CHECK(strcmp(native_progress_run_status(status), "running") == 0);
     for (int i = 0; i < jobs.count; ++i) {
         CHECK(snprintf(path, sizeof(path), "%s/%s-install.status", status,
@@ -77,17 +78,17 @@ int main(void)
 
     file = fopen(manifest, "w");
     CHECK(file != NULL);
-    CHECK(fputs("calculator\nfilesystem-ofs\n", file) >= 0);
+    CHECK(fputs("calendar\nfilesystem-ofs\n", file) >= 0);
     CHECK(fclose(file) == 0);
     CHECK(native_progress_total_jobs(status) == 2);
     CHECK(strcmp(native_progress_run_status(status), "running") == 0);
-    CHECK(snprintf(path, sizeof(path), "%s/calculator-install.status", status) < (int)sizeof(path));
+    CHECK(snprintf(path, sizeof(path), "%s/calendar-install.status", status) < (int)sizeof(path));
     CHECK(write_status(path, "complete") == 0);
     CHECK(snprintf(path, sizeof(path), "%s/filesystem-ofs-install.status", status) < (int)sizeof(path));
     CHECK(write_status(path, "complete") == 0);
     CHECK(strcmp(native_progress_run_status(status), "complete") == 0);
     CHECK(unlink(path) == 0);
-    CHECK(snprintf(path, sizeof(path), "%s/calculator-install.status", status) < (int)sizeof(path));
+    CHECK(snprintf(path, sizeof(path), "%s/calendar-install.status", status) < (int)sizeof(path));
     CHECK(unlink(path) == 0);
 
     file = fopen(manifest, "w");

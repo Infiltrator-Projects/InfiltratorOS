@@ -18,7 +18,7 @@ unpack_native_workers() {
     printf '%s  %s\n' "$BUNDLE_SHA256" "$bundle" | sha256sum -c - >/dev/null || return 1
     tar -xzf "$bundle" -C "$stage" --no-same-owner --no-same-permissions || return 1
     rm -f -- "$bundle" || return 1
-    for product in system-monitor calculator files defragmenter temporal-resources filesystem-resources; do
+    for product in system-monitor calculator calendar files defragmenter temporal-resources filesystem-resources; do
         test -x "$stage/start-$product-install" || return 1
         test -x "$stage/install-$product" || return 1
         test -x "$stage/$product-progress" || return 1
@@ -38,7 +38,7 @@ if [ "${1:-}" = "--verify-installer-bundle" ]; then
         echo 'Invalid embedded InfiltratorOS native installer bundle.' >&2
         exit 1
     fi
-    test "$(find "$inspect" -maxdepth 1 -type f | wc -l)" -eq 23
+    test "$(find "$inspect" -maxdepth 1 -type f | wc -l)" -eq 26
     exit 0
 fi
 

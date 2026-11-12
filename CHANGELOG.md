@@ -1,3 +1,9 @@
+## 1.0.73 — Provision Calendar through its native installer
+
+- Remove Calendar from the InfiltratorOS package dependencies. Run its verified hardware-native installer as a selectable application job and report its result in aggregate progress.
+- Require Calendar 1.0.131 or newer for native provisioning to avoid releases that run the Python scanner.
+- Keep the Cinnamon panel migration at login, once the applet is available.
+
 ## 1.0.72 — Retain provisioning lock until all native workers finish
 
 - Keep the run-wide installation lock until every selected component reports a terminal state; crossing the 24-hour diagnostic threshold never unlocks unfinished work.

@@ -1,10 +1,10 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later
  * Count the exact providers launched for one native installation run.
- * Returns -1 until all three manifests are available and well-formed.
+ * Returns -1 until the selected-job manifest is available and well-formed.
  */
 #ifndef INFILTRATOR_NATIVE_PROGRESS_COUNT_H
 #define INFILTRATOR_NATIVE_PROGRESS_COUNT_H
-enum { NATIVE_PROGRESS_MAX_JOBS = 81, NATIVE_PROGRESS_SLUG_MAX = 128 };
+enum { NATIVE_PROGRESS_MAX_JOBS = 82, NATIVE_PROGRESS_SLUG_MAX = 128 };
 
 typedef struct {
     int count;
