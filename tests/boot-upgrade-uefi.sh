@@ -115,9 +115,10 @@ truncate -s 64M "$work/esp.img"
 mkfs.fat -F 32 "$work/esp.img"
 dd if="$work/esp.img" of="$work/disk.img" bs=1M seek=1 conv=notrunc status=none
 cp /usr/share/OVMF/OVMF_VARS_4M.fd "$work/vars.fd"
-timeout 150 qemu-system-x86_64 -machine q35,accel=tcg -cpu max -m 1024 \
+timeout 150 qemu-system-x86_64 -machine q35,accel=tcg,smm=on -cpu max -m 1024 \
     -display none -monitor none -serial "file:$work/serial.log" -no-reboot \
-    -drive if=pflash,format=raw,readonly=on,file=/usr/share/OVMF/OVMF_CODE_4M.fd \
+    -global driver=cfi.pflash01,property=secure,value=on \
+    -drive if=pflash,format=raw,readonly=on,file=/usr/share/OVMF/OVMF_CODE_4M.secboot.fd \
     -drive "if=pflash,format=raw,file=$work/vars.fd" \
     -drive "if=none,format=raw,id=disk,file=$work/disk.img" -device virtio-blk-pci,drive=disk \
     -kernel "$kernel" -initrd "$work/initrd.gz" -append 'console=ttyS0 rdinit=/init panic=1' || :
