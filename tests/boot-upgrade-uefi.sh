@@ -100,10 +100,15 @@ cmp "$payload" "$installed/BOOTX64.EFI"
 /install-boot-option
 [[ $(efibootmgr -v) == "$registered" ]]
 
-# Exercise a later upgrade with a previous managed loader and user resources.
+# Exercise an existing firmware-registered BOOT loader that predates the
+# upgrader's ownership marker, retaining user configuration and drivers.
+# The existing BOOT entry may itself be the selected default.
+efibootmgr --bootorder "$option,$grub,$other"
+registered=$(efibootmgr -v)
+grep -Fxq "BootOrder: $option,$grub,$other" <<< "$registered"
+grep -Fxq "BootNext: $other" <<< "$registered"
 printf 'old BOOT loader\n' > "$installed/BOOTX64.EFI"
-old=$(sha256sum < "$installed/BOOTX64.EFI")
-printf '%s\n' "${old%% *}" > "$installed/.infiltratoros-loader.sha256"
+rm "$installed/.infiltratoros-loader.sha256"
 printf 'user boot configuration\n' > "$installed/boot.conf"
 printf 'independent driver\n' > "$installed/drivers_x64/user.efi"
 /install-boot-option
@@ -112,6 +117,16 @@ grep -Fxq 'user boot configuration' "$installed/boot.conf"
 grep -Fxq 'independent driver' "$installed/drivers_x64/user.efi"
 grep -Fxq 'GRUB unchanged' "$esp/EFI/ubuntu/shimx64.efi"
 grep -Fxq 'Other loader unchanged' "$esp/EFI/Other/BOOTX64.EFI"
+[[ $(efibootmgr -v) == "$registered" ]]
+
+# Later releases must also refresh a BOOT installation with a valid marker.
+printf 'previous managed BOOT loader\n' > "$installed/BOOTX64.EFI"
+old=$(sha256sum < "$installed/BOOTX64.EFI")
+printf '%s\n' "${old%% *}" > "$installed/.infiltratoros-loader.sha256"
+/install-boot-option
+cmp "$payload" "$installed/BOOTX64.EFI"
+grep -Fxq 'user boot configuration' "$installed/boot.conf"
+grep -Fxq 'independent driver' "$installed/drivers_x64/user.efi"
 [[ $(efibootmgr -v) == "$registered" ]]
 sync
 echo BOOT-AUTOMATIC-UPGRADE-UEFI-PASS

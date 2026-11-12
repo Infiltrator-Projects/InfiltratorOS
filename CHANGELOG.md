@@ -1,3 +1,7 @@
+## 1.0.81 — Upgrade existing firmware-registered BOOT installations
+
+- Update a previous BOOT installation that predates the upgrader's ownership marker when its active firmware entry identifies the same EFI partition and loader.
+
 ## 1.0.80 — Compile BOOT locally during the upgrade
 
 - Resolve BOOT through its independent verified source installer and compile it for the local processor after APT releases its package lock.

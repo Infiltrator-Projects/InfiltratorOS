@@ -65,7 +65,7 @@ default_is_grub() {
 }
 
 deploy_boot() {
-    local payload=$1 directory=$2
+    local payload=$1 directory=$2 registered_option=${3:-}
     local executable="$directory/BOOTX64.EFI" marker="$directory/.infiltratoros-loader.sha256"
     local installed packaged staged_marker
     packaged=$(sha256sum < "$payload") || return 1
@@ -80,9 +80,12 @@ deploy_boot() {
         installed=$(sha256sum < "$executable") || return 1
         installed=${installed%% *}
         if [[ $installed != "$packaged" ]]; then
-            # Only refresh a copy previously installed by the upgrader.
-            if [[ ! -f $marker || $(< "$marker") != "$installed" ]]; then
-                skip 'Preserved a separately managed BOOT installation.'
+            # Existing BOOT installations may predate the upgrader's marker.
+            # An active firmware entry for this exact loader on this ESP is
+            # also evidence that this is the BOOT installation to upgrade.
+            if [[ ( ! -f $marker || $(< "$marker") != "$installed" ) &&
+                  ! $registered_option =~ ^[[:xdigit:]]{4}$ ]]; then
+                skip 'The existing BOOT installation has no matching firmware entry.'
             fi
             deploy --update-existing || return 1
         elif [[ -f $marker && $(< "$marker") == "$packaged" ]]; then
@@ -137,7 +140,7 @@ main() {
     local esp=/boot/efi
     local vars=/sys/firmware/efi/efivars
     local payload=/usr/lib/infiltrator-boot/EFI/BOOT/BOOTX64.EFI
-    local secure source info parent partition part type= uuid= extra snapshot order key value
+    local secure source info parent partition part type= uuid= extra snapshot order option key value
     local var_options esp_options
     var_options=$(findmnt -rnM "$vars" -t efivarfs -o OPTIONS) || var_options=
     if [[ ,$var_options, != *,rw,* || $(cat /sys/firmware/efi/fw_platform_size 2>/dev/null || true) != 64 ]]; then
@@ -179,11 +182,14 @@ main() {
     fi
     snapshot=$(firmware -v) || return 1
     order=$(boot_order "$snapshot") || skip 'A usable firmware boot order was unavailable.'
-    default_is_grub "$snapshot" "$order" "$part" "$uuid" "$esp" ||
-        skip 'GRUB is not the default entry on this ESP.'
-    find_boot_option "$snapshot" "$part" "$uuid" >/dev/null ||
+    option=$(find_boot_option "$snapshot" "$part" "$uuid") ||
         skip 'An existing BOOT firmware entry needs review.'
-    deploy_boot "$payload" "$esp/EFI/InfiltratorBoot" || return 1
+    # Existing registered BOOT entries can be upgraded in place regardless of
+    # their position in the boot order. New entries retain the GRUB precheck.
+    if [[ -z $option ]] && ! default_is_grub "$snapshot" "$order" "$part" "$uuid" "$esp"; then
+        skip 'GRUB is not the default entry on this ESP.'
+    fi
+    deploy_boot "$payload" "$esp/EFI/InfiltratorBoot" "$option" || return 1
     [[ $(findmnt -rnM "$esp" -o SOURCE) == "$source" ]] || return 1
     register_option "/dev/$parent" "$part" "$uuid" "$snapshot" "$order"
 }

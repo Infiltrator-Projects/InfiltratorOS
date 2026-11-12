@@ -72,6 +72,18 @@ register_option /dev/vda 1 "$uuid" "$(cat "$firmware_file")" 0005,0003,0001,0007
 cmp "$operations" <(printf '%s\n' --install-new create append --update-existing)
 cmp "$payload" "$directory/BOOTX64.EFI"
 
+# A previously installed BOOT loader can predate the upgrader's marker.
+# Its active entry on the same ESP authorises updating the existing copy.
+printf 'older registered BOOT loader\n' > "$directory/BOOTX64.EFI"
+rm "$directory/.infiltratoros-loader.sha256"
+sed -i 's/^Boot0007\* Infiltrator BOOT /Boot0007* Infiltrator Boot (Test) /' "$firmware_file"
+option=$(find_boot_option "$(cat "$firmware_file")" 1 "$uuid")
+[[ $option == 0007 ]]
+deploy_boot "$payload" "$directory" "$option"
+register_option /dev/vda 1 "$uuid" "$(cat "$firmware_file")" 0005,0003,0001,0007
+cmp "$payload" "$directory/BOOTX64.EFI"
+cmp "$operations" <(printf '%s\n' --install-new create append --update-existing --update-existing)
+
 printf 'user changed this loader\n' > "$directory/BOOTX64.EFI"
 result=0
 (deploy_boot "$payload" "$directory") || result=$?
@@ -81,6 +93,6 @@ if register_option /dev/vda 1 "$uuid" "$(cat "$original")" 0005,0003,0001; then
     echo 'Accepted a stale BootOrder snapshot.' >&2
     exit 1
 fi
-cmp "$operations" <(printf '%s\n' --install-new create append --update-existing)
+cmp "$operations" <(printf '%s\n' --install-new create append --update-existing --update-existing)
 grep -Fxq 'GRUB loader' "$esp/EFI/ubuntu/shimx64.efi"
 echo 'BOOT deployment and firmware order contracts passed.'
