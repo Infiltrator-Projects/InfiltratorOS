@@ -101,6 +101,18 @@ int main() {
         check(temporal.size() == 54, "temporal cardinality");
         check(established.size() == 5, "established cardinality");
         check(additional.size() == 18, "additional cardinality");
+        const auto ntfs = *std::find_if(additional.begin(), additional.end(),
+                                       [](const Entry &e) { return e.id == "ntfs"; });
+        for (auto version : {"1.0.15", "1.0.16"}) {
+            auto release = sample_release(ntfs, version, false);
+            rejects([&]() { (void)release_asset(ntfs, release.ptr, false, true); },
+                    "NTFS native installer with a FUSE dependency");
+        }
+        for (auto version : {"1.0.14", "1.0.17"}) {
+            auto release = sample_release(ntfs, version, false);
+            check(release_asset(ntfs, release.ptr, false, true).version == version,
+                  "FUSE-free NTFS native installer");
+        }
         TempDir module_fixture(fs::temp_directory_path(), "native-module-");
         const auto source = module_fixture.path / "provider.c";
         const auto module = module_fixture.path / "provider.so";

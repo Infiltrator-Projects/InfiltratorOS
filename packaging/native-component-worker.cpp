@@ -375,6 +375,10 @@ static Asset release_asset(const Entry &entry, json_object *meta, bool calendar_
                 "Refusing FAT12 release containing forbidden FUSE dependencies; "
                 "requires FAT12 0.1.24 or newer");
     }
+    if (filesystem && entry.id == "ntfs" &&
+        (result.version == "1.0.15" || result.version == "1.0.16"))
+        throw std::runtime_error(
+            "Refusing an NTFS native RUN that installs FUSE; requires NTFS 1.0.17 or newer");
     if (filesystem && entry.id == "exfat") {
         int major = 0, minor = 0, patch = 0;
         if (sscanf(tag.c_str(), "v%d.%d.%d", &major, &minor, &patch) != 3 ||
@@ -979,6 +983,14 @@ static bool can_build(const Entry &e) {
     if (e.id == "exfat")
         packages.insert(packages.end(), {"cmake", "git", "pkg-config", "libssl-dev",
                                          "libsqlite3-dev", "exfatprogs", "dosfstools"});
+    if (e.id == "ntfs") {
+        packages.insert(packages.end(), {"cmake", "git", "pkg-config", "libssl-dev",
+                                         "libsqlite3-dev"});
+        const std::string status = std::string("$") + "{Status}";
+        if (pkg_query("libntfs-3g89t64", status) != "install ok installed" &&
+            pkg_query("libntfs-3g89", status) != "install ok installed")
+            return false;
+    }
     for (auto &pkg : packages)
         if (pkg_query(pkg, std::string("$") + "{Status}") != "install ok installed")
             return false;
