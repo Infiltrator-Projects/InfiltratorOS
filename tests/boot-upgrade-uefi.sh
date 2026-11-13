@@ -142,7 +142,7 @@ grep -Fxq 'Other loader unchanged' "$esp/EFI/Other/BOOTX64.EFI"
 real_deploy=/usr/sbin/infiltrator-boot-deploy
 mv "$real_deploy" "$real_deploy.actual"
 printf '#!/bin/sh\nexit 77\n' > "$real_deploy"
-chmod 0755 "$real_deploy"
+/bin/busybox chmod 0755 "$real_deploy"
 printf 'BOOT using its existing EFI reader\n' > "$installed/BOOTX64.EFI"
 retained=$(sha256sum < "$installed/BOOTX64.EFI")
 printf '%s\n' "${retained%% *}" > "$installed/.infiltratoros-loader.sha256"
