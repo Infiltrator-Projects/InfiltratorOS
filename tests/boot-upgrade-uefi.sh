@@ -8,7 +8,7 @@ guest="$work/guest"
 mkdir -p "$guest" "$work/kernel"
 
 # Compile BOOT locally from its independently released source installer.
-version=0.1.45
+version=0.1.46
 run="boot-${version}-native-installer.run"
 url="https://github.com/Infiltrator-Projects/Boot/releases/download/v$version"
 curl -fsSL --retry 2 "$url/$run" -o "$work/$run"
@@ -118,7 +118,7 @@ cmp "$module" "$installed/filesystems_x64/FAT16.so"
 [[ $(efibootmgr -v) == "$registered" ]]
 
 # Exercise an existing firmware-registered BOOT loader that predates the
-# upgrader's ownership marker, retaining user configuration and drivers.
+# upgrader's ownership marker, retaining user configuration and artwork.
 # The existing BOOT entry may itself be the selected default.
 efibootmgr --bootorder "$option,$grub,$other"
 registered=$(efibootmgr -v)
@@ -127,22 +127,19 @@ grep -Fxq "BootNext: $other" <<< "$registered"
 printf 'old BOOT loader\n' > "$installed/BOOTX64.EFI"
 rm "$installed/.infiltratoros-loader.sha256"
 printf 'user boot configuration\n' > "$installed/boot.conf"
-mkdir -p "$installed/drivers_x64"
-printf 'independent driver\n' > "$installed/drivers_x64/user.efi"
+printf 'custom artwork\n' > "$installed/icons/custom.png"
 /install-boot-option "$module"
 cmp "$payload" "$installed/BOOTX64.EFI"
 grep -Fxq 'user boot configuration' "$installed/boot.conf"
-grep -Fxq 'independent driver' "$installed/drivers_x64/user.efi"
+grep -Fxq 'custom artwork' "$installed/icons/custom.png"
 grep -Fxq 'GRUB unchanged' "$esp/EFI/ubuntu/shimx64.efi"
 grep -Fxq 'Other loader unchanged' "$esp/EFI/Other/BOOTX64.EFI"
 [[ $(efibootmgr -v) == "$registered" ]]
 
 # The BOOT deployer can retain an existing working EFI filesystem path.
 # The upgrader must propagate the skip without rewriting its marker or NVRAM.
-real_deploy=/usr/sbin/infiltrator-boot-deploy
-mv "$real_deploy" "$real_deploy.actual"
-printf '#!/bin/sh\nexit 77\n' > "$real_deploy"
-/bin/busybox chmod 0755 "$real_deploy"
+mkdir -p "$installed/drivers_x64"
+printf 'independent EFI reader\n' > "$installed/drivers_x64/user.efi"
 printf 'BOOT using its existing EFI reader\n' > "$installed/BOOTX64.EFI"
 retained=$(sha256sum < "$installed/BOOTX64.EFI")
 printf '%s\n' "${retained%% *}" > "$installed/.infiltratoros-loader.sha256"
@@ -151,8 +148,9 @@ result=0
 [[ $result == 77 ]]
 [[ $(sha256sum < "$installed/BOOTX64.EFI") == "$retained" ]]
 [[ $(cat "$installed/.infiltratoros-loader.sha256") == "${retained%% *}" ]]
+grep -Fxq 'independent EFI reader' "$installed/drivers_x64/user.efi"
 [[ $(efibootmgr -v) == "$registered" ]]
-mv -f "$real_deploy.actual" "$real_deploy"
+mv "$installed/drivers_x64/user.efi" "$esp/EFI/Other/"
 
 # Later releases must also refresh a BOOT installation with a valid marker.
 printf 'previous managed BOOT loader\n' > "$installed/BOOTX64.EFI"
@@ -161,7 +159,7 @@ printf '%s\n' "${old%% *}" > "$installed/.infiltratoros-loader.sha256"
 /install-boot-option "$module"
 cmp "$payload" "$installed/BOOTX64.EFI"
 grep -Fxq 'user boot configuration' "$installed/boot.conf"
-grep -Fxq 'independent driver' "$installed/drivers_x64/user.efi"
+grep -Fxq 'custom artwork' "$installed/icons/custom.png"
 [[ $(efibootmgr -v) == "$registered" ]]
 sync
 echo BOOT-AUTOMATIC-UPGRADE-UEFI-PASS
