@@ -127,6 +127,7 @@ grep -Fxq "BootNext: $other" <<< "$registered"
 printf 'old BOOT loader\n' > "$installed/BOOTX64.EFI"
 rm "$installed/.infiltratoros-loader.sha256"
 printf 'user boot configuration\n' > "$installed/boot.conf"
+mkdir -p "$installed/drivers_x64"
 printf 'independent driver\n' > "$installed/drivers_x64/user.efi"
 /install-boot-option "$module"
 cmp "$payload" "$installed/BOOTX64.EFI"
@@ -135,6 +136,23 @@ grep -Fxq 'independent driver' "$installed/drivers_x64/user.efi"
 grep -Fxq 'GRUB unchanged' "$esp/EFI/ubuntu/shimx64.efi"
 grep -Fxq 'Other loader unchanged' "$esp/EFI/Other/BOOTX64.EFI"
 [[ $(efibootmgr -v) == "$registered" ]]
+
+# The BOOT deployer can retain an existing working EFI filesystem path.
+# The upgrader must propagate the skip without rewriting its marker or NVRAM.
+real_deploy=/usr/sbin/infiltrator-boot-deploy
+mv "$real_deploy" "$real_deploy.actual"
+printf '#!/bin/sh\nexit 77\n' > "$real_deploy"
+chmod 0755 "$real_deploy"
+printf 'BOOT using its existing EFI reader\n' > "$installed/BOOTX64.EFI"
+retained=$(sha256sum < "$installed/BOOTX64.EFI")
+printf '%s\n' "${retained%% *}" > "$installed/.infiltratoros-loader.sha256"
+result=0
+/install-boot-option "$module" || result=$?
+[[ $result == 77 ]]
+[[ $(sha256sum < "$installed/BOOTX64.EFI") == "$retained" ]]
+[[ $(cat "$installed/.infiltratoros-loader.sha256") == "${retained%% *}" ]]
+[[ $(efibootmgr -v) == "$registered" ]]
+mv -f "$real_deploy.actual" "$real_deploy"
 
 # Later releases must also refresh a BOOT installation with a valid marker.
 printf 'previous managed BOOT loader\n' > "$installed/BOOTX64.EFI"

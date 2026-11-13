@@ -97,7 +97,12 @@ deploy_boot() {
                   ! $registered_option =~ ^[[:xdigit:]]{4}$ ]]; then
                 skip 'The existing BOOT installation has no matching firmware entry.'
             fi
-            deploy --update-existing "$@" || return 1
+            local result=0
+            deploy --update-existing "$@" || result=$?
+            if [[ $result == 77 ]]; then
+                skip 'Existing BOOT deployment was kept because it may require an EFI filesystem reader.'
+            fi
+            [[ $result == 0 ]] || return "$result"
         elif [[ -f $marker && $(< "$marker") == "$packaged" ]]; then
             return 0
         fi
