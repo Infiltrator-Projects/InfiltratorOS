@@ -8,12 +8,11 @@ guest="$work/guest"
 mkdir -p "$guest" "$work/kernel"
 
 # Compile BOOT locally from its independently released source installer.
-version=0.1.46
+version=0.1.47
 run="boot-${version}-native-installer.run"
 url="https://github.com/Infiltrator-Projects/Boot/releases/download/v$version"
 curl -fsSL --retry 2 "$url/$run" -o "$work/$run"
-curl -fsSL --retry 2 "$url/SHA256SUMS.txt" -o "$work/SHA256SUMS.txt"
-(cd "$work" && grep -F "  $run" SHA256SUMS.txt | sha256sum -c -)
+printf '%s  %s\n' 87b826d41caf7d89b05906aaa02dc78fb3762de75b4fd3ada5654656a4fd58ed "$work/$run" | sha256sum -c -
 chmod 0755 "$work/$run"
 mkdir "$work/native"
 "$work/$run" --build-only --output-dir "$work/native"
