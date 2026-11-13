@@ -1,6 +1,6 @@
 # Native filesystem skeleton
 
-**Filesystem driver target:** one `.so` per format under `/System/Filesystems`, shared by BOOT, kernel, Filesystems and apps via generic adapters. See [the OS runtime contract](FILESYSTEM_SO_RUNTIME_CONTRACT.md). The legacy `.ko`/per-format `.efi` deployment below is an **interim description**, not the final filesystem installation design.
+Each independent format has one Common V2 shared object under `/System/Filesystems`. BOOT and applications use the capabilities exposed by that module. The generic kernel adapter is planned in the [OS runtime contract](FILESYSTEM_SO_RUNTIME_CONTRACT.md).
 
 InfiltratorOS defines a small, human-readable native filesystem model alongside the conventional Debian/Linux hierarchy during the transition period. The Linux base may continue to use `/bin`, `/usr`, `/etc`, `/var` and other compatibility paths, but new Infiltrator executables do not extend the old `/usr/bin` application namespace.
 
@@ -55,7 +55,7 @@ The native command search path is `/System/Commands:/Programs` ahead of the inhe
 
 No native Infiltrator application is mirrored into `/usr/bin` merely for compatibility. The Linux base can keep its historical paths while the Infiltrator namespace grows independently.
 
-## Filesystem build outputs
+## Filesystem outputs installed by InfiltratorOS
 
 These destinations apply to every provider in the [established](../packaging/filesystem-resources.json) and [additional](../packaging/filesystem-additional.json) catalogues.
 
@@ -63,17 +63,11 @@ These destinations apply to every provider in the [established](../packaging/fil
 | --- | --- | --- |
 | PDF manual | `/System/Resources/Documentation/<provider-repository>.pdf` | `/System/Resources/Documentation/Filesystem-OFS.pdf` |
 | Format shared object | `/System/Filesystems/<catalogue filename>.so` | `/System/Filesystems/OFS.so` |
-| Linux kernel module | `/System/Kernel/Filesystems/<provider-id>.ko` | `/System/Kernel/Filesystems/ofs.ko` |
-
-Build the `.so` and the Linux adapter from the same provider release. The release job builds and qualifies one amd64 `.ko` against the project Linux `6.12.107` target and publishes it as `<provider-id>-linux-6.12.107.ko` with the release SHA-256. InfiltratorOS calls the native build when the installed `.so` is missing or older than the selected release. It verifies current or newer copies in place, including portable packages. It checks the package-owned PDF independently and repairs a missing or damaged copy using the matching portable DEB.
-
-The worker keeps a manually built kernel module from the selected provider release when the installed package owns it and its SHA-256 and kernel ABI match the package metadata. It reads that metadata independently when the `.so` is missing, so rebuilding the `.so` preserves a valid local kernel build. Otherwise, it stages the matching release asset after verifying its SHA-256, ELF type, architecture and kernel release. The resulting Debian package owns exactly the `.so`, PDF and `.ko` and records all three checksums plus the kernel release. A kernel-only repair repackages the verified existing `.so` and PDF without recompiling them; a PDF-only repair leaves the `.so` and `.ko` in place. The stored filename stays the same across provider upgrades. The module is available for manual use from this directory, outside Linux's active module tree.
-
-Twenty-one providers build Linux adapters against the reference kernel. Once a provider stages a `.ko`, later upgrades require its matching asset. SWAP uses the Linux kernel's built-in swap support; ZFS has no qualified Linux adapter yet. Each provider has its own `.run`, which manually compiles its `.so`, available Linux adapter and PDF before installing over the existing version. The prebuilt `.deb` installs those same files directly. Neither route activates the stored kernel module.
+InfiltratorOS verifies the selected provider's release and calls its native RUN in system-package mode. The installer checks the installed package version, optimisation metadata, file ownership, PDF header and the defined Common V2 export in the shared object's ELF dynamic symbol table. The kernel's separately built filesystem adapters belong to manual kernel installation and the corresponding provider release.
 
 ## Planned boot and modular filesystem integration
 
-The intended Setup installer will select an on-disk format based on qualified capabilities, install its **single authoritative `.so`** and supply the verified exact same module to BOOT's generic loader and the kernel's generic filesystem bridge, along with the required early-boot infrastructure. Until those loaders work, Setup may temporarily use existing separately qualified `.efi` readers and Linux `.ko` providers. The boot-image filesystem and the runtime root filesystem may differ. A future native InfiltratorOS kernel may use a non-Linux module ABI, but the same separation remains.
+InfiltratorOS installs BOOT and stages an exact copy of each selected module that passes BOOT's Common V2 firmware validation. BOOT uses those copies to read boot files and can use the firmware's built-in reader for the EFI system partition. Setup's future root preparation needs a qualified generic kernel bridge and the selected module in the early boot environment. The boot-image filesystem and the runtime root filesystem may differ.
 
 Filesystem limitations must be represented honestly: Setup may adapt the layout to avoid missing symbolic links when safe, but it cannot treat duplicated files as hard links or claim unsupported namespace, permission, mapping or durability semantics. A format that can hold a boot image does not automatically qualify as a system root. For the detailed, phased cross-project contract, see [Bootable Filesystem Integration Contract](https://github.com/Infiltrator-Projects/Filesystems/blob/main/docs/BOOTABLE_FILESYSTEM_CONTRACT.md).
 
