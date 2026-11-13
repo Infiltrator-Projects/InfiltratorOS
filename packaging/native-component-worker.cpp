@@ -357,8 +357,8 @@ static Asset release_asset(const Entry &entry, json_object *meta, bool calendar_
     Asset result;
     result.version = tag.substr(1);
     if (entry.id == "boot" &&
-        execute({"/usr/bin/dpkg", "--compare-versions", result.version, "ge", "0.1.45"}) != 0)
-        throw std::runtime_error("BOOT requires version 0.1.45 or newer for Common V2 deployment");
+        execute({"/usr/bin/dpkg", "--compare-versions", result.version, "ge", "0.1.46"}) != 0)
+        throw std::runtime_error("BOOT requires version 0.1.46 or newer for Common V2-only deployment");
     // Older Calendar RUNs invoke the Python scanner during a native build.
     if (entry.id == "calendar" &&
         execute({"/usr/bin/dpkg", "--compare-versions", result.version, "ge", "1.0.131"}) != 0)

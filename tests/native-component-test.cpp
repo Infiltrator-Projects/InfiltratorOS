@@ -143,18 +143,18 @@ int main() {
         check(established[0].slug() == "filesystem-fat12", "FAT12 identity");
         check(application("system-monitor").repo == "System-Monitor", "system monitor identity");
         const auto boot = application("boot");
-        const Asset boot_version{"0.1.45", "", "", 0};
-        check(application_package_matches(boot, boot_version, "install ok installed\t0.1.45+native1"),
+        const Asset boot_version{"0.1.46", "", "", 0};
+        check(application_package_matches(boot, boot_version, "install ok installed\t0.1.46+native1"),
               "BOOT accepts its locally compiled package");
-        check(!application_package_matches(boot, boot_version, "install ok installed\t0.1.45"),
+        check(!application_package_matches(boot, boot_version, "install ok installed\t0.1.46"),
               "BOOT rejects the portable package as native evidence");
-        auto boot_release = sample_release(boot, "0.1.45", false);
-        check(release_asset(boot, boot_release.ptr, false, false).url.find("boot-0.1.45-native-installer.run") != std::string::npos,
+        auto boot_release = sample_release(boot, "0.1.46", false);
+        check(release_asset(boot, boot_release.ptr, false, false).url.find("boot-0.1.46-native-installer.run") != std::string::npos,
               "BOOT resolves its independent source installer");
         rejects([&]() {
-            auto old_boot = sample_release(boot, "0.1.44", false);
+            auto old_boot = sample_release(boot, "0.1.45", false);
             (void)release_asset(boot, old_boot.ptr, false, false);
-        }, "legacy BOOT filesystem release");
+        }, "BOOT release with separate EFI filesystem driver discovery");
         check(application("defragmenter").resource == "/Programs/defragmenter",
               "defragmenter destination");
         // A missing optional Defragmenter field must never invalidate other apps.

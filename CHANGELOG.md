@@ -1,3 +1,11 @@
+## 1.0.86 — Require BOOT's Common V2 filesystem loader
+
+- Accept BOOT 0.1.46 or newer for the mandatory firmware component.
+
+## 1.0.85 — Preserve BOOT deployments that need an EFI filesystem driver
+
+- Keep the active EFI executable and firmware entries when the BOOT helper reports an incompatible existing deployment.
+
 ## 1.0.83 — Verify the Common V2 filesystem export
 
 - Require a defined Common V2 function in installed filesystem shared objects before accepting the provider.
