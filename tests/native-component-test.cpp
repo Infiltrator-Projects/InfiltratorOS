@@ -112,7 +112,17 @@ int main() {
             const auto helper = kernel / "Runtime" / native / "modprobe";
             save(helper, "helper");
             if (chmod(helper.c_str(), 0755)) throw std::runtime_error("Cannot set fixture permissions");
+            const auto checker = kernel / "Runtime" / native / "verify-host-drivers";
+            save(checker, "exit 0\n");
+            if (chmod(checker.c_str(), 0755)) throw std::runtime_error("Cannot set checker permissions");
             check(native_kernel_installed(system, geteuid()), "trusted native kernel accepted");
+            verify_installed_kernel_drivers(kernel);
+            save(checker, "exit 1\n");
+            rejects([&]() { verify_installed_kernel_drivers(kernel); }, "missing active hardware driver");
+            fs::remove(checker);
+            check(!native_kernel_installed(system, geteuid()), "missing hardware check rejected");
+            save(checker, "exit 0\n");
+            if (chmod(checker.c_str(), 0755)) throw std::runtime_error("Cannot reset checker permissions");
             check(!native_kernel_installed(system, geteuid() + 1), "untrusted owner rejected");
             if (chmod(kernel.c_str(), 0775)) throw std::runtime_error("Cannot set unsafe fixture permissions");
             check(!native_kernel_installed(system, geteuid()), "writable kernel parent rejected");

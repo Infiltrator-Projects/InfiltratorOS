@@ -853,7 +853,8 @@ static bool native_kernel_installed(const fs::path &system = "/System", uid_t ow
     for (const auto &path : {kernel / "Images" / (native + ".img"),
                             kernel / "Modules" / native / "modules.dep.bin",
                             kernel / "Modules" / native / "modules.alias.bin",
-                            kernel / "Runtime" / native / "modprobe"}) {
+                            kernel / "Runtime" / native / "modprobe",
+                            kernel / "Runtime" / native / "verify-host-drivers"}) {
         struct stat st{};
         if (lstat(path.c_str(), &st) || !S_ISREG(st.st_mode) || st.st_uid != owner ||
             (st.st_mode & 022) || st.st_size <= 0)
@@ -874,7 +875,16 @@ static bool native_kernel_installed(const fs::path &system = "/System", uid_t ow
         it.increment(error);
         if (error) return false;
     }
-    return access((kernel / "Runtime" / native / "modprobe").c_str(), X_OK) == 0;
+    return access((kernel / "Runtime" / native / "modprobe").c_str(), X_OK) == 0 &&
+           access((kernel / "Runtime" / native / "verify-host-drivers").c_str(), X_OK) == 0;
+}
+
+static void verify_installed_kernel_drivers(const fs::path &kernel = "/System/Kernel") {
+    const std::string native = std::string("InfiltratorOS-") + NATIVE_KERNEL_RELEASE;
+    const auto checker = kernel / "Runtime" / native / "verify-host-drivers";
+    const auto modules = kernel / "Modules" / native;
+    if (execute({"/bin/bash", checker.string(), modules.string()}) != 0)
+        throw std::runtime_error("Native kernel is missing an active hardware driver; existing BOOT was kept");
 }
 
 static void verify_boot_setup_result(int result) {
@@ -904,7 +914,10 @@ static void install_native_kernel(Status &status) {
         throw std::runtime_error("Native kernel could not verify a direct GPT root partition");
     if (execute({"/usr/lib/infiltrator-boot/validate-module", "/System/Filesystems/EXT4.so"}) != 0)
         throw std::runtime_error("Native kernel requires a firmware-compatible EXT4 filesystem module");
-    if (native_kernel_installed()) return;
+    if (native_kernel_installed()) {
+        verify_installed_kernel_drivers();
+        return;
+    }
     const Entry entry{"kernel", "InfiltratorOS Kernel", "Kernel", "", "", ""};
     TempDir directory(status.root, "native-kernel-");
     const auto run = directory.path / "kernel-installer.run";
@@ -924,6 +937,7 @@ static void install_native_kernel(Status &status) {
               run.string(), "--system-package-mode"});
     if (!native_kernel_installed())
         throw std::runtime_error("Native Kernel installation did not produce a trusted image and indexed drivers");
+    verify_installed_kernel_drivers();
 }
 
 static int individual(const Entry &entry, bool app, bool temporal, bool filesystem) {
