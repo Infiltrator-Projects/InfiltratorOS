@@ -5,6 +5,7 @@
 set -eu
 ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
 cd "$ROOT"
+! grep -Fq '"python3"' packaging/native-component-worker.cpp
 sh -n packaging/ensure-native-icons.sh packaging/ensure-native-fonts.sh debian/postinst
 grep -Fq 'fc-cache -f "$FONT_DIR"' packaging/ensure-native-fonts.sh
 ! grep -Fq 'fc-cache -f "$FONT_DIR" >/dev/null 2>&1 || true' packaging/ensure-native-fonts.sh

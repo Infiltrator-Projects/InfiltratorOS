@@ -347,7 +347,7 @@ struct Asset {
 static constexpr const char *MINIMUM_BOOT_RELEASE = "0.1.50";
 // This target is not an approval to deploy the candidate: release_asset()
 // refuses prereleases until the kernel has been promoted after qualification.
-static constexpr const char *NATIVE_KERNEL_RELEASE = "0.1.8";
+static constexpr const char *NATIVE_KERNEL_RELEASE = "0.1.9";
 
 static Asset release_asset(const Entry &entry, json_object *meta, bool calendar_or_clock,
                            bool filesystem) {
@@ -941,7 +941,7 @@ static void install_native_kernel(Status &status) {
     required({"/usr/bin/apt-get", "-o", "DPkg::Lock::Timeout=-1", "--no-remove",
               "--no-install-recommends", "-y", "install", "git", "build-essential", "bc",
               "bison", "flex", "fakeroot", "dwarves", "libdw-dev", "libelf-dev", "libssl-dev",
-              "libkmod-dev", "rsync", "dpkg-dev", "debhelper", "kmod", "python3", "zstd"});
+              "libkmod-dev", "rsync", "dpkg-dev", "debhelper", "kmod", "zstd"});
     status.write("running", 85, "Building the InfiltratorOS kernel", "Keeping the distribution kernel available through GRUB");
     // Manual builds can leave a user-owned Kernel workspace. The automatic
     // root build uses the worker's own private directory for source and tools.
