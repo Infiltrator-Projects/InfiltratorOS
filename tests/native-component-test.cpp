@@ -136,6 +136,13 @@ int main() {
             fs::create_directories(driver.parent_path());
             save(driver, "driver");
             check(native_kernel_installed(system, geteuid()), "trusted nested driver accepted");
+            const auto headers_link = kernel / "Modules" / native / "build";
+            fs::create_symlink(fs::path("/System/Kernel/Headers") / native, headers_link);
+            check(native_kernel_installed(system, geteuid()), "native headers link accepted");
+            fs::remove(headers_link);
+            fs::create_symlink("/tmp/untrusted", headers_link);
+            check(!native_kernel_installed(system, geteuid()), "wrong headers link rejected");
+            fs::remove(headers_link);
             if (chmod(driver.c_str(), 0666)) throw std::runtime_error("Cannot set unsafe driver permissions");
             check(!native_kernel_installed(system, geteuid()), "writable nested driver rejected");
             if (chmod(driver.c_str(), 0644)) throw std::runtime_error("Cannot reset driver permissions");

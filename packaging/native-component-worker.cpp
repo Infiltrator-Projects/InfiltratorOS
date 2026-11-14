@@ -876,14 +876,24 @@ static bool native_kernel_installed(const fs::path &system = "/System", uid_t ow
     // index files and top-level owner would still admit user-writable driver
     // files, even though the kernel later runs the helper with root access.
     std::error_code error;
-    fs::recursive_directory_iterator it(kernel / "Modules" / native, error), end;
+    const auto module_root = kernel / "Modules" / native;
+    fs::recursive_directory_iterator it(module_root, error), end;
     if (error) return false;
     while (it != end) {
         struct stat st{};
-        if (lstat(it->path().c_str(), &st) ||
-            (!S_ISDIR(st.st_mode) && !S_ISREG(st.st_mode)) ||
-            st.st_uid != owner || (st.st_mode & 022))
+        if (lstat(it->path().c_str(), &st) || st.st_uid != owner)
             return false;
+        // The kernel headers package installs this one fixed build link.
+        // The module loader does not follow it; all driver paths remain
+        // regular files or directories and must not be user-writable.
+        if (it->path() == module_root / "build" && S_ISLNK(st.st_mode)) {
+            std::error_code link_error;
+            const auto target = fs::read_symlink(it->path(), link_error);
+            if (link_error || target != fs::path("/System/Kernel/Headers") / native)
+                return false;
+        } else if ((!S_ISDIR(st.st_mode) && !S_ISREG(st.st_mode)) || (st.st_mode & 022)) {
+            return false;
+        }
         it.increment(error);
         if (error) return false;
     }
