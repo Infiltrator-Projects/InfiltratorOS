@@ -275,9 +275,9 @@ jobs:
           bash tests/boot-upgrade-uefi.sh packaging/install-boot-option.sh "$RUNNER_TEMP/boot-uefi"
   publish:
     needs: [verify, boot-uefi]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 120
     permissions:
       contents: write
     steps:
@@ -301,6 +301,23 @@ jobs:
           (cd release && sha256sum -c SHA256SUMS.txt)
           version=$(tr -d '\r\n' < VERSION)
           tag="v$version"
+          # The conversion invokes this exact kernel asset. Keep the normal
+          # package unpublished until the Kernel release gate has admitted it.
+          kernel_version=$(sed -nE 's/.*NATIVE_KERNEL_RELEASE = "([0-9.]+)";.*/\1/p' packaging/native-component-worker.cpp)
+          [[ $kernel_version =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          kernel_ready() {
+            gh release view "v$kernel_version" --repo Infiltrator-Projects/Kernel --json isDraft,assets 2>/dev/null |
+              jq -e --arg asset "InfiltratorOS-Kernel-$kernel_version-amd64.run" \
+                '.isDraft == false and any(.assets[]; .name == $asset)' >/dev/null
+          }
+          for attempt in {1..110}; do
+            if kernel_ready; then break; fi
+            echo "Waiting for qualified Kernel v$kernel_version ($attempt/110)"
+            sleep 60
+            current=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq '.object.sha')
+            [[ $current == "$GITHUB_SHA" ]] || exit 0
+          done
+          kernel_ready
           if git rev-parse -q --verify "refs/tags/$tag^{commit}" >/dev/null; then
             if [[ "$(git rev-parse "$tag^{commit}")" != "$GITHUB_SHA" ]]; then
               gh release view "$tag" --json isDraft --jq '.isDraft' | grep -qx false

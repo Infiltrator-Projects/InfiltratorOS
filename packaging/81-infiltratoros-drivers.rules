@@ -1,0 +1,3 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Coldplug and hotplug use the versioned module tree on the native kernel.
+ACTION=="add", ENV{MODALIAS}=="?*", RUN+="/System/Commands/InfiltratorOS/load-native-driver $env{MODALIAS}"

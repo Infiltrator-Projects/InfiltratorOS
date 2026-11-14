@@ -7,6 +7,7 @@ export PATH=/usr/sbin:/usr/bin:/sbin:/bin
 
 loader='\EFI\InfiltratorBoot\BOOTX64.EFI'
 boot_label='Infiltrator BOOT'
+obsolete_loader='\EFI\InfiltratorBootTrial\BOOTX64.EFI'
 
 note() { printf 'Infiltrator BOOT: %s\n' "$*"; }
 skip() { note "$*"; exit 77; }
@@ -27,6 +28,13 @@ boot_order() {
     done <<< "$1"
     [[ $count == 1 ]] || return 1
     printf '%s\n' "$order"
+}
+
+without_option() {
+    local list=",$1," id=$2
+    list=${list/",$id,"/,}
+    list=${list#,}
+    printf '%s' "${list%,}"
 }
 
 next_boot() {
@@ -66,6 +74,84 @@ default_is_grub() {
         fi
     done <<< "$snapshot"
     return 1
+}
+
+has_grub_fallback() {
+    local snapshot=$1 order=$2 part=$3 uuid=$4 esp=$5 id
+    local -a options
+    IFS=, read -r -a options <<< "$order"
+    for id in "${options[@]}"; do
+        if default_is_grub "$snapshot" "$id" "$part" "$uuid" "$esp"; then return 0; fi
+    done
+    return 1
+}
+
+# Recognise only the temporary entry created by the old native-kernel
+# instructions. A matching path on a different ESP belongs to that ESP.
+obsolete_option() {
+    local snapshot=$1 part=$2 uuid=$3 line id=
+    local locator="hd($part,gpt,${uuid,,},"
+    local directory='file(\efi\infiltratorboottrial\'
+    local pattern='^Boot([[:xdigit:]]{4})\*?[[:space:]]+InfiltratorOS [0-9]+\.[0-9]+\.[0-9]+ Trial[[:space:]]+HD\('
+    local partition='hd\([0-9]+,gpt,[[:xdigit:]-]+,'
+    while IFS= read -r line; do
+        [[ $line =~ ^Boot[[:xdigit:]]{4}\*?[[:space:]] && ${line,,} == *"$directory"* ]] || continue
+        if [[ ${line,,} != *"$locator"* ]]; then
+            [[ ${line,,} =~ $partition ]] || return 1
+            continue
+        fi
+        [[ -z $id && ${line,,} == *"file(${obsolete_loader,,})"* && $line =~ $pattern ]] || return 1
+        id=${BASH_REMATCH[1]^^}
+    done <<< "$snapshot"
+    printf '%s' "$id"
+}
+
+remove_obsolete_boot() {
+    local esp=$1 part=$2 uuid=$3 snapshot after order expected id pending directory config
+    directory="$esp/EFI/InfiltratorBootTrial"
+    config="$directory/boot.conf"
+    snapshot=$(firmware -v) || return 1
+    id=$(obsolete_option "$snapshot" "$part" "$uuid") ||
+        { note 'An unrecognised firmware option uses the old temporary directory.'; return 1; }
+    if [[ -e $directory || -L $directory ]]; then
+        # An earlier upgrade can have deleted the option before deleting its
+        # files. Match the generated configuration on either run.
+        [[ -d $directory && ! -L $directory && -f $config && ! -L $config ]] &&
+            grep -Fxq 'scanfor manual' "$config" &&
+            grep -Eq '^menuentry "InfiltratorOS Kernel [0-9]+\.[0-9]+\.[0-9]+" \{$' "$config" &&
+            grep -Fxq '    filesystem_module ext4' "$config" ||
+            { note 'The old temporary BOOT directory did not match its generated configuration.'; return 1; }
+    elif [[ -z $id ]]; then
+        return 0
+    fi
+    if [[ -n $id ]]; then
+        local current_pattern='^BootCurrent:[[:space:]]*([[:xdigit:]]{4})[[:space:]]*$' current=
+        while IFS= read -r line; do
+            if [[ $line =~ $current_pattern ]]; then current=${BASH_REMATCH[1]^^}; fi
+        done <<< "$snapshot"
+        if [[ $current == "$id" ]]; then
+            note 'Temporary BOOT cleanup requires booting through the normal loader.'
+            return 1
+        fi
+        order=$(boot_order "$snapshot") || return 1
+        expected=$(without_option "$order" "$id")
+        [[ -n $expected ]] || return 1
+        pending=$(next_boot "$snapshot")
+        if [[ ${pending^^} == "BOOTNEXT: $id" ]]; then
+            firmware --delete-bootnext || return 1
+            pending=
+        fi
+        firmware --bootnum "$id" --delete-bootnum || return 1
+        after=$(firmware -v) || return 1
+        [[ $(boot_order "$after") == "$expected" && $(next_boot "$after") == "$pending" &&
+           $(obsolete_option "$after" "$part" "$uuid") == '' &&
+           ${after^^} != *$'\n'"BOOT$id"* ]] || return 1
+    fi
+    if [[ -d $directory ]]; then
+        rm -rf --one-file-system -- "$directory" || return 1
+        sync -f "$esp" || return 1
+    fi
+    note 'Removed the obsolete temporary BOOT installation.'
 }
 
 deploy_boot() {
@@ -122,14 +208,14 @@ deploy_boot() {
 
 register_option() {
     local disk=$1 part=$2 uuid=$3 baseline=$4 order=$5
-    local snapshot option bootnext after next_order
+    local snapshot option bootnext after next_order remaining
     snapshot=$(firmware -v) || return 1
     [[ $(boot_order "$snapshot") == "$order" && $(next_boot "$snapshot") == "$(next_boot "$baseline")" ]] ||
         { note 'Firmware settings changed while preparing the option.' >&2; return 1; }
     option=$(find_boot_option "$snapshot" "$part" "$uuid") ||
         { note 'An existing BOOT entry needs review.' >&2; return 1; }
     bootnext=$(next_boot "$snapshot")
-    if [[ -n $option && ,$order, == *",$option,"* ]]; then
+    if [[ -n $option && ${order%%,*} == "$option" ]]; then
         note "Already available as Boot$option."
         return 0
     fi
@@ -142,14 +228,16 @@ register_option() {
         [[ -n $option && $(boot_order "$snapshot") == "$order" && $(next_boot "$snapshot") == "$bootnext" ]] ||
             { note 'Firmware did not confirm the new option with the original boot order.' >&2; return 1; }
     fi
-    # Keep the original default and the full relative order of every entry.
-    firmware --bootorder "$order,$option" || return 1
+    # BOOT becomes the normal loader. Keep GRUB and all other entries in
+    # their original relative order and preserve any one-time selection.
+    remaining=$(without_option "$order" "$option")
+    firmware --bootorder "$option,$remaining" || return 1
     after=$(firmware -v) || return 1
     next_order=$(boot_order "$after") || return 1
-    [[ $next_order == "$order,$option" && $(next_boot "$after") == "$bootnext" &&
+    [[ $next_order == "$option,$remaining" && $(next_boot "$after") == "$bootnext" &&
        $(find_boot_option "$after" "$part" "$uuid") == "$option" ]] ||
         { note 'Could not verify the firmware order after registering BOOT.' >&2; return 1; }
-    note "Added Boot$option at the end of the firmware list."
+    note "Added Boot$option as the default, with the previous firmware entries retained."
 }
 
 main() {
@@ -207,14 +295,13 @@ main() {
     order=$(boot_order "$snapshot") || skip 'A usable firmware boot order was unavailable.'
     option=$(find_boot_option "$snapshot" "$part" "$uuid") ||
         skip 'An existing BOOT firmware entry needs review.'
-    # Existing registered BOOT entries can be upgraded in place regardless of
-    # their position in the boot order. New entries retain the GRUB precheck.
-    if [[ -z $option ]] && ! default_is_grub "$snapshot" "$order" "$part" "$uuid" "$esp"; then
-        skip 'GRUB is not the default entry on this ESP.'
+    if ! has_grub_fallback "$snapshot" "$order" "$part" "$uuid" "$esp"; then
+        skip 'An independent GRUB fallback could not be verified on this ESP.'
     fi
     deploy_boot "$payload" "$esp/EFI/InfiltratorBoot" "$option" "$@" || return 1
     [[ $(findmnt -rnM "$esp" -o SOURCE) == "$source" ]] || return 1
-    register_option "/dev/$parent" "$part" "$uuid" "$snapshot" "$order"
+    register_option "/dev/$parent" "$part" "$uuid" "$snapshot" "$order" || return 1
+    remove_obsolete_boot "$esp" "$part" "$uuid"
 }
 
 if [[ ${BASH_SOURCE[0]} == "$0" ]]; then main "$@"; fi

@@ -242,6 +242,12 @@ static void dispatch(const fs::path &stage) {
     Strings all_fs = established;
     all_fs.insert(all_fs.end(), optional.begin(), optional.end());
     Strings chosen = selection("INFILTRATOROS_SELECTED_FILESYSTEMS", all_fs, true);
+    // On an EXT4 root the filesystem provider is a BOOT dependency, even
+    // when an explicit list selects only optional application providers.
+    if (output_of({"/usr/bin/findmnt", "-nro", "FSTYPE", "-M", "/"}) == "ext4\n" &&
+        std::find(optional.begin(), optional.end(), "filesystem-ext4") != optional.end() &&
+        std::find(chosen.begin(), chosen.end(), "filesystem-ext4") == chosen.end())
+        chosen.emplace_back("filesystem-ext4");
     Strings selected = apps;
     selected.emplace_back("boot");
     selected.insert(selected.end(), temporal.begin(), temporal.end());

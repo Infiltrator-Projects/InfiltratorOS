@@ -143,18 +143,29 @@ int main() {
         check(established[0].slug() == "filesystem-fat12", "FAT12 identity");
         check(application("system-monitor").repo == "System-Monitor", "system monitor identity");
         const auto boot = application("boot");
-        const Asset boot_version{"0.1.47", "", "", 0};
-        check(application_package_matches(boot, boot_version, "install ok installed\t0.1.47+native1"),
+        const Asset boot_version{"0.1.49", "", "", 0};
+        check(application_package_matches(boot, boot_version, "install ok installed\t0.1.49+native1"),
               "BOOT accepts its locally compiled package");
-        check(!application_package_matches(boot, boot_version, "install ok installed\t0.1.47"),
+        check(!application_package_matches(boot, boot_version, "install ok installed\t0.1.49"),
               "BOOT rejects the portable package as native evidence");
-        auto boot_release = sample_release(boot, "0.1.47", false);
-        check(release_asset(boot, boot_release.ptr, false, false).url.find("boot-0.1.47-native-installer.run") != std::string::npos,
+        auto boot_release = sample_release(boot, "0.1.49", false);
+        check(release_asset(boot, boot_release.ptr, false, false).url.find("boot-0.1.49-native-installer.run") != std::string::npos,
               "BOOT resolves its independent source installer");
         rejects([&]() {
-            auto old_boot = sample_release(boot, "0.1.46", false);
+            auto old_boot = sample_release(boot, "0.1.48", false);
             (void)release_asset(boot, old_boot.ptr, false, false);
-        }, "BOOT release without support for the installed EXT4 shared object");
+        }, "BOOT release without normal native kernel discovery");
+        const Entry kernel{"kernel", "InfiltratorOS Kernel", "Kernel", "", "", ""};
+        const std::string kernel_version = NATIVE_KERNEL_RELEASE;
+        const std::string kernel_run = "InfiltratorOS-Kernel-" + kernel_version + "-amd64.run";
+        auto kernel_release = sample_release(kernel, kernel_version, false, kernel_run);
+        json_object_object_add(kernel_release.ptr, "prerelease", json_object_new_boolean(1));
+        check(release_asset(kernel, kernel_release.ptr, false, false).url.find(kernel_run) != std::string::npos,
+              "conversion accepts the exact qualified Kernel installer");
+        rejects([&]() {
+            auto wrong_kernel = sample_release(kernel, "0.1.5", false, "InfiltratorOS-Kernel-0.1.5-amd64.run");
+            (void)release_asset(kernel, wrong_kernel.ptr, false, false);
+        }, "Kernel release without native driver autoload support");
         check(application("defragmenter").resource == "/Programs/defragmenter",
               "defragmenter destination");
         // A missing optional Defragmenter field must never invalidate other apps.

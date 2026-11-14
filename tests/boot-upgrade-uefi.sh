@@ -8,11 +8,11 @@ guest="$work/guest"
 mkdir -p "$guest" "$work/kernel"
 
 # Compile BOOT locally from its independently released source installer.
-version=0.1.47
+version=0.1.49
 run="boot-${version}-native-installer.run"
 url="https://github.com/Infiltrator-Projects/Boot/releases/download/v$version"
 curl -fsSL --retry 2 "$url/$run" -o "$work/$run"
-printf '%s  %s\n' 87b826d41caf7d89b05906aaa02dc78fb3762de75b4fd3ada5654656a4fd58ed "$work/$run" | sha256sum -c -
+printf '%s  %s\n' 2d090b5be1cea3053b67c7c128010c992eb1d8f6f00ddecdc4569ef974b58173 "$work/$run" | sha256sum -c -
 chmod 0755 "$work/$run"
 mkdir "$work/native"
 "$work/$run" --build-only --output-dir "$work/native"
@@ -96,6 +96,16 @@ other=$(sed -nE 's/^Boot([0-9A-F]{4})\*[[:space:]]+Fixture Other.*/\1/p' <<< "$b
 [[ $grub =~ ^[0-9A-F]{4}$ && $other =~ ^[0-9A-F]{4}$ ]]
 efibootmgr --bootorder "$grub,$other"
 efibootmgr --bootnext "$other"
+obsolete="$esp/EFI/InfiltratorBootTrial"
+mkdir "$obsolete"
+cat > "$obsolete/boot.conf" <<'CONF'
+scanfor manual
+menuentry "InfiltratorOS Kernel 0.1.5" {
+    filesystem_module ext4
+}
+CONF
+efibootmgr --create-only --disk /dev/vda --part 1 --label 'InfiltratorOS 0.1.5 Trial' \
+    --loader '\EFI\InfiltratorBootTrial\BOOTX64.EFI'
 
 module=/System/Filesystems/FAT16.so
 /install-boot-option "$module"
@@ -103,8 +113,10 @@ registered=$(efibootmgr -v)
 printf '%s\n' "$registered"
 option=$(sed -nE 's/^Boot([0-9A-F]{4})\*[[:space:]]+Infiltrator BOOT.*/\1/p' <<< "$registered")
 [[ $option =~ ^[0-9A-F]{4}$ ]]
-grep -Fxq "BootOrder: $grub,$other,$option" <<< "$registered"
+grep -Fxq "BootOrder: $option,$grub,$other" <<< "$registered"
 grep -Fxq "BootNext: $other" <<< "$registered"
+! grep -Fq 'InfiltratorOS 0.1.5 Trial' <<< "$registered"
+[[ ! -e $obsolete ]]
 installed="$esp/EFI/InfiltratorBoot"
 payload=/usr/lib/infiltrator-boot/EFI/BOOT/BOOTX64.EFI
 cmp "$payload" "$installed/BOOTX64.EFI"

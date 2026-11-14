@@ -143,6 +143,14 @@ cc -std=c11 -O2 -Wall -Wextra -Werror \
 cc -std=c11 -O2 -Wall -Wextra -Werror "$ROOT/packaging/select-theme.c" \
     -o "$PKGROOT/System/Commands/InfiltratorOS/select-theme"
 
+# Keep the udev integration in the conversion package. The executable and
+# the actual versioned module loader live in the native System hierarchy.
+cc -std=c11 -O2 -Wall -Wextra -Werror -Wpedantic \
+    "$ROOT/packaging/load-native-driver.c" \
+    -o "$PKGROOT/System/Commands/InfiltratorOS/load-native-driver"
+install -D -m 0644 "$ROOT/packaging/81-infiltratoros-drivers.rules" \
+    "$PKGROOT/etc/udev/rules.d/81-infiltratoros-drivers.rules"
+
 # Store the three static signed provider catalogues in the temporary seal,
 # not in the installed OS filesystem. All invocation paths use one C++ worker.
 c++ -std=c++17 -O2 -Wall -Wextra -Werror -Wpedantic -pthread \

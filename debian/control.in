@@ -13,8 +13,11 @@ Description: InfiltratorOS branding and native application integration
  .
  Common V2 BOOT is compiled locally by its independent native installer.
  After the selected filesystem jobs finish, BOOT stages compatible installed
- shared objects and its own EFI application. New firmware entries are added
- alongside GRUB on supported x86-64 UEFI systems with Secure Boot disabled.
+ shared objects and its own EFI application. Its auto-discovery menu becomes
+ the default on eligible x86-64 UEFI systems with Secure Boot disabled and
+ an independent GRUB fallback on the same EFI System Partition. On supported
+ GPT EXT4 roots, the conversion builds the InfiltratorOS kernel and stages
+ it under /System/Kernel with its own hardware module tree.
  .
  Calendar is compiled locally through its independently published native
  installer. Once available, a backed-up per-user Cinnamon login migration

@@ -59,10 +59,11 @@ static Names expected() {
     Names names;
     const std::string command = "System/Commands/InfiltratorOS/";
     for (const char *name : {"activate-calendar", "activate-program-icons",
-                              "ensure-native-fonts", "ensure-native-icons", "select-theme"})
+                              "ensure-native-fonts", "ensure-native-icons", "load-native-driver", "select-theme"})
         add(names, command + name);
     for (const char *name : {
              "etc/profile.d/90-infiltratoros-native-path.sh",
+             "etc/udev/rules.d/81-infiltratoros-drivers.rules",
              "etc/xdg/autostart/infiltrator-calendar.desktop",
              "etc/xdg/autostart/infiltrator-program-icons.desktop",
              "System/Resources/Documentation/InfiltratorOS-fonts.sha256",

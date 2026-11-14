@@ -342,9 +342,11 @@ struct Asset {
     std::string version, url, sha;
     size_t size = 0;
 };
+static constexpr const char *NATIVE_KERNEL_RELEASE = "0.1.6";
+
 static Asset release_asset(const Entry &entry, json_object *meta, bool calendar_or_clock,
                            bool filesystem) {
-    if (boolean(meta, "draft") || boolean(meta, "prerelease"))
+    if (boolean(meta, "draft") || (entry.id != "kernel" && boolean(meta, "prerelease")))
         throw std::runtime_error("Unpublished native component release");
     const std::string tag = str(meta, "tag_name");
     if (!std::regex_match(tag, std::regex("v[0-9]+\\.[0-9]+\\.[0-9]+(?:-[A-Za-z0-9.-]+)?")))
@@ -357,8 +359,8 @@ static Asset release_asset(const Entry &entry, json_object *meta, bool calendar_
     Asset result;
     result.version = tag.substr(1);
     if (entry.id == "boot" &&
-        execute({"/usr/bin/dpkg", "--compare-versions", result.version, "ge", "0.1.47"}) != 0)
-        throw std::runtime_error("BOOT requires version 0.1.47 or newer to load the installed Common V2 filesystem objects");
+        execute({"/usr/bin/dpkg", "--compare-versions", result.version, "ge", "0.1.49"}) != 0)
+        throw std::runtime_error("BOOT requires version 0.1.49 or newer for automatic native kernel discovery and EXT4 upgrades");
     // Older Calendar RUNs invoke the Python scanner during a native build.
     if (entry.id == "calendar" &&
         execute({"/usr/bin/dpkg", "--compare-versions", result.version, "ge", "1.0.131"}) != 0)
@@ -388,7 +390,11 @@ static Asset release_asset(const Entry &entry, json_object *meta, bool calendar_
     const std::string run_prefix = entry.id == "defragmenter" ? entry.repo : entry.slug();
     const std::string run_suffix = entry.id == "calendar" || entry.id == "defragmenter"
         ? "-local-folder.run" : "-native-installer.run";
-    const std::string run_name = run_prefix + "-" + result.version + run_suffix;
+    if (entry.id == "kernel" && result.version != NATIVE_KERNEL_RELEASE)
+        throw std::runtime_error("Kernel release differs from the pinned conversion release");
+    const std::string run_name = entry.id == "kernel"
+        ? "InfiltratorOS-Kernel-" + result.version + "-amd64.run"
+        : run_prefix + "-" + result.version + run_suffix;
     const std::string prefix = "https://github.com/Infiltrator-Projects/" +
                                entry.repo + "/releases/download/" + tag + "/";
     auto *assets = field(meta, "assets");
@@ -438,7 +444,7 @@ static std::string api_asset_url(const Asset &asset) {
     Document meta = parse(fetch("https://api.github.com/repos/Infiltrator-Projects/" +
                                 repo + "/releases/tags/" + tag));
     if (str(meta.ptr, "tag_name") != tag || boolean(meta.ptr, "draft") ||
-        boolean(meta.ptr, "prerelease"))
+        (repo != "Kernel" && boolean(meta.ptr, "prerelease")))
         throw std::runtime_error("Alternate asset resolved a different release");
     auto *assets = field(meta.ptr, "assets");
     int64_t id = 0;
@@ -827,6 +833,62 @@ static Strings boot_deployment(const fs::path &stage, const fs::path &statuses,
     }
     return command;
 }
+
+static bool native_kernel_installed() {
+    const std::string native = std::string("InfiltratorOS-") + NATIVE_KERNEL_RELEASE;
+    const fs::path kernel("/System/Kernel");
+    for (const auto &path : {kernel / "Images" / (native + ".img"),
+                            kernel / "Modules" / native / "modules.dep.bin",
+                            kernel / "Modules" / native / "modules.alias.bin",
+                            kernel / "Runtime" / native / "modprobe"}) {
+        struct stat st{};
+        if (lstat(path.c_str(), &st) || !S_ISREG(st.st_mode) || st.st_uid != 0 ||
+            (st.st_mode & 022) || st.st_size <= 0)
+            return false;
+    }
+    return access((kernel / "Runtime" / native / "modprobe").c_str(), X_OK) == 0;
+}
+
+static void install_native_kernel(Status &status) {
+    // The current native boot contract requires a direct GPT EXT4 root and
+    // a firmware-compatible EXT4 provider. Leave the distro path available
+    // on other layouts without spending time on a kernel that cannot boot.
+    if (!regular("/sys/firmware/efi/fw_platform_size") ||
+        trim(read_file("/sys/firmware/efi/fw_platform_size")) != "64" ||
+        output({"/usr/bin/findmnt", "-nro", "FSTYPE,FSROOT", "-M", "/"}) != "ext4 /")
+        return;
+    constexpr const char *secure_boot =
+        "/sys/firmware/efi/efivars/SecureBoot-8be4df61-93ca-11d2-aa0d-00e098032b8c";
+    std::ifstream secure(secure_boot, std::ios::binary);
+    secure.seekg(4);
+    if (secure.get() != 0) return;
+    const auto device = output({"/usr/bin/findmnt", "-nro", "SOURCE", "-M", "/"});
+    if (device.rfind("/dev/", 0) != 0 ||
+        output({"/usr/sbin/blkid", "-p", "-s", "PART_ENTRY_SCHEME", "-o", "value", "--", device}) != "gpt" ||
+        execute({"/usr/lib/infiltrator-boot/validate-module", "/System/Filesystems/EXT4.so"}) != 0)
+        return;
+    if (native_kernel_installed()) return;
+    const Entry entry{"kernel", "InfiltratorOS Kernel", "Kernel", "", "", ""};
+    TempDir directory(status.root, "native-kernel-");
+    const auto run = directory.path / "kernel-installer.run";
+    status.write("running", 75, "Preparing native kernel build", "Verifying the published Kernel installer");
+    const auto release = parse(fetch(std::string("https://api.github.com/repos/Infiltrator-Projects/Kernel/releases/tags/v") +
+                                     NATIVE_KERNEL_RELEASE));
+    const auto asset = release_asset(entry, release.ptr, false, false);
+    download(asset, run);
+    required({"/usr/bin/apt-get", "-o", "DPkg::Lock::Timeout=-1", "--no-remove",
+              "--no-install-recommends", "-y", "install", "git", "build-essential", "bc",
+              "bison", "flex", "fakeroot", "dwarves", "libdw-dev", "libelf-dev", "libssl-dev",
+              "libkmod-dev", "rsync", "dpkg-dev", "debhelper", "kmod", "python3", "zstd"});
+    status.write("running", 85, "Building the InfiltratorOS kernel", "Keeping the distribution kernel available through GRUB");
+    // Manual builds can leave a user-owned Kernel workspace. The automatic
+    // root build uses the worker's own private directory for source and tools.
+    required({"/usr/bin/env", "INFILTRATOROS_TEMP_ROOT=" + (directory.path / "build").string(),
+              run.string(), "--system-package-mode"});
+    if (!native_kernel_installed())
+        throw std::runtime_error("Native Kernel installation did not produce a trusted image and indexed drivers");
+}
+
 static int individual(const Entry &entry, bool app, bool temporal, bool filesystem) {
     if (geteuid() != 0) throw std::runtime_error("Native installation requires root");
     fs::create_directories(ROOT);
@@ -851,8 +913,11 @@ static int individual(const Entry &entry, bool app, bool temporal, bool filesyst
         status.write("running", 5, "Checking native release", entry.repo);
         bool already = install(entry, status, app, temporal, filesystem);
         if (entry.id == "boot") {
+            auto command = boot_deployment(stage, status_dir, providers);
+            if (std::find(command.begin(), command.end(), "/System/Filesystems/EXT4.so") != command.end())
+                install_native_kernel(status);
             status.write("running", 95, "Configuring firmware option", "Checking the EFI system partition");
-            const int result = execute(boot_deployment(stage, status_dir, providers));
+            const int result = execute(command);
             if (result != 0 && result != 77)
                 throw std::runtime_error("BOOT firmware setup failed; see boot-install.log");
             if (result == 77) {
