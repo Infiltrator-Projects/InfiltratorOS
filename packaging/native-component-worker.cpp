@@ -344,7 +344,7 @@ struct Asset {
     size_t size = 0;
 };
 static constexpr const char *MINIMUM_BOOT_RELEASE = "0.1.50";
-static constexpr const char *NATIVE_KERNEL_RELEASE = "0.1.6";
+static constexpr const char *NATIVE_KERNEL_RELEASE = "0.1.7";
 
 static Asset release_asset(const Entry &entry, json_object *meta, bool calendar_or_clock,
                            bool filesystem) {
