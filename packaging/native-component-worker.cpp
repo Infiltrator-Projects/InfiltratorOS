@@ -346,7 +346,7 @@ struct Asset {
 static constexpr const char *MINIMUM_BOOT_RELEASE = "0.1.50";
 // This target is not an approval to deploy the candidate: release_asset()
 // refuses prereleases until the kernel has been promoted after qualification.
-static constexpr const char *NATIVE_KERNEL_RELEASE = "0.1.7";
+static constexpr const char *NATIVE_KERNEL_RELEASE = "0.1.8";
 
 static Asset release_asset(const Entry &entry, json_object *meta, bool calendar_or_clock,
                            bool filesystem) {
