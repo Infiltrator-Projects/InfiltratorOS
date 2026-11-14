@@ -206,9 +206,11 @@ int main() {
         const std::string kernel_version = NATIVE_KERNEL_RELEASE;
         const std::string kernel_run = "InfiltratorOS-Kernel-" + kernel_version + "-amd64.run";
         auto kernel_release = sample_release(kernel, kernel_version, false, kernel_run);
-        json_object_object_add(kernel_release.ptr, "prerelease", json_object_new_boolean(1));
         check(release_asset(kernel, kernel_release.ptr, false, false).url.find(kernel_run) != std::string::npos,
-              "conversion accepts the exact qualified Kernel installer");
+              "conversion accepts the exact published Kernel installer");
+        json_object_object_add(kernel_release.ptr, "prerelease", json_object_new_boolean(1));
+        rejects([&]() { (void)release_asset(kernel, kernel_release.ptr, false, false); },
+                "prerelease Kernel for automatic conversion");
         rejects([&]() {
             auto wrong_kernel = sample_release(kernel, "0.1.5", false, "InfiltratorOS-Kernel-0.1.5-amd64.run");
             (void)release_asset(kernel, wrong_kernel.ptr, false, false);

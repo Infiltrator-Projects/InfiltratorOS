@@ -348,7 +348,7 @@ static constexpr const char *NATIVE_KERNEL_RELEASE = "0.1.6";
 
 static Asset release_asset(const Entry &entry, json_object *meta, bool calendar_or_clock,
                            bool filesystem) {
-    if (boolean(meta, "draft") || (entry.id != "kernel" && boolean(meta, "prerelease")))
+    if (boolean(meta, "draft") || boolean(meta, "prerelease"))
         throw std::runtime_error("Unpublished native component release");
     const std::string tag = str(meta, "tag_name");
     if (!std::regex_match(tag, std::regex("v[0-9]+\\.[0-9]+\\.[0-9]+(?:-[A-Za-z0-9.-]+)?")))
@@ -446,7 +446,7 @@ static std::string api_asset_url(const Asset &asset) {
     Document meta = parse(fetch("https://api.github.com/repos/Infiltrator-Projects/" +
                                 repo + "/releases/tags/" + tag));
     if (str(meta.ptr, "tag_name") != tag || boolean(meta.ptr, "draft") ||
-        (repo != "Kernel" && boolean(meta.ptr, "prerelease")))
+        boolean(meta.ptr, "prerelease"))
         throw std::runtime_error("Alternate asset resolved a different release");
     auto *assets = field(meta.ptr, "assets");
     int64_t id = 0;
