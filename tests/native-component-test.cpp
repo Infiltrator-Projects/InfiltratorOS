@@ -95,6 +95,25 @@ static void check_build_resources() {
 int main() {
     try {
         check_build_resources();
+        verify_boot_setup_result(0);
+        rejects([] { verify_boot_setup_result(77); }, "skipped BOOT deployment as a successful upgrade");
+        rejects([] { verify_boot_setup_result(1); }, "failed BOOT deployment as a successful upgrade");
+        {
+            // A pipe models efivarfs: a sequential read works, but seeking fails.
+            int descriptors[2];
+            if (pipe(descriptors)) throw std::runtime_error("Cannot create non-seekable test stream");
+            const char disabled[5] = {6, 0, 0, 0, 0};
+            if (write(descriptors[1], disabled, sizeof(disabled)) != static_cast<ssize_t>(sizeof(disabled)))
+                throw std::runtime_error("Cannot populate test stream");
+            close(descriptors[1]);
+            std::ifstream stream("/proc/self/fd/" + std::to_string(descriptors[0]), std::ios::binary);
+            check(secure_boot_disabled(stream), "disabled Secure Boot is read without seeking");
+            close(descriptors[0]);
+            std::istringstream enabled(std::string("\x06\0\0\0\x01", 5));
+            std::istringstream truncated(std::string("\x06\0\0\0", 4));
+            check(!secure_boot_disabled(enabled), "enabled Secure Boot is rejected");
+            check(!secure_boot_disabled(truncated), "truncated Secure Boot state is rejected");
+        }
         auto temporal = catalogue("packaging/temporal-resources.json", 54);
         auto established = catalogue("packaging/filesystem-resources.json", 5);
         auto additional = catalogue("packaging/filesystem-additional.json", 18);

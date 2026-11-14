@@ -34,6 +34,7 @@
 #include <curl/curl.h>
 #include "native-build-queue.h"
 #include "native-build-resources.h"
+#include "native-secure-boot.h"
 namespace fs = std::filesystem;
 using Strings = std::vector<std::string>;
 static const fs::path ROOT("/Temporary/InfiltratorOS");
@@ -850,24 +851,33 @@ static bool native_kernel_installed() {
     return access((kernel / "Runtime" / native / "modprobe").c_str(), X_OK) == 0;
 }
 
+static void verify_boot_setup_result(int result) {
+    if (result == 77)
+        throw std::runtime_error("BOOT firmware setup was skipped; existing BOOT was kept. See boot-install.log");
+    if (result != 0)
+        throw std::runtime_error("BOOT firmware setup failed; see boot-install.log");
+}
+
 static void install_native_kernel(Status &status) {
     // The current native boot contract requires a direct GPT EXT4 root and
     // a firmware-compatible EXT4 provider. Leave the distro path available
     // on other layouts without spending time on a kernel that cannot boot.
     if (!regular("/sys/firmware/efi/fw_platform_size") ||
-        trim(read_file("/sys/firmware/efi/fw_platform_size")) != "64" ||
-        output({"/usr/bin/findmnt", "-nro", "FSTYPE,FSROOT", "-M", "/"}) != "ext4 /")
-        return;
+        trim(read_file("/sys/firmware/efi/fw_platform_size")) != "64")
+        throw std::runtime_error("Native kernel requires 64-bit EFI firmware; the existing boot configuration was kept");
+    if (output({"/usr/bin/findmnt", "-nro", "FSTYPE,FSROOT", "-M", "/"}) != "ext4 /")
+        throw std::runtime_error("Native kernel requires a direct EXT4 root mount; the existing boot configuration was kept");
     constexpr const char *secure_boot =
         "/sys/firmware/efi/efivars/SecureBoot-8be4df61-93ca-11d2-aa0d-00e098032b8c";
     std::ifstream secure(secure_boot, std::ios::binary);
-    secure.seekg(4);
-    if (secure.get() != 0) return;
+    if (!secure_boot_disabled(secure))
+        throw std::runtime_error("Native kernel requires Secure Boot disabled and a readable firmware state");
     const auto device = output({"/usr/bin/findmnt", "-nro", "SOURCE", "-M", "/"});
     if (device.rfind("/dev/", 0) != 0 ||
-        output({"/usr/sbin/blkid", "-p", "-s", "PART_ENTRY_SCHEME", "-o", "value", "--", device}) != "gpt" ||
-        execute({"/usr/lib/infiltrator-boot/validate-module", "/System/Filesystems/EXT4.so"}) != 0)
-        return;
+        output({"/usr/sbin/blkid", "-p", "-s", "PART_ENTRY_SCHEME", "-o", "value", "--", device}) != "gpt")
+        throw std::runtime_error("Native kernel could not verify a direct GPT root partition");
+    if (execute({"/usr/lib/infiltrator-boot/validate-module", "/System/Filesystems/EXT4.so"}) != 0)
+        throw std::runtime_error("Native kernel requires a firmware-compatible EXT4 filesystem module");
     if (native_kernel_installed()) return;
     const Entry entry{"kernel", "InfiltratorOS Kernel", "Kernel", "", "", ""};
     TempDir directory(status.root, "native-kernel-");
@@ -915,16 +925,15 @@ static int individual(const Entry &entry, bool app, bool temporal, bool filesyst
         bool already = install(entry, status, app, temporal, filesystem);
         if (entry.id == "boot") {
             auto command = boot_deployment(stage, status_dir, providers);
-            if (std::find(command.begin(), command.end(), "/System/Filesystems/EXT4.so") != command.end())
+            const bool ext4_ready = std::find(command.begin(), command.end(),
+                                              "/System/Filesystems/EXT4.so") != command.end();
+            if (output({"/usr/bin/findmnt", "-nro", "FSTYPE", "-M", "/"}) == "ext4") {
+                if (!ext4_ready)
+                    throw std::runtime_error("Cannot install the native kernel: the EXT4 firmware module is not ready");
                 install_native_kernel(status);
-            status.write("running", 95, "Configuring firmware option", "Checking the EFI system partition");
-            const int result = execute(command);
-            if (result != 0 && result != 77)
-                throw std::runtime_error("BOOT firmware setup failed; see boot-install.log");
-            if (result == 77) {
-                status.write("complete", 100, "BOOT compiled; firmware setup skipped", "See boot-install.log for details");
-                return 0;
             }
+            status.write("running", 95, "Configuring firmware option", "Checking the EFI system partition");
+            verify_boot_setup_result(execute(command));
         }
         status.write("complete", 100, already ? "Already installed" : "Installed",
                      "Native package and required files verified");
