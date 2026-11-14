@@ -309,14 +309,14 @@ jobs:
           kernel_version=$(sed -nE 's/.*NATIVE_KERNEL_RELEASE = "([0-9.]+)";.*/\1/p' packaging/native-component-worker.cpp)
           [[ $kernel_version =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
           boot_ready() {
-            gh release view "v$boot_version" --repo Infiltrator-Projects/Boot --json isDraft,assets 2>/dev/null |
+            gh release view "v$boot_version" --repo Infiltrator-Projects/Boot --json isDraft,isPrerelease,assets 2>/dev/null |
               jq -e --arg asset "boot-$boot_version-native-installer.run" \
-                '.isDraft == false and any(.assets[]; .name == $asset)' >/dev/null
+                '.isDraft == false and .isPrerelease == false and any(.assets[]; .name == $asset)' >/dev/null
           }
           kernel_ready() {
-            gh release view "v$kernel_version" --repo Infiltrator-Projects/Kernel --json isDraft,assets 2>/dev/null |
+            gh release view "v$kernel_version" --repo Infiltrator-Projects/Kernel --json isDraft,isPrerelease,assets 2>/dev/null |
               jq -e --arg asset "InfiltratorOS-Kernel-$kernel_version-amd64.run" \
-                '.isDraft == false and any(.assets[]; .name == $asset)' >/dev/null
+                '.isDraft == false and .isPrerelease == false and any(.assets[]; .name == $asset)' >/dev/null
           }
           for attempt in {1..110}; do
             if boot_ready && kernel_ready; then break; fi
