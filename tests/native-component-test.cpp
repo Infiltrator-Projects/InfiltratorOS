@@ -192,6 +192,15 @@ int main() {
         check(exports_common_filesystem_api(module), "Common V2 function export");
         compile_provider("void infiltrator_filesystem_api_v1(void) {}\n");
         check(!exports_common_filesystem_api(module), "obsolete filesystem export refused");
+        compile_provider("void infiltrator_filesystem_api_v2(void) {}\n"
+                         "void infiltrator_filesystem_ntfs_v1(void) {}\n");
+        check(!exports_common_filesystem_api(module), "mixed filesystem exports refused");
+        compile_provider("void infiltrator_filesystem_ntfs_v1(void) {}\n"
+                         "void infiltrator_filesystem_api_v2(void) {}\n");
+        check(!exports_common_filesystem_api(module), "mixed exports refused in any order");
+        compile_provider("extern void infiltrator_filesystem_ntfs_v1(void);\n"
+                         "void infiltrator_filesystem_api_v2(void) { infiltrator_filesystem_ntfs_v1(); }\n");
+        check(!exports_common_filesystem_api(module), "obsolete filesystem import refused");
         compile_provider("int infiltrator_filesystem_api_v2;\n");
         check(!exports_common_filesystem_api(module), "filesystem data symbol refused");
         compile_provider("extern void infiltrator_filesystem_api_v2(void);\n"

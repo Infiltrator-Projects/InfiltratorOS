@@ -25,6 +25,7 @@
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <sys/file.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
@@ -563,17 +564,26 @@ static bool exports_common_filesystem_api(const fs::path &path) {
 
     std::istringstream symbols(output({"/usr/bin/env", "LC_ALL=C", "/usr/bin/readelf",
                                       "--dyn-syms", "--wide", "--", path.string()}));
+    bool found_v2 = false;
     for (std::string line; std::getline(symbols, line);) {
         std::istringstream fields(line);
         std::string number, value, size, type, binding, visibility, section, name;
-        if (fields >> number >> value >> size >> type >> binding >> visibility >> section >> name &&
-            type == "FUNC" && (binding == "GLOBAL" || binding == "WEAK") &&
+        if (!(fields >> number >> value >> size >> type >> binding >> visibility >> section >> name))
+            continue;
+        // Symbol version annotations are not part of the exported API name.
+        const auto annotation = name.find('@');
+        if (annotation != std::string::npos) name.resize(annotation);
+        constexpr std::string_view prefix = "infiltrator_filesystem_";
+        if (name.rfind(prefix, 0) == 0 && name.size() >= prefix.size() + 3 &&
+            name.compare(name.size() - 3, 3, "_v1") == 0)
+            return false;
+        if (type == "FUNC" && (binding == "GLOBAL" || binding == "WEAK") &&
             (visibility == "DEFAULT" || visibility == "PROTECTED") &&
             section.find_first_not_of("0123456789") == std::string::npos &&
             section != "0" && name == "infiltrator_filesystem_api_v2")
-            return true;
+            found_v2 = true;
     }
-    return false;
+    return found_v2;
 }
 static bool provider_current(const Entry &entry, const Asset &asset) {
     const std::string fmt = std::string("$") + "{Status}\t$" + "{Version}\t$" +
