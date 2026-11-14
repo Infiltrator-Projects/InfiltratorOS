@@ -836,15 +836,26 @@ static Strings boot_deployment(const fs::path &stage, const fs::path &statuses,
     return command;
 }
 
-static bool native_kernel_installed() {
+static bool native_kernel_installed(const fs::path &system = "/System", uid_t owner = 0) {
     const std::string native = std::string("InfiltratorOS-") + NATIVE_KERNEL_RELEASE;
-    const fs::path kernel("/System/Kernel");
+    const fs::path kernel = system / "Kernel";
+    // The native helper refuses a user-writable path even when the files at
+    // its end happen to be root-owned. Match that contract before declaring
+    // the kernel installed; lstat also rejects replaced parent symlinks.
+    for (const auto &path : {system, kernel, kernel / "Images", kernel / "Modules",
+                            kernel / "Modules" / native, kernel / "Runtime",
+                            kernel / "Runtime" / native}) {
+        struct stat st{};
+        if (lstat(path.c_str(), &st) || !S_ISDIR(st.st_mode) || st.st_uid != owner ||
+            (st.st_mode & 022))
+            return false;
+    }
     for (const auto &path : {kernel / "Images" / (native + ".img"),
                             kernel / "Modules" / native / "modules.dep.bin",
                             kernel / "Modules" / native / "modules.alias.bin",
                             kernel / "Runtime" / native / "modprobe"}) {
         struct stat st{};
-        if (lstat(path.c_str(), &st) || !S_ISREG(st.st_mode) || st.st_uid != 0 ||
+        if (lstat(path.c_str(), &st) || !S_ISREG(st.st_mode) || st.st_uid != owner ||
             (st.st_mode & 022) || st.st_size <= 0)
             return false;
     }

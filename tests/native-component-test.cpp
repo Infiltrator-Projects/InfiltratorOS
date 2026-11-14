@@ -99,6 +99,34 @@ int main() {
         rejects([] { verify_boot_setup_result(77); }, "skipped BOOT deployment as a successful upgrade");
         rejects([] { verify_boot_setup_result(1); }, "failed BOOT deployment as a successful upgrade");
         {
+            TempDir fixture(fs::temp_directory_path(), "native-kernel-trust-");
+            const auto system = fixture.path / "System";
+            const auto kernel = system / "Kernel";
+            const auto native = std::string("InfiltratorOS-") + NATIVE_KERNEL_RELEASE;
+            for (const auto &dir : {kernel / "Images", kernel / "Modules" / native,
+                                    kernel / "Runtime" / native})
+                fs::create_directories(dir);
+            save(kernel / "Images" / (native + ".img"), "kernel");
+            save(kernel / "Modules" / native / "modules.dep.bin", "dependencies");
+            save(kernel / "Modules" / native / "modules.alias.bin", "aliases");
+            const auto helper = kernel / "Runtime" / native / "modprobe";
+            save(helper, "helper");
+            if (chmod(helper.c_str(), 0755)) throw std::runtime_error("Cannot set fixture permissions");
+            check(native_kernel_installed(system, geteuid()), "trusted native kernel accepted");
+            check(!native_kernel_installed(system, geteuid() + 1), "untrusted owner rejected");
+            if (chmod(kernel.c_str(), 0775)) throw std::runtime_error("Cannot set unsafe fixture permissions");
+            check(!native_kernel_installed(system, geteuid()), "writable kernel parent rejected");
+            if (chmod(kernel.c_str(), 0755)) throw std::runtime_error("Cannot reset fixture permissions");
+            if (chmod((kernel / "Modules" / native).c_str(), 0777))
+                throw std::runtime_error("Cannot set unsafe module permissions");
+            check(!native_kernel_installed(system, geteuid()), "writable module directory rejected");
+            if (chmod((kernel / "Modules" / native).c_str(), 0755))
+                throw std::runtime_error("Cannot reset module permissions");
+            fs::rename(kernel / "Runtime", kernel / "Runtime-real");
+            fs::create_directory_symlink("Runtime-real", kernel / "Runtime");
+            check(!native_kernel_installed(system, geteuid()), "symlinked runtime parent rejected");
+        }
+        {
             // A pipe models efivarfs: a sequential read works, but seeking fails.
             int descriptors[2];
             if (pipe(descriptors)) throw std::runtime_error("Cannot create non-seekable test stream");
