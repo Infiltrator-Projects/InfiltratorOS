@@ -221,7 +221,8 @@ jobs:
               test ! -e "$RUNNER_TEMP/payload/System/Commands/InfiltratorOS/$program"
             done
           done
-          test "$(find "$RUNNER_TEMP/payload/System/Commands/InfiltratorOS" -maxdepth 1 -type f | wc -l)" -eq 5
+          # The package layout test above already checks the exact inventory.
+          test -x "$RUNNER_TEMP/payload/System/Commands/InfiltratorOS/load-native-driver"
           # Source archive includes the exact pinned Common sources.
           archive_root="$RUNNER_TEMP/infiltratoros-$version"
           mkdir -p "$archive_root/src/infiltratr-common"
