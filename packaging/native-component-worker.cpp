@@ -859,6 +859,21 @@ static bool native_kernel_installed(const fs::path &system = "/System", uid_t ow
             (st.st_mode & 022) || st.st_size <= 0)
             return false;
     }
+    // Module indexes can point into nested directories. Checking just the
+    // index files and top-level owner would still admit user-writable driver
+    // files, even though the kernel later runs the helper with root access.
+    std::error_code error;
+    fs::recursive_directory_iterator it(kernel / "Modules" / native, error), end;
+    if (error) return false;
+    while (it != end) {
+        struct stat st{};
+        if (lstat(it->path().c_str(), &st) ||
+            (!S_ISDIR(st.st_mode) && !S_ISREG(st.st_mode)) ||
+            st.st_uid != owner || (st.st_mode & 022))
+            return false;
+        it.increment(error);
+        if (error) return false;
+    }
     return access((kernel / "Runtime" / native / "modprobe").c_str(), X_OK) == 0;
 }
 

@@ -122,6 +122,16 @@ int main() {
             check(!native_kernel_installed(system, geteuid()), "writable module directory rejected");
             if (chmod((kernel / "Modules" / native).c_str(), 0755))
                 throw std::runtime_error("Cannot reset module permissions");
+            const auto driver = kernel / "Modules" / native / "kernel" / "driver.ko";
+            fs::create_directories(driver.parent_path());
+            save(driver, "driver");
+            check(native_kernel_installed(system, geteuid()), "trusted nested driver accepted");
+            if (chmod(driver.c_str(), 0666)) throw std::runtime_error("Cannot set unsafe driver permissions");
+            check(!native_kernel_installed(system, geteuid()), "writable nested driver rejected");
+            if (chmod(driver.c_str(), 0644)) throw std::runtime_error("Cannot reset driver permissions");
+            fs::create_symlink("driver.ko", driver.parent_path() / "alias.ko");
+            check(!native_kernel_installed(system, geteuid()), "symlinked driver rejected");
+            fs::remove(driver.parent_path() / "alias.ko");
             fs::rename(kernel / "Runtime", kernel / "Runtime-real");
             fs::create_directory_symlink("Runtime-real", kernel / "Runtime");
             check(!native_kernel_installed(system, geteuid()), "symlinked runtime parent rejected");
