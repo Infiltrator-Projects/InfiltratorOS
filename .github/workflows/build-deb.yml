@@ -302,6 +302,15 @@ jobs:
           (cd release && sha256sum -c SHA256SUMS.txt)
           version=$(tr -d '\r\n' < VERSION)
           tag="v$version"
+          # An immutable previous release cannot be updated by this commit.
+          # Exit before waiting for dependencies rather than holding a job
+          # for hours when a version bump is required anyway.
+          existing=$(git rev-parse -q --verify "refs/tags/$tag^{commit}" || true)
+          if [[ -n $existing && $existing != "$GITHUB_SHA" ]]; then
+            gh release view "$tag" --json isDraft --jq '.isDraft' | grep -qx false
+            echo "$tag is already published; advance VERSION for the next product release."
+            exit 0
+          fi
           # Keep the conversion unpublished until its BOOT and Kernel assets
           # have passed their independently owned release gates.
           boot_version=$(sed -nE 's/.*MINIMUM_BOOT_RELEASE = "([0-9.]+)";.*/\1/p' packaging/native-component-worker.cpp)
