@@ -966,6 +966,12 @@ static int individual(const Entry &entry, bool app, bool temporal, bool filesyst
         status.write("running", 5, "Checking native release", entry.repo);
         bool already = install(entry, status, app, temporal, filesystem);
         if (entry.id == "boot") {
+            // Clean the known temporary BOOT independently of the kernel
+            // build and guarded BOOT deployment. The helper verifies the ESP,
+            // active entry and GRUB fallback before touching firmware state.
+            status.write("running", 70, "Cleaning up BOOT", "Checking for an obsolete temporary entry");
+            verify_boot_setup_result(execute({(stage / "install-boot-option").string(),
+                                              "--cleanup-obsolete"}));
             auto command = boot_deployment(stage, status_dir, providers);
             const bool ext4_ready = std::find(command.begin(), command.end(),
                                               "/System/Filesystems/EXT4.so") != command.end();

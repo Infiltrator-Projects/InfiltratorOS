@@ -107,6 +107,17 @@ CONF
 efibootmgr --create-only --disk /dev/vda --part 1 --label 'InfiltratorOS 0.1.5 Trial' \
     --loader '\EFI\InfiltratorBootTrial\BOOTX64.EFI'
 
+# This is also invoked before a kernel build, so cleanup cannot depend on
+# successful native-kernel installation or replacing the active BOOT.
+/install-boot-option --cleanup-obsolete
+post_cleanup=$(efibootmgr -v)
+! grep -Fq 'InfiltratorOS 0.1.5 Trial' <<< "$post_cleanup"
+[[ ! -e $obsolete ]]
+grep -Fxq "BootOrder: $grub,$other" <<< "$post_cleanup"
+grep -Fxq "BootNext: $other" <<< "$post_cleanup"
+grep -Fxq 'GRUB unchanged' "$esp/EFI/ubuntu/shimx64.efi"
+[[ ! -e "$esp/EFI/InfiltratorBoot/BOOTX64.EFI" ]]
+
 module=/System/Filesystems/FAT16.so
 /install-boot-option "$module"
 registered=$(efibootmgr -v)

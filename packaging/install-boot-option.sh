@@ -241,7 +241,12 @@ register_option() {
 }
 
 main() {
-    local module
+    local module cleanup_only=0
+    if [[ ${1:-} == --cleanup-obsolete ]]; then
+        cleanup_only=1
+        shift
+        (( $# == 0 )) || { note 'Cleanup accepts no filesystem modules.' >&2; return 2; }
+    fi
     for module; do
         [[ $module =~ ^/System/Filesystems/[A-Za-z0-9_-]+\.so$ ]] || {
             note "Invalid filesystem module: $module" >&2; return 2;
@@ -303,6 +308,7 @@ main() {
     # depend on successful replacement of the existing BOOT installation.
     remove_obsolete_boot "$esp" "$part" "$uuid" || return 1
     [[ $(findmnt -rnM "$esp" -o SOURCE) == "$source" ]] || return 1
+    if (( cleanup_only )); then return 0; fi
     # Cleanup may remove an entry or BootNext; never register using the stale
     # firmware snapshot or it could reintroduce a deleted entry to BootOrder.
     snapshot=$(firmware -v) || return 1
