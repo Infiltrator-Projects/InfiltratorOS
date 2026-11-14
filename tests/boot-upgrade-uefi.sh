@@ -148,7 +148,20 @@ grep -Fxq 'Other loader unchanged' "$esp/EFI/Other/BOOTX64.EFI"
 [[ $(efibootmgr -v) == "$registered" ]]
 
 # The BOOT deployer can retain an existing working EFI filesystem path.
-# The upgrader must propagate the skip without rewriting its marker or NVRAM.
+# A recognised temporary entry must still be removed, while the original
+# BOOT, GRUB, BootOrder and unrelated BootNext remain intact.
+mkdir -p "$obsolete"
+cat > "$obsolete/boot.conf" <<'CONF'
+scanfor manual
+menuentry "InfiltratorOS Kernel 0.1.5" {
+    filesystem_module ext4
+}
+CONF
+efibootmgr --create-only --disk /dev/vda --part 1 \
+    --label 'InfiltratorOS 0.1.5 Trial' \
+    --loader '\EFI\InfiltratorBootTrial\BOOTX64.EFI'
+with_obsolete=$(efibootmgr -v)
+grep -Fq 'InfiltratorOS 0.1.5 Trial' <<< "$with_obsolete"
 mkdir -p "$installed/drivers_x64"
 printf 'independent EFI reader\n' > "$installed/drivers_x64/user.efi"
 printf 'BOOT using its existing EFI reader\n' > "$installed/BOOTX64.EFI"
@@ -160,7 +173,9 @@ result=0
 [[ $(sha256sum < "$installed/BOOTX64.EFI") == "$retained" ]]
 [[ $(cat "$installed/.infiltratoros-loader.sha256") == "${retained%% *}" ]]
 grep -Fxq 'independent EFI reader' "$installed/drivers_x64/user.efi"
+[[ ! -e $obsolete ]]
 [[ $(efibootmgr -v) == "$registered" ]]
+grep -Fxq 'GRUB unchanged' "$esp/EFI/ubuntu/shimx64.efi"
 mv "$installed/drivers_x64/user.efi" "$esp/EFI/Other/"
 
 # Later releases must also refresh a BOOT installation with a valid marker.

@@ -298,10 +298,20 @@ main() {
     if ! has_grub_fallback "$snapshot" "$order" "$part" "$uuid" "$esp"; then
         skip 'An independent GRUB fallback could not be verified on this ESP.'
     fi
+    # Cleanup is independently safe once GRUB is verified, even if the
+    # BOOT deployer must retain an older filesystem reader. Never make this
+    # depend on successful replacement of the existing BOOT installation.
+    remove_obsolete_boot "$esp" "$part" "$uuid" || return 1
+    [[ $(findmnt -rnM "$esp" -o SOURCE) == "$source" ]] || return 1
+    # Cleanup may remove an entry or BootNext; never register using the stale
+    # firmware snapshot or it could reintroduce a deleted entry to BootOrder.
+    snapshot=$(firmware -v) || return 1
+    order=$(boot_order "$snapshot") || return 1
+    option=$(find_boot_option "$snapshot" "$part" "$uuid") || return 1
+    has_grub_fallback "$snapshot" "$order" "$part" "$uuid" "$esp" || return 1
     deploy_boot "$payload" "$esp/EFI/InfiltratorBoot" "$option" "$@" || return 1
     [[ $(findmnt -rnM "$esp" -o SOURCE) == "$source" ]] || return 1
     register_option "/dev/$parent" "$part" "$uuid" "$snapshot" "$order" || return 1
-    remove_obsolete_boot "$esp" "$part" "$uuid"
 }
 
 if [[ ${BASH_SOURCE[0]} == "$0" ]]; then main "$@"; fi
