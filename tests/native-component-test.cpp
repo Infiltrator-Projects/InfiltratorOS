@@ -143,16 +143,16 @@ int main() {
         check(established[0].slug() == "filesystem-fat12", "FAT12 identity");
         check(application("system-monitor").repo == "System-Monitor", "system monitor identity");
         const auto boot = application("boot");
-        const Asset boot_version{"0.1.49", "", "", 0};
-        check(application_package_matches(boot, boot_version, "install ok installed\t0.1.49+native1"),
+        const Asset boot_version{"0.1.50", "", "", 0};
+        check(application_package_matches(boot, boot_version, "install ok installed\t0.1.50+native1"),
               "BOOT accepts its locally compiled package");
-        check(!application_package_matches(boot, boot_version, "install ok installed\t0.1.49"),
+        check(!application_package_matches(boot, boot_version, "install ok installed\t0.1.50"),
               "BOOT rejects the portable package as native evidence");
-        auto boot_release = sample_release(boot, "0.1.49", false);
-        check(release_asset(boot, boot_release.ptr, false, false).url.find("boot-0.1.49-native-installer.run") != std::string::npos,
+        auto boot_release = sample_release(boot, "0.1.50", false);
+        check(release_asset(boot, boot_release.ptr, false, false).url.find("boot-0.1.50-native-installer.run") != std::string::npos,
               "BOOT resolves its independent source installer");
         rejects([&]() {
-            auto old_boot = sample_release(boot, "0.1.48", false);
+            auto old_boot = sample_release(boot, "0.1.49", false);
             (void)release_asset(boot, old_boot.ptr, false, false);
         }, "BOOT release without normal native kernel discovery");
         const Entry kernel{"kernel", "InfiltratorOS Kernel", "Kernel", "", "", ""};

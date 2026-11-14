@@ -342,6 +342,7 @@ struct Asset {
     std::string version, url, sha;
     size_t size = 0;
 };
+static constexpr const char *MINIMUM_BOOT_RELEASE = "0.1.50";
 static constexpr const char *NATIVE_KERNEL_RELEASE = "0.1.6";
 
 static Asset release_asset(const Entry &entry, json_object *meta, bool calendar_or_clock,
@@ -359,8 +360,8 @@ static Asset release_asset(const Entry &entry, json_object *meta, bool calendar_
     Asset result;
     result.version = tag.substr(1);
     if (entry.id == "boot" &&
-        execute({"/usr/bin/dpkg", "--compare-versions", result.version, "ge", "0.1.49"}) != 0)
-        throw std::runtime_error("BOOT requires version 0.1.49 or newer for automatic native kernel discovery and EXT4 upgrades");
+        execute({"/usr/bin/dpkg", "--compare-versions", result.version, "ge", MINIMUM_BOOT_RELEASE}) != 0)
+        throw std::runtime_error("BOOT requires version 0.1.50 or newer for automatic native kernel discovery and EXT4 upgrades");
     // Older Calendar RUNs invoke the Python scanner during a native build.
     if (entry.id == "calendar" &&
         execute({"/usr/bin/dpkg", "--compare-versions", result.version, "ge", "1.0.131"}) != 0)
