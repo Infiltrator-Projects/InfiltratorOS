@@ -830,21 +830,38 @@ static void wait_for_boot_filesystems(const fs::path &statuses,
 static Strings boot_deployment(const fs::path &stage, const fs::path &statuses,
                                const std::vector<Entry> &providers) {
     Strings command{(stage / "install-boot-option").string()};
+    // The live system is being upgraded, never reformatted. The current root
+    // filesystem is mandatory, not a best-effort optional BOOT reader.
+    std::string root = output({"/usr/bin/findmnt", "-nro", "FSTYPE", "-M", "/"});
+    if (root == "ntfs3") root = "ntfs";
+    const std::string required_slug = "filesystem-" + root;
+    const bool managed_upgrade = stage != ROOT && regular(stage / "selected.list");
+    bool root_staged = false;
     for (const auto &provider : providers) {
-        if (provider_state(statuses, provider) != "complete") continue;
+        const bool mandatory = managed_upgrade && provider.slug() == required_slug;
+        if (provider_state(statuses, provider) != "complete") {
+            if (mandatory)
+                throw std::runtime_error("Required root filesystem provider did not install: " + required_slug);
+            continue;
+        }
         const auto meta = release(provider);
         const auto asset = release_asset(provider, meta.ptr, false, true);
         if (!provider_current(provider, asset))
             throw std::runtime_error("Filesystem package changed before BOOT deployment: " + provider.package);
         const int result = execute({"/usr/lib/infiltrator-boot/validate-module", provider.resource});
         if (result == 1) {
+            if (mandatory)
+                throw std::runtime_error("Required root provider is not firmware-compatible: " + provider.resource);
             std::cout << "BOOT firmware profile unavailable for " << provider.resource << "\n";
             continue;
         }
         if (result != 0)
             throw std::runtime_error("Could not verify BOOT filesystem module: " + provider.resource);
         command.push_back(provider.resource);
+        if (mandatory) root_staged = true;
     }
+    if (managed_upgrade && !root_staged)
+        throw std::runtime_error("BOOT cannot upgrade without a validated V2 root filesystem module: " + required_slug);
     return command;
 }
 
