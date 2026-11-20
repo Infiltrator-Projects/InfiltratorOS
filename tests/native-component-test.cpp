@@ -238,6 +238,21 @@ int main() {
             auto old_boot = sample_release(boot, "0.1.49", false);
             (void)release_asset(boot, old_boot.ptr, false, false);
         }, "BOOT release without normal native kernel discovery");
+        rejects([&]() {
+            auto preview = sample_release(boot, "0.1.41", false, "BOOT-0.1.41-amd64.run");
+            json_object_object_add(preview.ptr, "prerelease", json_object_new_boolean(1));
+            (void)release_asset(boot, preview.ptr, false, false);
+        }, "staging-only BOOT prerelease as a firmware installer");
+        rejects([&]() {
+            auto staging_only = sample_release(boot, "0.1.50", false, "BOOT-0.1.50-amd64.run");
+            (void)release_asset(boot, staging_only.ptr, false, false);
+        }, "staging-only BOOT installer filename");
+        rejects([&]() {
+            auto no_deb = sample_release(boot, "0.1.50", false);
+            auto *assets = field(no_deb.ptr, "assets");
+            json_object_array_del_idx(assets, 1, 1);
+            (void)release_asset(boot, no_deb.ptr, false, false);
+        }, "BOOT native RUN without paired generic Debian package");
         const Entry kernel{"kernel", "InfiltratorOS Kernel", "Kernel", "", "", ""};
         const std::string kernel_version = NATIVE_KERNEL_RELEASE;
         const std::string kernel_run = "InfiltratorOS-Kernel-" + kernel_version + "-amd64.run";
