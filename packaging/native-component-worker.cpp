@@ -425,13 +425,35 @@ static Asset release_asset(const Entry &entry, json_object *meta, bool calendar_
         throw std::runtime_error("Unqualified temporal release assets");
     if (filesystem && !names.count(entry.package + "_" + result.version + "_amd64.deb"))
         throw std::runtime_error("Filesystem native release is missing its generic package");
+    // BOOT must publish both its hardware-native source installer and a
+    // separately identifiable generic Debian package. A staging-only preview
+    // (for example BOOT-<version>-amd64.run) is never a native installer.
+    if (entry.id == "boot" &&
+        !names.count(entry.package + "_" + result.version + "_amd64.deb"))
+        throw std::runtime_error("BOOT release is missing its generic Debian package");
     return result;
 }
 static Document release(const Entry &entry) {
     const std::string directory = environment("INFILTRATOROS_RELEASE_DIR");
     // The v3 catalogue has a fixed 63-repository contract shared with
     // earlier InfiltratorOS releases. Calendar resolves its own release.
-    return parse(directory.empty() || entry.id == "calendar" || entry.id == "boot"
+    // BOOT is firmware-critical: never fall back to an unverified preview
+    // when its /releases/latest endpoint has no stable release.
+    if (entry.id == "boot") {
+        try {
+            return parse(fetch("https://api.github.com/repos/Infiltrator-Projects/Boot/releases/latest"));
+        } catch (const std::exception &error) {
+            throw std::runtime_error(
+                std::string("BOOT installation blocked: no qualified stable BOOT release is available. ")
+                + "Requires BOOT >= " + MINIMUM_BOOT_RELEASE +
+                " with boot-<version>-native-installer.run, a generic AMD64 Debian package, "
+                "verified Common V2 modules and a firmware deployment helper. "
+                "Preview BOOT-<version>-amd64.run files only stage files; they are not "
+                "firmware-ready installers. Existing BOOT, GRUB and EFI entries were left untouched. "
+                "Release query: " + error.what());
+        }
+    }
+    return parse(directory.empty() || entry.id == "calendar"
         ? fetch("https://api.github.com/repos/Infiltrator-Projects/" +
                 entry.repo + "/releases/latest")
         : read_file(fs::path(directory) / (entry.repo + ".json")));
