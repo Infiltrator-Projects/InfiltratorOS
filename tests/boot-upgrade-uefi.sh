@@ -145,7 +145,7 @@ post_cleanup=$(efibootmgr -v)
 grep -Fxq "BootOrder: $grub,$other" <<< "$post_cleanup"
 grep -Fxq "BootNext: $other" <<< "$post_cleanup"
 grep -Fxq 'GRUB unchanged' "$esp/EFI/ubuntu/shimx64.efi"
-[[ ! -e "$esp/EFI/InfiltratorBoot/BOOTX64.EFI" ]]
+[[ ! -e "$esp/EFI/InfiltratorOS/BOOT/BOOTX64.EFI" ]]
 
 module=/System/Filesystems/FAT16.so
 /install-boot-option "$module"
@@ -157,15 +157,15 @@ grep -Fxq "BootOrder: $option,$grub,$other" <<< "$registered"
 grep -Fxq "BootNext: $other" <<< "$registered"
 ! grep -Fq 'InfiltratorOS 0.1.5 Trial' <<< "$registered"
 [[ ! -e $obsolete ]]
-installed="$esp/EFI/InfiltratorBoot"
+installed="$esp/EFI/InfiltratorOS/BOOT"
 payload=/usr/lib/infiltrator-boot/EFI/BOOT/BOOTX64.EFI
 cmp "$payload" "$installed/BOOTX64.EFI"
-cmp "$module" "$installed/filesystems_x64/FAT16.so"
+cmp "$module" "$installed/drivers_x64/FAT16.so"
 /install-boot-option "$module"
 [[ $(efibootmgr -v) == "$registered" ]]
-rm "$installed/filesystems_x64/FAT16.so"
+rm "$installed/drivers_x64/FAT16.so"
 /install-boot-option "$module"
-cmp "$module" "$installed/filesystems_x64/FAT16.so"
+cmp "$module" "$installed/drivers_x64/FAT16.so"
 [[ $(efibootmgr -v) == "$registered" ]]
 
 # Exercise an existing firmware-registered BOOT loader that predates the
