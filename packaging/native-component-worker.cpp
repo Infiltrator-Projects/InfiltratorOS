@@ -803,7 +803,7 @@ static bool install(const Entry &entry, Status &status, bool application_mode,
     Strings command_line{run.string()};
     if (temporal || filesystem) {
         command_line.insert(command_line.end(), {"--profile", "aggressive", "--system-package-mode"});
-    } else if (entry.id != "defragmenter" && entry.id != "calendar") {
+    } else if (entry.id != "defragmenter" && entry.id != "calendar" && entry.id != "boot") {
         command_line.push_back("--system-package-mode");
     }
     required(command_line);
