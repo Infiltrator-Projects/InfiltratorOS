@@ -5,7 +5,7 @@ set -euo pipefail
 export LC_ALL=C
 export PATH=/usr/sbin:/usr/bin:/sbin:/bin
 
-loader='\EFI\InfiltratorBoot\BOOTX64.EFI'
+loader='\EFI\InfiltratorOS\BOOT\BOOTX64.EFI'
 boot_label='Infiltrator BOOT'
 obsolete_loader='\EFI\InfiltratorBootTrial\BOOTX64.EFI'
 
@@ -171,7 +171,7 @@ deploy_boot() {
         installed=$(sha256sum < "$executable") || return 1
         installed=${installed%% *}
         for module; do
-            if ! cmp -s -- "$module" "$directory/filesystems_x64/${module##*/}"; then
+            if ! cmp -s -- "$module" "$directory/drivers_x64/${module##*/}"; then
                 refresh_modules=1
             fi
         done
@@ -196,7 +196,7 @@ deploy_boot() {
 
     cmp -s -- "$payload" "$executable" || return 1
     for module; do
-        cmp -s -- "$module" "$directory/filesystems_x64/${module##*/}" || return 1
+        cmp -s -- "$module" "$directory/drivers_x64/${module##*/}" || return 1
     done
     staged_marker=$(mktemp "$directory/.infiltratoros-loader.XXXXXXXX") || return 1
     if ! printf '%s\n' "$packaged" > "$staged_marker" || ! mv -fT -- "$staged_marker" "$marker"; then
@@ -315,7 +315,7 @@ main() {
     order=$(boot_order "$snapshot") || return 1
     option=$(find_boot_option "$snapshot" "$part" "$uuid") || return 1
     has_grub_fallback "$snapshot" "$order" "$part" "$uuid" "$esp" || return 1
-    deploy_boot "$payload" "$esp/EFI/InfiltratorBoot" "$option" "$@" || return 1
+    deploy_boot "$payload" "$esp/EFI/InfiltratorOS/BOOT" "$option" "$@" || return 1
     [[ $(findmnt -rnM "$esp" -o SOURCE) == "$source" ]] || return 1
     register_option "/dev/$parent" "$part" "$uuid" "$snapshot" "$order" || return 1
 }
