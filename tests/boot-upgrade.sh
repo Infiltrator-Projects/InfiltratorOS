@@ -10,7 +10,7 @@ original="$work/original"
 firmware_file="$work/firmware_file"
 operations="$work/operations"
 esp="$work/esp"
-directory="$esp/EFI/InfiltratorBoot"
+directory="$esp/EFI/InfiltratorOS/BOOT"
 payload="$work/BOOTX64.EFI"
 mkdir -p "$esp/EFI/ubuntu"
 printf 'GRUB loader\n' > "$esp/EFI/ubuntu/shimx64.efi"
@@ -62,8 +62,8 @@ deploy() {
     printf '%s\n' "$1" >> "$operations"
     cp "$payload" "$directory/BOOTX64.EFI"
     shift
-    mkdir -p "$directory/filesystems_x64"
-    for module; do cp "$module" "$directory/filesystems_x64/"; done
+    mkdir -p "$directory/drivers_x64"
+    for module; do cp "$module" "$directory/drivers_x64/"; done
 }
 
 printf 'first verified BOOT loader\n' > "$payload"
@@ -114,13 +114,13 @@ deploy_boot "$payload" "$directory" "$option"
 module="$work/FAT16.so"
 printf 'verified module\n' > "$module"
 deploy_boot "$payload" "$directory" "$option" "$module"
-cmp "$module" "$directory/filesystems_x64/FAT16.so"
+cmp "$module" "$directory/drivers_x64/FAT16.so"
 count=$(wc -l < "$operations")
 deploy_boot "$payload" "$directory" "$option" "$module"
 [[ $(wc -l < "$operations") == "$count" ]]
 printf 'upgraded module\n' > "$module"
 deploy_boot "$payload" "$directory" "$option" "$module"
-cmp "$module" "$directory/filesystems_x64/FAT16.so"
+cmp "$module" "$directory/drivers_x64/FAT16.so"
 [[ $(wc -l < "$operations") == $((count + 1)) ]]
 
 trial="$esp/EFI/InfiltratorBootTrial"
