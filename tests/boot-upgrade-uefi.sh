@@ -125,25 +125,11 @@ other=$(sed -nE 's/^Boot([0-9A-F]{4})\*[[:space:]]+Fixture Other.*/\1/p' <<< "$b
 [[ $grub =~ ^[0-9A-F]{4}$ && $other =~ ^[0-9A-F]{4}$ ]]
 efibootmgr --bootorder "$grub,$other"
 efibootmgr --bootnext "$other"
-obsolete="$esp/EFI/InfiltratorBootTrial"
-mkdir "$obsolete"
-cat > "$obsolete/boot.conf" <<'CONF'
-scanfor manual
-menuentry "InfiltratorOS Kernel 0.1.5" {
-    filesystem_module ext4
-}
-CONF
-efibootmgr --create-only --disk /dev/vda --part 1 --label 'InfiltratorOS 0.1.5 Trial' \
-    --loader '\EFI\InfiltratorBootTrial\BOOTX64.EFI'
-
-# This is also invoked before a kernel build, so cleanup cannot depend on
-# successful native-kernel installation or replacing the active BOOT.
-/install-boot-option --cleanup-obsolete
-post_cleanup=$(efibootmgr -v)
-! grep -Fq 'InfiltratorOS 0.1.5 Trial' <<< "$post_cleanup"
-[[ ! -e $obsolete ]]
-grep -Fxq "BootOrder: $grub,$other" <<< "$post_cleanup"
-grep -Fxq "BootNext: $other" <<< "$post_cleanup"
+# No temporary or legacy BOOT installations remain to clean up.
+# Confirm unrelated firmware entries and boot order are preserved.
+before=$(efibootmgr -v)
+grep -Fxq "BootOrder: $grub,$other" <<< "$before"
+grep -Fxq "BootNext: $other" <<< "$before"
 grep -Fxq 'GRUB unchanged' "$esp/EFI/ubuntu/shimx64.efi"
 [[ ! -e "$esp/EFI/InfiltratorOS/BOOT/BOOTX64.EFI" ]]
 
@@ -155,8 +141,6 @@ option=$(sed -nE 's/^Boot([0-9A-F]{4})\*[[:space:]]+Infiltrator BOOT.*/\1/p' <<<
 [[ $option =~ ^[0-9A-F]{4}$ ]]
 grep -Fxq "BootOrder: $option,$grub,$other" <<< "$registered"
 grep -Fxq "BootNext: $other" <<< "$registered"
-! grep -Fq 'InfiltratorOS 0.1.5 Trial' <<< "$registered"
-[[ ! -e $obsolete ]]
 installed="$esp/EFI/InfiltratorOS/BOOT"
 payload=/usr/lib/infiltrator-boot/EFI/BOOT/BOOTX64.EFI
 cmp "$payload" "$installed/BOOTX64.EFI"
@@ -187,21 +171,7 @@ grep -Fxq 'GRUB unchanged' "$esp/EFI/ubuntu/shimx64.efi"
 grep -Fxq 'Other loader unchanged' "$esp/EFI/Other/BOOTX64.EFI"
 [[ $(efibootmgr -v) == "$registered" ]]
 
-# The BOOT deployer can retain an existing working EFI filesystem path.
-# A recognised temporary entry must still be removed, while the original
-# BOOT, GRUB, BootOrder and unrelated BootNext remain intact.
-mkdir -p "$obsolete"
-cat > "$obsolete/boot.conf" <<'CONF'
-scanfor manual
-menuentry "InfiltratorOS Kernel 0.1.5" {
-    filesystem_module ext4
-}
-CONF
-efibootmgr --create-only --disk /dev/vda --part 1 \
-    --label 'InfiltratorOS 0.1.5 Trial' \
-    --loader '\EFI\InfiltratorBootTrial\BOOTX64.EFI'
-with_obsolete=$(efibootmgr -v)
-grep -Fq 'InfiltratorOS 0.1.5 Trial' <<< "$with_obsolete"
+# Retain existing independent EFI reader, without touching unrelated entries.
 mkdir -p "$installed/drivers_x64"
 printf 'independent EFI reader\n' > "$installed/drivers_x64/user.efi"
 printf 'BOOT using its existing EFI reader\n' > "$installed/BOOTX64.EFI"
@@ -213,7 +183,6 @@ result=0
 [[ $(sha256sum < "$installed/BOOTX64.EFI") == "$retained" ]]
 [[ $(cat "$installed/.infiltratoros-loader.sha256") == "${retained%% *}" ]]
 grep -Fxq 'independent EFI reader' "$installed/drivers_x64/user.efi"
-[[ ! -e $obsolete ]]
 [[ $(efibootmgr -v) == "$registered" ]]
 grep -Fxq 'GRUB unchanged' "$esp/EFI/ubuntu/shimx64.efi"
 mv "$installed/drivers_x64/user.efi" "$esp/EFI/Other/"
