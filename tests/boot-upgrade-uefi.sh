@@ -24,21 +24,27 @@ if ! jq -e --arg run "$run" --arg deb "infiltrator-boot_${version}_amd64.deb" \
     echo "BOOT v$version is not a stable native installer release with a matching generic Debian package." >&2
     exit 1
 fi
-digest=$(jq -r --arg run "$run" \
-    '.assets[] | select(.name == $run) | .digest' <<< "$release")
-size=$(jq -r --arg run "$run" \
-    '.assets[] | select(.name == $run) | .size' <<< "$release")
+# Qualify the actual published Debian payload, not a removed build-only
+# mode of the native RUN. The RUN always builds and installs through boot-install.
+deb="infiltrator-boot_${version}_amd64.deb"
+digest=$(jq -r --arg deb "$deb" \
+    '.assets[] | select(.name == $deb) | .digest' <<< "$release")
+size=$(jq -r --arg deb "$deb" \
+    '.assets[] | select(.name == $deb) | .size' <<< "$release")
 [[ "$digest" =~ ^sha256:[a-f0-9]{64}$ && "$size" =~ ^[1-9][0-9]*$ ]] || {
-    echo "BOOT release has no trusted installer SHA-256 and size" >&2; exit 1;
+    echo "BOOT Debian release has no trusted SHA-256 and size" >&2; exit 1;
 }
-curl -fsSL --retry 2 "$url/$run" -o "$work/$run"
-[[ $(stat -c%s "$work/$run") == "$size" ]] || { echo "BOOT native installer size mismatch" >&2; exit 1; }
-printf '%s  %s\n' "${digest#sha256:}" "$work/$run" | sha256sum -c -
-chmod 0755 "$work/$run"
-mkdir "$work/native"
-"$work/$run" --build-only --output-dir "$work/native"
-boot_deb="$work/native/infiltrator-boot_${version}+native1_amd64.deb"
-dpkg-deb -x "$boot_deb" "$guest"
+curl -fsSL --retry 2 "$url/$deb" -o "$work/$deb"
+[[ $(stat -c%s "$work/$deb") == "$size" ]] || { echo "BOOT package size mismatch" >&2; exit 1; }
+printf '%s  %s\n' "${digest#sha256:}" "$work/$deb" | sha256sum -c -
+dpkg-deb -x "$work/$deb" "$guest"
+# InfiltratorOS firmware deployment requires this concrete helper. A preview
+# .deb that only stages EFI assets must fail qualification rather than be
+# treated as an operational integration.
+test -x "$guest/usr/sbin/infiltrator-boot-deploy" || {
+    echo "BOOT is not qualified: released Debian package has no firmware deployment helper." >&2
+    exit 1
+}
 install -m 0755 "$helper" "$guest/install-boot-option"
 
 # Use the exact independent provider package qualified for Common V2. Only
