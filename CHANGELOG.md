@@ -1,3 +1,10 @@
+## 1.0.89 (unreleased) — Qualify the real BOOT installation contract
+
+- Refuse staging-only BOOT preview assets as firmware-ready installers. Require a stable independent native source RUN, its generic Debian package and existing Common V2/native-deployment evidence.
+- Preserve the installed BOOT, GRUB and firmware entries when the required native BOOT release does not exist, and report the exact missing qualification rather than silently treating a staged EFI file as installed.
+- Make the UEFI integration test resolve the production minimum BOOT version and verify a stable release's exact SHA-256 digest and size. Remove the obsolete, hardcoded BOOT test version.
+- Fail the OS release dependency gate immediately with an actionable error rather than occupying GitHub Actions runners for nearly two hours waiting for external promotions. Keep independent Kernel qualification mandatory.
+
 ## 1.0.86 — Require BOOT's Common V2 filesystem loader
 
 - Accept BOOT 0.1.46 or newer for the mandatory firmware component.
