@@ -15,13 +15,15 @@ version=$(sed -nE 's/.*MINIMUM_BOOT_RELEASE = "([0-9.]+)";.*/\1/p' \
 run="boot-${version}-native-installer.run"
 url="https://github.com/Infiltrator-Projects/Boot/releases/download/v$version"
 if ! release=$(gh api "repos/Infiltrator-Projects/Boot/releases/tags/v$version"); then
-    echo "BOOT v$version has no published qualified release. A staging-only preview cannot be used for UEFI qualification." >&2
+    echo "BOOT v$version has no published candidate for disposable UEFI qualification." >&2
     exit 1
 fi
+# Qualification runs against the published *candidate* in disposable UEFI.
+# Production installation independently requires a verified stable release.
 if ! jq -e --arg run "$run" --arg deb "infiltrator-boot_${version}_amd64.deb" \
-    '.draft == false and .prerelease == false and
+    '.draft == false and
      any(.assets[]; .name == $run) and any(.assets[]; .name == $deb)' <<< "$release" >/dev/null; then
-    echo "BOOT v$version is not a stable native installer release with a matching generic Debian package." >&2
+    echo "BOOT v$version has no published native installer and matching Debian package." >&2
     exit 1
 fi
 # Qualify the actual published Debian payload, not a removed build-only
