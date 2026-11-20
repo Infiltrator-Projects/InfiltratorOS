@@ -270,6 +270,8 @@ jobs:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
       - name: Qualify the automatic BOOT upgrade in disposable UEFI firmware
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends qemu-system-x86 ovmf efibootmgr busybox-static gdisk dosfstools cpio gcc make binutils gnu-efi
