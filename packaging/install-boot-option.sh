@@ -7,7 +7,6 @@ export PATH=/usr/sbin:/usr/bin:/sbin:/bin
 
 loader='\EFI\InfiltratorOS\BOOT\BOOTX64.EFI'
 boot_label='Infiltrator BOOT'
-obsolete_loader='\EFI\InfiltratorBootTrial\BOOTX64.EFI'
 
 note() { printf 'Infiltrator BOOT: %s\n' "$*"; }
 skip() { note "$*"; exit 77; }
@@ -84,74 +83,6 @@ has_grub_fallback() {
         if default_is_grub "$snapshot" "$id" "$part" "$uuid" "$esp"; then return 0; fi
     done
     return 1
-}
-
-# Recognise only the temporary entry created by the old native-kernel
-# instructions. A matching path on a different ESP belongs to that ESP.
-obsolete_option() {
-    local snapshot=$1 part=$2 uuid=$3 line id=
-    local locator="hd($part,gpt,${uuid,,},"
-    local directory='file(\efi\infiltratorboottrial\'
-    local pattern='^Boot([[:xdigit:]]{4})\*?[[:space:]]+InfiltratorOS [0-9]+\.[0-9]+\.[0-9]+ Trial[[:space:]]+HD\('
-    local partition='hd\([0-9]+,gpt,[[:xdigit:]-]+,'
-    while IFS= read -r line; do
-        [[ $line =~ ^Boot[[:xdigit:]]{4}\*?[[:space:]] && ${line,,} == *"$directory"* ]] || continue
-        if [[ ${line,,} != *"$locator"* ]]; then
-            [[ ${line,,} =~ $partition ]] || return 1
-            continue
-        fi
-        [[ -z $id && ${line,,} == *"file(${obsolete_loader,,})"* && $line =~ $pattern ]] || return 1
-        id=${BASH_REMATCH[1]^^}
-    done <<< "$snapshot"
-    printf '%s' "$id"
-}
-
-remove_obsolete_boot() {
-    local esp=$1 part=$2 uuid=$3 snapshot after order expected id pending directory config
-    directory="$esp/EFI/InfiltratorBootTrial"
-    config="$directory/boot.conf"
-    snapshot=$(firmware -v) || return 1
-    id=$(obsolete_option "$snapshot" "$part" "$uuid") ||
-        { note 'An unrecognised firmware option uses the old temporary directory.'; return 1; }
-    if [[ -e $directory || -L $directory ]]; then
-        # An earlier upgrade can have deleted the option before deleting its
-        # files. Match the generated configuration on either run.
-        [[ -d $directory && ! -L $directory && -f $config && ! -L $config ]] &&
-            grep -Fxq 'scanfor manual' "$config" &&
-            grep -Eq '^menuentry "InfiltratorOS Kernel [0-9]+\.[0-9]+\.[0-9]+" \{$' "$config" &&
-            grep -Fxq '    filesystem_module ext4' "$config" ||
-            { note 'The old temporary BOOT directory did not match its generated configuration.'; return 1; }
-    elif [[ -z $id ]]; then
-        return 0
-    fi
-    if [[ -n $id ]]; then
-        local current_pattern='^BootCurrent:[[:space:]]*([[:xdigit:]]{4})[[:space:]]*$' current=
-        while IFS= read -r line; do
-            if [[ $line =~ $current_pattern ]]; then current=${BASH_REMATCH[1]^^}; fi
-        done <<< "$snapshot"
-        if [[ $current == "$id" ]]; then
-            note 'Temporary BOOT cleanup requires booting through the normal loader.'
-            return 1
-        fi
-        order=$(boot_order "$snapshot") || return 1
-        expected=$(without_option "$order" "$id")
-        [[ -n $expected ]] || return 1
-        pending=$(next_boot "$snapshot")
-        if [[ ${pending^^} == "BOOTNEXT: $id" ]]; then
-            firmware --delete-bootnext || return 1
-            pending=
-        fi
-        firmware --bootnum "$id" --delete-bootnum || return 1
-        after=$(firmware -v) || return 1
-        [[ $(boot_order "$after") == "$expected" && $(next_boot "$after") == "$pending" &&
-           $(obsolete_option "$after" "$part" "$uuid") == '' &&
-           ${after^^} != *$'\n'"BOOT$id"* ]] || return 1
-    fi
-    if [[ -d $directory ]]; then
-        rm -rf --one-file-system -- "$directory" || return 1
-        sync -f "$esp" || return 1
-    fi
-    note 'Removed the obsolete temporary BOOT installation.'
 }
 
 deploy_boot() {
@@ -241,12 +172,7 @@ register_option() {
 }
 
 main() {
-    local module cleanup_only=0
-    if [[ ${1:-} == --cleanup-obsolete ]]; then
-        cleanup_only=1
-        shift
-        (( $# == 0 )) || { note 'Cleanup accepts no filesystem modules.' >&2; return 2; }
-    fi
+    local module
     for module; do
         [[ $module =~ ^/System/Filesystems/[A-Za-z0-9_-]+\.so$ ]] || {
             note "Invalid filesystem module: $module" >&2; return 2;
@@ -303,18 +229,8 @@ main() {
     if ! has_grub_fallback "$snapshot" "$order" "$part" "$uuid" "$esp"; then
         skip 'An independent GRUB fallback could not be verified on this ESP.'
     fi
-    # Cleanup is independently safe once GRUB is verified, even if the
-    # BOOT deployer must retain an older filesystem reader. Never make this
-    # depend on successful replacement of the existing BOOT installation.
-    remove_obsolete_boot "$esp" "$part" "$uuid" || return 1
-    [[ $(findmnt -rnM "$esp" -o SOURCE) == "$source" ]] || return 1
-    if (( cleanup_only )); then return 0; fi
-    # Cleanup may remove an entry or BootNext; never register using the stale
-    # firmware snapshot or it could reintroduce a deleted entry to BootOrder.
-    snapshot=$(firmware -v) || return 1
-    order=$(boot_order "$snapshot") || return 1
-    option=$(find_boot_option "$snapshot" "$part" "$uuid") || return 1
-    has_grub_fallback "$snapshot" "$order" "$part" "$uuid" "$esp" || return 1
+    # There are no legacy trial installations to remove. Preserve the
+    # validated firmware snapshot and keep all unrelated entries unchanged.
     deploy_boot "$payload" "$esp/EFI/InfiltratorOS/BOOT" "$option" "$@" || return 1
     [[ $(findmnt -rnM "$esp" -o SOURCE) == "$source" ]] || return 1
     register_option "/dev/$parent" "$part" "$uuid" "$snapshot" "$order" || return 1
