@@ -7,12 +7,33 @@ work=$(realpath -m "$2")
 guest="$work/guest"
 mkdir -p "$guest" "$work/kernel"
 
-# Compile BOOT locally from its independently released source installer.
-version=0.1.49
+# Qualify the exact version required by production InfiltratorOS, not a
+# stale UEFI fixture pinned to an older BOOT source installer.
+version=$(sed -nE 's/.*MINIMUM_BOOT_RELEASE = "([0-9.]+)";.*/\1/p' \
+    "$(dirname "$helper")/../packaging/native-component-worker.cpp")
+[[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "Invalid BOOT minimum version" >&2; exit 1; }
 run="boot-${version}-native-installer.run"
 url="https://github.com/Infiltrator-Projects/Boot/releases/download/v$version"
+if ! release=$(gh api "repos/Infiltrator-Projects/Boot/releases/tags/v$version"); then
+    echo "BOOT v$version has no published qualified release. A staging-only preview cannot be used for UEFI qualification." >&2
+    exit 1
+fi
+if ! jq -e --arg run "$run" --arg deb "infiltrator-boot_${version}_amd64.deb" \
+    '.draft == false and .prerelease == false and
+     any(.assets[]; .name == $run) and any(.assets[]; .name == $deb)' <<< "$release" >/dev/null; then
+    echo "BOOT v$version is not a stable native installer release with a matching generic Debian package." >&2
+    exit 1
+fi
+digest=$(jq -r --arg run "$run" \
+    '.assets[] | select(.name == $run) | .digest' <<< "$release")
+size=$(jq -r --arg run "$run" \
+    '.assets[] | select(.name == $run) | .size' <<< "$release")
+[[ "$digest" =~ ^sha256:[a-f0-9]{64}$ && "$size" =~ ^[1-9][0-9]*$ ]] || {
+    echo "BOOT release has no trusted installer SHA-256 and size" >&2; exit 1;
+}
 curl -fsSL --retry 2 "$url/$run" -o "$work/$run"
-printf '%s  %s\n' 2d090b5be1cea3053b67c7c128010c992eb1d8f6f00ddecdc4569ef974b58173 "$work/$run" | sha256sum -c -
+[[ $(stat -c%s "$work/$run") == "$size" ]] || { echo "BOOT native installer size mismatch" >&2; exit 1; }
+printf '%s  %s\n' "${digest#sha256:}" "$work/$run" | sha256sum -c -
 chmod 0755 "$work/$run"
 mkdir "$work/native"
 "$work/$run" --build-only --output-dir "$work/native"
