@@ -327,15 +327,18 @@ jobs:
               jq -e --arg asset "InfiltratorOS-Kernel-$kernel_version-amd64.run" \
                 '.isDraft == false and .isPrerelease == false and any(.assets[]; .name == $asset)' >/dev/null
           }
-          for attempt in {1..110}; do
-            if boot_ready && kernel_ready; then break; fi
-            echo "Waiting for qualified BOOT v$boot_version and Kernel v$kernel_version ($attempt/110)"
-            sleep 60
-            current=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq '.object.sha')
-            [[ $current == "$GITHUB_SHA" ]] || exit 0
-          done
-          boot_ready
-          kernel_ready
+          # Do not hold a GitHub runner for almost two hours waiting for
+          # another repository's missing release. A preview .run that merely
+          # stages files is not a qualified boot manager and must not unblock
+          # the installation or publication gates.
+          if ! boot_ready; then
+            echo "::error title=BOOT release not qualified::InfiltratorOS $version cannot publish: BOOT v$boot_version needs a non-draft, non-prerelease native-installer.run with verified Common V2 deployment capability. BOOT preview .run files are staging-only."
+            exit 1
+          fi
+          if ! kernel_ready; then
+            echo "::error title=Kernel release not qualified::InfiltratorOS $version cannot publish: Kernel v$kernel_version needs a non-draft, non-prerelease AMD64 native RUN."
+            exit 1
+          fi
           if git rev-parse -q --verify "refs/tags/$tag^{commit}" >/dev/null; then
             if [[ "$(git rev-parse "$tag^{commit}")" != "$GITHUB_SHA" ]]; then
               gh release view "$tag" --json isDraft --jq '.isDraft' | grep -qx false
