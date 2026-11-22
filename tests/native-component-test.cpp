@@ -95,17 +95,18 @@ static void check_build_resources() {
 int main() {
     try {
         check_build_resources();
-        const std::string firmware =
-            "BootOrder: 0007,0005,0003\\n"
-            "Boot0007* BOOT Boot Manager HD(1,GPT,1234)/File(\\\\EFI\\\\InfiltratorOS\\\\BOOT\\\\BOOTX64.EFI)\\n";
+        const std::string firmware = R"(BootOrder: 0007,0005,0003
+Boot0007* BOOT Boot Manager HD(1,GPT,1234)/File(\EFI\InfiltratorOS\BOOT\BOOTX64.EFI)
+)";
         check(boot_registered(firmware), "BOOT owns one active, first-priority native EFI entry");
-        check(!boot_registered("BootOrder: 0005,0007\\n" +
-              firmware.substr(firmware.find("Boot0007"))), "BOOT cannot be a secondary boot entry");
+        check(!boot_registered(std::string(R"(BootOrder: 0005,0007
+)") + firmware.substr(firmware.find("Boot0007"))),
+              "BOOT cannot be a secondary boot entry");
         check(!boot_registered(firmware + firmware.substr(firmware.find("Boot0007"))),
               "duplicate BOOT firmware options are refused");
-        check(!boot_registered("BootOrder: 0007\\n"
-                               "Boot0007 BOOT Boot Manager HD(1,GPT,1234)/File(\\\\EFI\\\\InfiltratorOS\\\\BOOT\\\\BOOTX64.EFI)\\n"),
-              "inactive BOOT firmware options are refused");
+        check(!boot_registered(R"(BootOrder: 0007
+Boot0007 BOOT Boot Manager HD(1,GPT,1234)/File(\EFI\InfiltratorOS\BOOT\BOOTX64.EFI)
+)"), "inactive BOOT firmware options are refused");
         auto temporal = catalogue("packaging/temporal-resources.json", 54);
         auto established = catalogue("packaging/filesystem-resources.json", 5);
         auto additional = catalogue("packaging/filesystem-additional.json", 18);
