@@ -164,6 +164,13 @@ Boot0007 BOOT Boot Manager HD(1,GPT,1234)/File(\EFI\InfiltratorOS\BOOT\BOOTX64.E
         check(established[0].slug() == "filesystem-fat12", "FAT12 identity");
         check(application("system-monitor").repo == "System-Monitor", "system monitor identity");
         const auto boot = application("boot");
+        check(native_installer_command(boot, false, false, "/tmp/boot.run") ==
+                  Strings{"/tmp/boot.run"},
+              "BOOT native RUN must execute with no arguments or secondary deployment mode");
+        check(native_installer_command(application("files"), false, false, "/tmp/files.run") ==
+                  Strings({"/tmp/files.run", "--system-package-mode"}),
+              "other native application options are preserved");
+
         auto boot_release = sample_release(boot, "0.1.452", false);
         json_object_object_add(boot_release.ptr, "prerelease", json_object_new_boolean(1));
         check(release_asset(boot, boot_release.ptr, false, false).url.find(
