@@ -351,9 +351,15 @@ static void prepare(const fs::path &destination, const fs::path &providers,
 }
 int main(int argc, char **argv) {
     try {
+        curl_global_init(CURL_GLOBAL_DEFAULT);
+        if (argc == 3 && std::string(argv[1]) == "--check-latest") {
+            const auto tag = live_latest_tag(argv[2]);
+            std::cout << tag << '\n';
+            curl_global_cleanup();
+            return 0;
+        }
         if (argc != 4)
             throw std::runtime_error("Usage: prepare-native-releases OUTPUT PROVIDERS FILESYSTEMS");
-        curl_global_init(CURL_GLOBAL_DEFAULT);
         prepare(argv[1], argv[2], argv[3]);
         curl_global_cleanup();
         return 0;
