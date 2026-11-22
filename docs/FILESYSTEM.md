@@ -66,7 +66,7 @@ InfiltratorOS verifies the selected provider's release and calls its native RUN 
 
 ## Planned boot and modular filesystem integration
 
-InfiltratorOS installs BOOT and stages an exact copy of each selected module that passes BOOT's Common V2 firmware validation. BOOT uses those copies to read boot files and can use the firmware's built-in reader for the EFI system partition. Setup's future root preparation needs a qualified generic kernel bridge and the selected module in the early boot environment. The boot-image filesystem and the runtime root filesystem may differ.
+InfiltratorOS verifies and executes BOOT's independently published native `.run`, leaving the actual EFI files, drivers and firmware registration entirely to that installer under `/EFI/InfiltratorOS/BOOT`. The OS does not separately deploy the selected Common V2 `.so` modules into firmware. BOOT's current EFI drivers are transitional; the future Common V2 firmware profile and the generic kernel bridge still require separate qualification. Setup's future root preparation will need that bridge and the selected module in the early boot environment. The boot-image filesystem and runtime root filesystem may differ.
 
 Filesystem limitations must be represented honestly: Setup may adapt the layout to avoid missing symbolic links when safe, but it cannot treat duplicated files as hard links or claim unsupported namespace, permission, mapping or durability semantics. A format that can hold a boot image does not automatically qualify as a system root. For the detailed, phased cross-project contract, see [Bootable Filesystem Integration Contract](https://github.com/Infiltrator-Projects/Filesystems/blob/main/docs/BOOTABLE_FILESYSTEM_CONTRACT.md).
 
