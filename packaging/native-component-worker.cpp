@@ -729,6 +729,17 @@ static bool boot_registered(const std::string &firmware) {
     }
     return count == 1 && first == matching;
 }
+// UEFI utilities are installed under /usr/bin on modern Debian/Ubuntu but
+// under /usr/sbin on some other systems. Resolve only standard absolute
+// locations: never misreport a missing executable as a missing firmware entry.
+static fs::path efibootmgr_executable(const std::vector<fs::path> &candidates = {
+    "/usr/bin/efibootmgr", "/usr/sbin/efibootmgr",
+    "/bin/efibootmgr", "/sbin/efibootmgr"}) {
+    for (const auto &candidate : candidates)
+        if (access(candidate.c_str(), X_OK) == 0 && fs::is_regular_file(candidate))
+            return candidate;
+    return {};
+}
 static bool native_boot_current(const Asset &asset, bool evidence, std::string *reason) {
     auto fail = [&](const char *message) {
         if (reason) *reason = message;
@@ -736,8 +747,15 @@ static bool native_boot_current(const Asset &asset, bool evidence, std::string *
     };
     const auto image = installed_boot_image();
     if (image.empty()) return fail("BOOTX64.EFI or boot.conf is missing from the fixed ESP path");
-    if (!boot_registered(output({"/usr/sbin/efibootmgr", "-v"})))
-        return fail("BOOT's fixed EFI entry is absent, duplicated, or not first in BootOrder");
+    const auto manager = efibootmgr_executable();
+    if (manager.empty())
+        return fail("Cannot verify BOOT firmware: efibootmgr is missing from standard system paths");
+    std::string firmware;
+    const int rc = execute({manager.string(), "-v"}, &firmware);
+    if (rc != 0)
+        return fail("Cannot verify BOOT firmware: efibootmgr -v failed");
+    if (!boot_registered(firmware))
+        return fail("BOOT's fixed EFI entry is absent, duplicated, inactive, or not first in BootOrder");
     if (!evidence) return true;
     const auto attestation = ROOT / "native-verified-boot.json";
     if (!regular(attestation)) return fail("BOOT native installation attestation is absent");
