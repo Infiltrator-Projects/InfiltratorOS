@@ -59,6 +59,14 @@ jobs:
             grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'
           "$RUNNER_TEMP/native-snapshot" --check-latest System-Monitor |
             grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'
+          # Exercise the full 63-repository installed preflight, not just
+          # isolated redirect lookups. Catch HTML throttling or stale Pages
+          # metadata before any user's native installer runs.
+          mkdir -p "$RUNNER_TEMP/live-release-check"
+          "$RUNNER_TEMP/install-temporal-resources" --list > "$RUNNER_TEMP/live-release-check/providers.list"
+          "$RUNNER_TEMP/install-filesystem-resources" --list > "$RUNNER_TEMP/live-release-check/filesystems.list"
+          sudo "$RUNNER_TEMP/native-snapshot" "$RUNNER_TEMP/live-release-check/verified"             "$RUNNER_TEMP/live-release-check/providers.list"             "$RUNNER_TEMP/live-release-check/filesystems.list"
+          test "$(find "$RUNNER_TEMP/live-release-check/verified" -maxdepth 1 -name '*.json' | wc -l)" -eq 63
           test -x "$RUNNER_TEMP/native-activate-calendar"
       - name: Exercise production process and status contracts
         run: sh tests/check.sh
