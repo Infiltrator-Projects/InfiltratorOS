@@ -2,6 +2,8 @@
 
 InfiltratorOS is the operating-system integration project for the Infiltrator Projects family. **The current deliverable is an amd64 Debian/Linux Mint integration package**, not yet a standalone replacement kernel or completed graphical Setup installer. It packages the approved Plymouth theme, establishes native directories and shared resources, and provisions independently released applications and system modules.
 
+**ELEGANCE is the InfiltratorOS design approach:** artistic, visually sophisticated craftsmanship in interfaces, themes, documentation and source-code presentation. It does not mean minimalism, shortened comments or reduced technical depth. See [Engineering Philosophy](docs/PHILOSOPHY.md#elegance--the-artistic-design-authority).
+
 The product is **source-first and hardware-native by design**. Qualified native installers compile verified component source for the target machine; a portable Debian package is not silently described as a locally optimised build. The Linux foundation and current boot integration are transitional.
 
 The active source version is defined by [VERSION](VERSION). For published binaries and immutable release history, use [GitHub Releases](https://github.com/Infiltrator-Projects/InfiltratorOS/releases), not old version-specific instructions embedded in this README.

@@ -3,6 +3,8 @@
 The root [README](../README.md) is the product overview. This index separates current-state technical contracts from historical release evidence.
 
 
+**Art direction: ELEGANCE.** This means artistic sophistication, visual beauty and craftsmanship—not brevity or minimalism. The authoritative definition is in [Engineering Philosophy](PHILOSOPHY.md#elegance--the-artistic-design-authority), and its family-wide application is in [Product family](PRODUCT-FAMILY.md#artistic-direction-elegance).
+
 ## Product and shared standards
 
 - [Product family and UI contract](PRODUCT-FAMILY.md) — consistent identity, typography, palettes, UX and independent installation across InfiltratorOS, System Monitor, Calculator and Files.

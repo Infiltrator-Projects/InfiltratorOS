@@ -17,6 +17,10 @@ Application names remain **System Monitor**, **Calculator**, **Files** and **Def
 - **System** follows the host appearance but still resolves through the Common Day/Night palette. Explicit Day/Night choice and persistence must not be redefined by an unrelated application.
 - The consistent visual signature is calm, engineered and concise: clear navigation and content hierarchy, restrained accent/focus use, legible values, quiet chrome, and progressive disclosure. A calculator keypad, process monitor and file browser are *not* required to have identical arrangements.
 
+## Artistic direction: ELEGANCE
+
+The family-wide visual standard is **ELEGANCE**, defined in [Engineering Philosophy](PHILOSOPHY.md#elegance--the-artistic-design-authority). This is luxury-grade *art direction*, not a euphemism for minimalism, fewer comments, shorter documents or reduced interface capability. Proportion, typography, balance, considered negative space, distinctive detail and beautiful composition must remain apparent across every product. Exact visual arrangements may differ by function; the artistic standard does not.
+
 ## UI acceptance
 
 For every app, compare a real Day and Night window with its siblings. Verify title, body, bold/selected states, modal and context surfaces, toolbar/sidebar/navigation, buttons, hover/focus, disabled/failed/warning/success states, density, resizing, keyboard access and visibility of long labels. A screenshot is visual evidence, not a substitute for accessibility and behaviour tests. Verify a standalone installation as well as installation under InfiltratorOS. Avoid claiming parity from mere consumption of a shared header.

@@ -8,6 +8,23 @@ Substantive code commentary and maintained technical documentation are held to a
 
 Repository-specific design, architecture, safety and validation documents may strengthen or specialise this standard, but must not silently weaken or contradict it.
 
+
+## ELEGANCE — the artistic design authority
+
+**ELEGANCE is first and foremost an artistic and visual design requirement.** It means deliberate beauty, accomplished composition and unmistakable craftsmanship. The reference is the aesthetic sophistication associated with Mercedes-Benz, Fendi and Prada: finely judged proportions, confident typography, exceptional attention to detail, material and tonal harmony, composed hierarchy, and a coherent identity. These names describe a level of design ambition, not an instruction to copy their trademarks, artwork or layouts.
+
+Elegance is judged by the finished work **as something seen**, not by the number of words, elements or lines removed. An elaborate design can be elegant; an empty one can be crude. A detailed engineering explanation can be beautifully presented; a shorter explanation can be visually ugly or academically inadequate. Minimalism, terseness, whitespace removal, generic uniformity and simplification are **not** definitions of elegance. Neither are ornamental ASCII boxes, exaggerated banners or decoration for its own sake.
+
+This artistic direction applies to the operating system, BOOT, applications, themes, illustrations, diagrams, manuals, Markdown and source-code commentary. Every medium should express it through its own craft:
+
+- **Composition:** deliberate proportion, rhythm, visual balance, alignment, hierarchy and considered negative space. Nothing should look accidental, crowded, mechanically templated or arbitrarily empty.
+- **Typography and detail:** beautiful typographic relationships, precise spacing and line breaks, consistent but not monotonous treatment of headings and accents, and exceptional finishing quality. Use the approved InfiltratorOS typographic identity where the medium supports it.
+- **Visual identity:** cohesive, recognisable and timeless rather than generic, fashionable or gaudy. Colour, contrast, surfaces and illustrations should feel art-directed and intentional.
+- **Documentation and source:** make long, rigorous material visually inviting and easy to follow. Use carefully composed titles, sections, paragraphs, code blocks and comment structures. Preserve every useful explanation of algorithms, invariants, rationale, ownership, limitations, error handling and recovery. Improve **presentation** without diminishing **substance**.
+- **Judgement:** assess the actual rendered page, editor view or interface, including the relationship between its parts. Do not claim artistic elegance from a word count, comment count, automated formatting pass or superficial tidying.
+
+**Non-negotiable interpretation:** when asked for *ELEGANCE*, do **not** respond by shortening comments, deleting technical depth, reducing the documentation, removing visual richness, or replacing carefully considered design with plain minimalism. Aesthetic refinement and postgraduate-level technical completeness are simultaneous requirements. Neither replaces the other.
+
 ## Source-first, hardware-native execution
 
 InfiltratorOS is designed as a **source-first, locally compiled and hardware-optimised operating system**. This is a core product requirement, not an incidental installer option. The intended native installation path obtains an exact, verified source release for each Infiltrator-owned component, compiles it on the target machine using a qualified toolchain, validates the result and installs the machine-specific binary. A generic precompiled package may serve bootstrap, compatibility or recovery needs, but it does not silently count as a completed native source build.
