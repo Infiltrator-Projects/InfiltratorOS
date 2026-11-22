@@ -59,6 +59,8 @@ jobs:
             grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'
           "$RUNNER_TEMP/native-snapshot" --check-latest System-Monitor |
             grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'
+          "$RUNNER_TEMP/native-snapshot" --check-latest Defragmenter |
+            grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+-[A-Za-z0-9.-]+$'
           # Exercise the full 63-repository installed preflight, not just
           # isolated redirect lookups. Catch HTML throttling or stale Pages
           # metadata before any user's native installer runs.
