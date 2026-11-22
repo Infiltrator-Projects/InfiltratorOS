@@ -733,7 +733,7 @@ static bool boot_registered(const std::string &firmware) {
             first = order.substr(0, order.find(','));
         }
         if (lower.size() < 9 || lower.rfind("boot", 0) != 0 ||
-            lower.find("file(\\\\efi\\\\infiltratoros\\\\boot\\\\bootx64.efi)") == std::string::npos)
+            lower.find("file(\\efi\\infiltratoros\\boot\\bootx64.efi)") == std::string::npos)
             continue;
         if (line[8] != '*') return false;
         const auto candidate = lower.substr(4, 4);
