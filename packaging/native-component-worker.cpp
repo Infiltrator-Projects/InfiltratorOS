@@ -35,7 +35,6 @@
 #include <curl/curl.h>
 #include "native-build-queue.h"
 #include "native-build-resources.h"
-#include "native-secure-boot.h"
 namespace fs = std::filesystem;
 using Strings = std::vector<std::string>;
 static const fs::path ROOT("/Temporary/InfiltratorOS");
@@ -347,11 +346,10 @@ struct Asset {
 static constexpr const char *MINIMUM_BOOT_RELEASE = "0.1.50";
 // This target is not an approval to deploy the candidate: release_asset()
 // refuses prereleases until the kernel has been promoted after qualification.
-static constexpr const char *NATIVE_KERNEL_RELEASE = "0.1.9";
 
 static Asset release_asset(const Entry &entry, json_object *meta, bool calendar_or_clock,
                            bool filesystem) {
-    if (boolean(meta, "draft") || boolean(meta, "prerelease"))
+    if (boolean(meta, "draft") || (entry.id != "boot" && boolean(meta, "prerelease")))
         throw std::runtime_error("Unpublished native component release");
     const std::string tag = str(meta, "tag_name");
     if (!std::regex_match(tag, std::regex("v[0-9]+\\.[0-9]+\\.[0-9]+(?:-[A-Za-z0-9.-]+)?")))
@@ -365,7 +363,7 @@ static Asset release_asset(const Entry &entry, json_object *meta, bool calendar_
     result.version = tag.substr(1);
     if (entry.id == "boot" &&
         execute({"/usr/bin/dpkg", "--compare-versions", result.version, "ge", MINIMUM_BOOT_RELEASE}) != 0)
-        throw std::runtime_error("BOOT requires version 0.1.50 or newer for automatic native kernel discovery and EXT4 upgrades");
+        throw std::runtime_error("BOOT native installer release is older than the accepted installation contract");
     // Older Calendar RUNs invoke the Python scanner during a native build.
     if (entry.id == "calendar" &&
         execute({"/usr/bin/dpkg", "--compare-versions", result.version, "ge", "1.0.131"}) != 0)
@@ -395,11 +393,7 @@ static Asset release_asset(const Entry &entry, json_object *meta, bool calendar_
     const std::string run_prefix = entry.id == "defragmenter" ? entry.repo : entry.slug();
     const std::string run_suffix = entry.id == "calendar" || entry.id == "defragmenter"
         ? "-local-folder.run" : "-native-installer.run";
-    if (entry.id == "kernel" && result.version != NATIVE_KERNEL_RELEASE)
-        throw std::runtime_error("Kernel release differs from the pinned conversion release");
-    const std::string run_name = entry.id == "kernel"
-        ? "InfiltratorOS-Kernel-" + result.version + "-amd64.run"
-        : run_prefix + "-" + result.version + run_suffix;
+    const std::string run_name = run_prefix + "-" + result.version + run_suffix;
     const std::string prefix = "https://github.com/Infiltrator-Projects/" +
                                entry.repo + "/releases/download/" + tag + "/";
     auto *assets = field(meta, "assets");
@@ -435,23 +429,21 @@ static Asset release_asset(const Entry &entry, json_object *meta, bool calendar_
 }
 static Document release(const Entry &entry) {
     const std::string directory = environment("INFILTRATOROS_RELEASE_DIR");
-    // The v3 catalogue has a fixed 63-repository contract shared with
-    // earlier InfiltratorOS releases. Calendar resolves its own release.
-    // BOOT is firmware-critical: never fall back to an unverified preview
-    // when its /releases/latest endpoint has no stable release.
+    // BOOT publishes hardware-test releases as prereleases. Resolve the
+    // newest published release and verify the exact native RUN and digest.
+    // An unpublished release or malformed latest release must fail closed.
     if (entry.id == "boot") {
-        try {
-            return parse(fetch("https://api.github.com/repos/Infiltrator-Projects/Boot/releases/latest"));
-        } catch (const std::exception &error) {
-            throw std::runtime_error(
-                std::string("BOOT installation blocked: no qualified stable BOOT release is available. ")
-                + "Requires BOOT >= " + MINIMUM_BOOT_RELEASE +
-                " with boot-<version>-native-installer.run, a generic AMD64 Debian package, "
-                "verified Common V2 modules and a firmware deployment helper. "
-                "Preview BOOT-<version>-amd64.run files only stage files; they are not "
-                "firmware-ready installers. Existing BOOT, GRUB and EFI entries were left untouched. "
-                "Release query: " + error.what());
+        Document versions = parse(fetch(
+            "https://api.github.com/repos/Infiltrator-Projects/Boot/releases?per_page=20"));
+        if (json_object_get_type(versions.ptr) != json_type_array)
+            throw std::runtime_error("BOOT releases response is not an array");
+        for (size_t i = 0; i < json_object_array_length(versions.ptr); ++i) {
+            auto *item = json_object_array_get_idx(versions.ptr, i);
+            if (boolean(item, "draft")) continue;
+            (void)release_asset(entry, item, false, false);
+            return Document(json_object_get(item));
         }
+        throw std::runtime_error("BOOT has no published native installer release");
     }
     return parse(directory.empty() || entry.id == "calendar"
         ? fetch("https://api.github.com/repos/Infiltrator-Projects/" +
@@ -644,15 +636,13 @@ static Entry application(const std::string &slug) {
         e.repo = "Defragmenter"; e.package = "defragmenter"; e.resource = "/Programs/defragmenter";
     } else if (slug == "boot") {
         e.repo = "Boot"; e.package = "infiltrator-boot";
-        e.resource = "/usr/lib/infiltrator-boot/EFI/BOOT/BOOTX64.EFI";
+        e.resource = "/boot/efi/EFI/InfiltratorOS/BOOT/BOOTX64.EFI";
     } else throw std::runtime_error("Unknown native application");
     e.name = e.repo;
     return e;
 }
 static Strings required_paths(const std::string &slug) {
-    if (slug == "boot") return {"/usr/sbin/infiltrator-boot-deploy", "/usr/lib/infiltrator-boot/deploy-core",
-                                "/usr/lib/infiltrator-boot/validate-module",
-                                "/usr/lib/infiltrator-boot/EFI/BOOT/boot.conf"};
+    if (slug == "boot") return {};
     if (slug == "system-monitor") return {"/usr/share/doc/system-monitor/BUILD-INFO"};
     if (slug == "calculator")
         return {"/System/Resources/Documentation/Calculator.pdf",
@@ -672,13 +662,6 @@ static Strings required_paths(const std::string &slug) {
 }
 static bool application_proof(const Entry &entry) {
     if (entry.id == "calculator") return true;
-    if (entry.id == "boot") {
-        const fs::path proof = "/usr/share/doc/infiltrator-boot/BUILD-INFO";
-        if (!regular(proof)) return false;
-        const auto data = read_file(proof);
-        return data.find("Profile: aggressive") != std::string::npos &&
-               data.find("-march=native -mgeneral-regs-only") != std::string::npos;
-    }
     if (entry.id == "calendar") {
         const fs::path proof = "/usr/share/doc/calendar/BUILD-INFO";
         if (!regular(proof)) return false;
@@ -719,8 +702,69 @@ static bool application_package_matches(const Entry &entry, const Asset &asset,
                revision.find_first_not_of("0123456789") == std::string::npos;
     }
     const std::string suffix =
-        entry.id == "files" || entry.id == "defragmenter" || entry.id == "boot" ? "+native1" : "";
+        entry.id == "files" || entry.id == "defragmenter" ? "+native1" : "";
     return fields[1] == asset.version + suffix;
+}
+// The independent BOOT RUN owns all ESP writes and NVRAM changes.
+// InfiltratorOS only verifies its fixed destination and selected boot option.
+static fs::path installed_boot_image() {
+    fs::path found;
+    for (const char *mount : {"/boot/efi", "/efi", "/boot"}) {
+        if (output({"/usr/bin/findmnt", "-rnM", mount, "-t", "vfat", "-o", "FSTYPE"}) != "vfat")
+            continue;
+        const fs::path directory = fs::path(mount) / "EFI/InfiltratorOS/BOOT";
+        if (fs::is_symlink(directory) || fs::is_symlink(directory.parent_path()) ||
+            fs::is_symlink(directory.parent_path().parent_path()))
+            continue;
+        const auto image = directory / "BOOTX64.EFI";
+        if (!regular(image) || !regular(directory / "boot.conf")) continue;
+        if (!found.empty()) return {}; // Never accept two plausible BOOT installations.
+        found = image;
+    }
+    return found;
+}
+static bool boot_registered(const std::string &firmware) {
+    std::string first, matching;
+    unsigned int count = 0;
+    for (const auto &line : lines(firmware)) {
+        const auto lower = lowercase(line);
+        if (lower.rfind("bootorder:", 0) == 0) {
+            const auto order = trim(lower.substr(10));
+            first = order.substr(0, order.find(','));
+        }
+        if (lower.size() < 9 || lower.rfind("boot", 0) != 0 ||
+            lower.find("file(\\\\efi\\\\infiltratoros\\\\boot\\\\bootx64.efi)") == std::string::npos)
+            continue;
+        if (line[8] != '*') return false;
+        const auto candidate = lower.substr(4, 4);
+        if (candidate.find_first_not_of("0123456789abcdef") != std::string::npos) return false;
+        matching = candidate;
+        ++count;
+    }
+    return count == 1 && first == matching;
+}
+static bool native_boot_current(const Asset &asset, bool evidence, std::string *reason) {
+    auto fail = [&](const char *message) {
+        if (reason) *reason = message;
+        return false;
+    };
+    const auto image = installed_boot_image();
+    if (image.empty()) return fail("BOOTX64.EFI or boot.conf is missing from the fixed ESP path");
+    if (!boot_registered(output({"/usr/sbin/efibootmgr", "-v"})))
+        return fail("BOOT's fixed EFI entry is absent, duplicated, or not first in BootOrder");
+    if (!evidence) return true;
+    const auto attestation = ROOT / "native-verified-boot.json";
+    if (!regular(attestation)) return fail("BOOT native installation attestation is absent");
+    try {
+        Document proof = parse(read_file(attestation));
+        if (str(proof.ptr, "version") != asset.version ||
+            str(proof.ptr, "installer_sha256") != asset.sha ||
+            str(proof.ptr, "program_sha256") != digest(image))
+            return fail("BOOT release attestation differs from its installed EFI image");
+    } catch (...) {
+        return fail("BOOT native installation attestation cannot be verified");
+    }
+    return true;
 }
 static bool application_current(const Entry &entry, const Asset &asset,
                                 bool evidence, std::string *reason = nullptr) {
@@ -728,6 +772,7 @@ static bool application_current(const Entry &entry, const Asset &asset,
         if (reason) *reason = detail;
         return false;
     };
+    if (entry.id == "boot") return native_boot_current(asset, evidence, reason);
     const std::string identity = pkg_query(entry.package, std::string("$") +
         "{Status}\t$" + "{Version}");
     if (!application_package_matches(entry, asset, identity))
@@ -778,7 +823,7 @@ static void verify_install(const Entry &entry, const Asset &asset, bool applicat
     json_object *proof = json_object_new_object();
     json_object_object_add(proof, "version", json_object_new_string(asset.version.c_str()));
     json_object_object_add(proof, "installer_sha256", json_object_new_string(asset.sha.c_str()));
-    std::string value = digest(entry.resource);
+    std::string value = digest(entry.id == "boot" ? installed_boot_image() : fs::path(entry.resource));
     json_object_object_add(proof, "program_sha256", json_object_new_string(value.c_str()));
     std::string content = json_object_to_json_string_ext(proof, JSON_C_TO_STRING_PLAIN);
     json_object_put(proof);
@@ -810,197 +855,6 @@ static bool install(const Entry &entry, Status &status, bool application_mode,
     verify_install(entry, asset, application_mode);
     return false;
 }
-static std::vector<Entry> boot_filesystems(const fs::path &stage) {
-    if (stage == ROOT || !regular(stage / "selected.list")) return {};
-    auto catalogue_entries = catalogue(stage / "filesystem-resources.json", 5);
-    auto additional = catalogue(stage / "filesystem-additional.json", 18);
-    catalogue_entries.insert(catalogue_entries.end(), additional.begin(), additional.end());
-    std::vector<Entry> selected;
-    for (const auto &slug : lines(read_file(stage / "selected.list"))) {
-        if (slug.rfind("filesystem-", 0) != 0) continue;
-        auto entry = std::find_if(catalogue_entries.begin(), catalogue_entries.end(),
-                                  [&](const Entry &e) { return e.slug() == slug; });
-        if (entry == catalogue_entries.end())
-            throw std::runtime_error("Unrecognised BOOT filesystem selection: " + slug);
-        selected.push_back(*entry);
-    }
-    return selected;
-}
-static std::string provider_state(const fs::path &statuses, const Entry &provider) {
-    const Status status(statuses, provider.slug());
-    if (!regular(status.path)) return {};
-    for (const auto &field : lines(read_file(status.path))) {
-        if (field.rfind("state=", 0) == 0) return field.substr(6);
-    }
-    return {};
-}
-static void wait_for_boot_filesystems(const fs::path &statuses,
-                                      const std::vector<Entry> &providers) {
-    // Native filesystem workers need the same global package lock. Wait
-    // outside that lock, after the dispatcher has launched every provider.
-    const auto deadline = std::chrono::steady_clock::now() + std::chrono::hours(23) +
-                          std::chrono::minutes(50);
-    while (std::any_of(providers.begin(), providers.end(), [&](const Entry &provider) {
-        const auto state = provider_state(statuses, provider);
-        return state != "complete" && state != "failed";
-    })) {
-        if (std::chrono::steady_clock::now() >= deadline)
-            throw std::runtime_error("Filesystem workers did not finish in time for BOOT deployment");
-        std::this_thread::sleep_for(std::chrono::seconds(1));
-    }
-}
-static Strings boot_deployment(const fs::path &stage, const fs::path &statuses,
-                               const std::vector<Entry> &providers) {
-    Strings command{(stage / "install-boot-option").string()};
-    // The live system is being upgraded, never reformatted. The current root
-    // filesystem is mandatory, not a best-effort optional BOOT reader.
-    std::string root = output({"/usr/bin/findmnt", "-nro", "FSTYPE", "-M", "/"});
-    if (root == "ntfs3") root = "ntfs";
-    const std::string required_slug = "filesystem-" + root;
-    const bool managed_upgrade = stage != ROOT && regular(stage / "selected.list");
-    bool root_staged = false;
-    for (const auto &provider : providers) {
-        const bool mandatory = managed_upgrade && provider.slug() == required_slug;
-        if (provider_state(statuses, provider) != "complete") {
-            if (mandatory)
-                throw std::runtime_error("Required root filesystem provider did not install: " + required_slug);
-            continue;
-        }
-        const auto meta = release(provider);
-        const auto asset = release_asset(provider, meta.ptr, false, true);
-        if (!provider_current(provider, asset))
-            throw std::runtime_error("Filesystem package changed before BOOT deployment: " + provider.package);
-        const int result = execute({"/usr/lib/infiltrator-boot/validate-module", provider.resource});
-        if (result == 1) {
-            if (mandatory)
-                throw std::runtime_error("Required root provider is not firmware-compatible: " + provider.resource);
-            std::cout << "BOOT firmware profile unavailable for " << provider.resource << "\n";
-            continue;
-        }
-        if (result != 0)
-            throw std::runtime_error("Could not verify BOOT filesystem module: " + provider.resource);
-        command.push_back(provider.resource);
-        if (mandatory) root_staged = true;
-    }
-    if (managed_upgrade && !root_staged)
-        throw std::runtime_error("BOOT cannot upgrade without a validated V2 root filesystem module: " + required_slug);
-    return command;
-}
-
-static bool native_kernel_installed(const fs::path &system = "/System", uid_t owner = 0) {
-    const std::string native = std::string("InfiltratorOS-") + NATIVE_KERNEL_RELEASE;
-    const fs::path kernel = system / "Kernel";
-    // The native helper refuses a user-writable path even when the files at
-    // its end happen to be root-owned. Match that contract before declaring
-    // the kernel installed; lstat also rejects replaced parent symlinks.
-    for (const auto &path : {system, kernel, kernel / "Images", kernel / "Modules",
-                            kernel / "Modules" / native, kernel / "Runtime",
-                            kernel / "Runtime" / native}) {
-        struct stat st{};
-        if (lstat(path.c_str(), &st) || !S_ISDIR(st.st_mode) || st.st_uid != owner ||
-            (st.st_mode & 022))
-            return false;
-    }
-    for (const auto &path : {kernel / "Images" / (native + ".img"),
-                            kernel / "Modules" / native / "modules.dep.bin",
-                            kernel / "Modules" / native / "modules.alias.bin",
-                            kernel / "Runtime" / native / "modprobe",
-                            kernel / "Runtime" / native / "verify-host-drivers"}) {
-        struct stat st{};
-        if (lstat(path.c_str(), &st) || !S_ISREG(st.st_mode) || st.st_uid != owner ||
-            (st.st_mode & 022) || st.st_size <= 0)
-            return false;
-    }
-    // Module indexes can point into nested directories. Checking just the
-    // index files and top-level owner would still admit user-writable driver
-    // files, even though the kernel later runs the helper with root access.
-    std::error_code error;
-    const auto module_root = kernel / "Modules" / native;
-    fs::recursive_directory_iterator it(module_root, error), end;
-    if (error) return false;
-    while (it != end) {
-        struct stat st{};
-        if (lstat(it->path().c_str(), &st) || st.st_uid != owner)
-            return false;
-        // The kernel headers package installs this one fixed build link.
-        // The module loader does not follow it; all driver paths remain
-        // regular files or directories and must not be user-writable.
-        if (it->path() == module_root / "build" && S_ISLNK(st.st_mode)) {
-            std::error_code link_error;
-            const auto target = fs::read_symlink(it->path(), link_error);
-            if (link_error || target != fs::path("/System/Kernel/Headers") / native)
-                return false;
-        } else if ((!S_ISDIR(st.st_mode) && !S_ISREG(st.st_mode)) || (st.st_mode & 022)) {
-            return false;
-        }
-        it.increment(error);
-        if (error) return false;
-    }
-    return access((kernel / "Runtime" / native / "modprobe").c_str(), X_OK) == 0 &&
-           access((kernel / "Runtime" / native / "verify-host-drivers").c_str(), X_OK) == 0;
-}
-
-static void verify_installed_kernel_drivers(const fs::path &kernel = "/System/Kernel") {
-    const std::string native = std::string("InfiltratorOS-") + NATIVE_KERNEL_RELEASE;
-    const auto checker = kernel / "Runtime" / native / "verify-host-drivers";
-    const auto modules = kernel / "Modules" / native;
-    if (execute({"/bin/bash", checker.string(), modules.string()}) != 0)
-        throw std::runtime_error("Native kernel is missing an active hardware driver; existing BOOT was kept");
-}
-
-static void verify_boot_setup_result(int result) {
-    if (result == 77)
-        throw std::runtime_error("BOOT firmware setup was skipped; existing BOOT was kept. See boot-install.log");
-    if (result != 0)
-        throw std::runtime_error("BOOT firmware setup failed; see boot-install.log");
-}
-
-static void install_native_kernel(Status &status) {
-    // The current native boot contract requires a direct GPT EXT4 root and
-    // a firmware-compatible EXT4 provider. Leave the distro path available
-    // on other layouts without spending time on a kernel that cannot boot.
-    if (!regular("/sys/firmware/efi/fw_platform_size") ||
-        trim(read_file("/sys/firmware/efi/fw_platform_size")) != "64")
-        throw std::runtime_error("Native kernel requires 64-bit EFI firmware; the existing boot configuration was kept");
-    if (output({"/usr/bin/findmnt", "-nro", "FSTYPE,FSROOT", "-M", "/"}) != "ext4 /")
-        throw std::runtime_error("Native kernel requires a direct EXT4 root mount; the existing boot configuration was kept");
-    constexpr const char *secure_boot =
-        "/sys/firmware/efi/efivars/SecureBoot-8be4df61-93ca-11d2-aa0d-00e098032b8c";
-    std::ifstream secure(secure_boot, std::ios::binary);
-    if (!secure_boot_disabled(secure))
-        throw std::runtime_error("Native kernel requires Secure Boot disabled and a readable firmware state");
-    const auto device = output({"/usr/bin/findmnt", "-nro", "SOURCE", "-M", "/"});
-    if (device.rfind("/dev/", 0) != 0 ||
-        output({"/usr/sbin/blkid", "-p", "-s", "PART_ENTRY_SCHEME", "-o", "value", "--", device}) != "gpt")
-        throw std::runtime_error("Native kernel could not verify a direct GPT root partition");
-    if (execute({"/usr/lib/infiltrator-boot/validate-module", "/System/Filesystems/EXT4.so"}) != 0)
-        throw std::runtime_error("Native kernel requires a firmware-compatible EXT4 filesystem module");
-    if (native_kernel_installed()) {
-        verify_installed_kernel_drivers();
-        return;
-    }
-    const Entry entry{"kernel", "InfiltratorOS Kernel", "Kernel", "", "", ""};
-    TempDir directory(status.root, "native-kernel-");
-    const auto run = directory.path / "kernel-installer.run";
-    status.write("running", 75, "Preparing native kernel build", "Verifying the published Kernel installer");
-    const auto release = parse(fetch(std::string("https://api.github.com/repos/Infiltrator-Projects/Kernel/releases/tags/v") +
-                                     NATIVE_KERNEL_RELEASE));
-    const auto asset = release_asset(entry, release.ptr, false, false);
-    download(asset, run);
-    required({"/usr/bin/apt-get", "-o", "DPkg::Lock::Timeout=-1", "--no-remove",
-              "--no-install-recommends", "-y", "install", "git", "build-essential", "bc",
-              "bison", "flex", "fakeroot", "dwarves", "libdw-dev", "libelf-dev", "libssl-dev",
-              "libkmod-dev", "rsync", "dpkg-dev", "debhelper", "kmod", "zstd"});
-    status.write("running", 85, "Building the InfiltratorOS kernel", "Keeping the distribution kernel available through GRUB");
-    // Manual builds can leave a user-owned Kernel workspace. The automatic
-    // root build uses the worker's own private directory for source and tools.
-    required({"/usr/bin/env", "INFILTRATOROS_TEMP_ROOT=" + (directory.path / "build").string(),
-              run.string(), "--system-package-mode"});
-    if (!native_kernel_installed())
-        throw std::runtime_error("Native Kernel installation did not produce a trusted image and indexed drivers");
-    verify_installed_kernel_drivers();
-}
-
 static int individual(const Entry &entry, bool app, bool temporal, bool filesystem) {
     if (geteuid() != 0) throw std::runtime_error("Native installation requires root");
     fs::create_directories(ROOT);
@@ -1010,32 +864,12 @@ static int individual(const Entry &entry, bool app, bool temporal, bool filesyst
     Status status(status_dir, app ? entry.id : entry.slug());
     try {
         Lock owner(ROOT / ((app ? entry.id : entry.slug()) + ".lock"));
-        std::vector<Entry> providers;
-        if (entry.id == "boot") {
-            providers = boot_filesystems(stage);
-            if (!providers.empty()) {
-                status.write("queued", 2, "Waiting for filesystem providers", "BOOT stages compatible modules after installation");
-                wait_for_boot_filesystems(status_dir, providers);
-            }
-        }
         status.write("queued", 2, "Waiting for package lock", entry.repo);
         Lock global(ROOT / "native-install.lock");
         setenv("DEBIAN_FRONTEND", "noninteractive", 1);
         setenv("TMPDIR", status_dir.c_str(), 1);
         status.write("running", 5, "Checking native release", entry.repo);
         bool already = install(entry, status, app, temporal, filesystem);
-        if (entry.id == "boot") {
-            auto command = boot_deployment(stage, status_dir, providers);
-            const bool ext4_ready = std::find(command.begin(), command.end(),
-                                              "/System/Filesystems/EXT4.so") != command.end();
-            if (output({"/usr/bin/findmnt", "-nro", "FSTYPE", "-M", "/"}) == "ext4") {
-                if (!ext4_ready)
-                    throw std::runtime_error("Cannot install the native kernel: the EXT4 firmware module is not ready");
-                install_native_kernel(status);
-            }
-            status.write("running", 95, "Configuring firmware option", "Checking the EFI system partition");
-            verify_boot_setup_result(execute(command));
-        }
         status.write("complete", 100, already ? "Already installed" : "Installed",
                      "Native package and required files verified");
     } catch (const std::exception &e) {
