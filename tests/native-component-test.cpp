@@ -99,6 +99,39 @@ int main() {
 Boot0007* BOOT Boot Manager HD(1,GPT,1234)/File(\EFI\InfiltratorOS\BOOT\BOOTX64.EFI)
 )";
         check(boot_registered(firmware), "BOOT owns one active, first-priority native EFI entry");
+        // Hardware-installation regression: BOOT reports Boot0006 first, and
+        // the firmware describes the canonical InfiltratorOS/BOOT EFI path.
+        // This must not be rejected by the OS post-install validation parser.
+        const std::string installed_firmware = R"(BootCurrent: 0006
+Timeout: 5 seconds
+BootOrder: 0006,0004,0000,0001,0002,0003
+Boot0000* UEFI NVMe HD(1,GPT,1234)/File(\EFI\Boot\BootX64.efi)
+Boot0004* Ubuntu HD(1,GPT,1234)/File(\EFI\ubuntu\shimx64.efi)
+Boot0006* BOOT Boot Manager HD(1,GPT,1234)/File(\EFI\InfiltratorOS\BOOT\BOOTX64.EFI)
+)";
+        check(boot_registered(installed_firmware),
+              "real BOOT 0.1.558 log proves a unique first-priority fixed EFI entry");
+        // The old verifier assumed /usr/sbin/efibootmgr and interpreted a
+        // missing binary as a missing BOOT entry. Exercise both modern
+        // /usr/bin placement and older /usr/sbin fallback without touching
+        // EFI/NVRAM or relying on host packaging.
+        TempDir efi_fixture(fs::temp_directory_path(), "native-efi-verifier-");
+        const auto missing_binary = efi_fixture.path / "usr-sbin-efibootmgr";
+        const auto packaged_binary = efi_fixture.path / "usr-bin-efibootmgr";
+        save(missing_binary, "#!/bin/sh\nexit 1\n");
+        save(packaged_binary, "#!/bin/sh\nexit 0\n");
+        check(chmod(packaged_binary.c_str(), 0755) == 0,
+              "mock modern EFI utility can be made executable");
+        check(efibootmgr_executable({missing_binary, packaged_binary}) == packaged_binary,
+              "EFI verifier finds /usr/bin when /usr/sbin is absent");
+        check(chmod(packaged_binary.c_str(), 0644) == 0,
+              "mock EFI utility permission can be removed");
+        check(efibootmgr_executable({missing_binary, packaged_binary}).empty(),
+              "EFI verifier refuses to treat non-executable files as firmware tools");
+        check(chmod(missing_binary.c_str(), 0755) == 0,
+              "mock legacy EFI utility can be made executable");
+        check(efibootmgr_executable({packaged_binary, missing_binary}) == missing_binary,
+              "EFI verifier accepts an older /usr/sbin binary when /usr/bin is absent");
         check(!boot_registered(std::string(R"(BootOrder: 0005,0007
 )") + firmware.substr(firmware.find("Boot0007"))),
               "BOOT cannot be a secondary boot entry");
