@@ -242,21 +242,6 @@ static void dispatch(const fs::path &stage) {
     Strings all_fs = established;
     all_fs.insert(all_fs.end(), optional.begin(), optional.end());
     Strings chosen = selection("INFILTRATOROS_SELECTED_FILESYSTEMS", all_fs, true);
-    // An upgrade retains the actual installed root filesystem. BOOT must
-    // receive that format's independent Common V2 provider even when the
-    // operator has deselected unrelated optional filesystem components.
-    // This is NOT a fresh-disk formatting decision: the future Setup installer
-    // owns the fresh-install default and explicit filesystem choice.
-    std::string root_fs = lower(trim(output_of({"/usr/bin/findmnt", "-nro",
-                                                "FSTYPE", "-M", "/"})));
-    if (root_fs == "ntfs3") root_fs = "ntfs";
-    const std::string root_provider = "filesystem-" + root_fs;
-    if (std::find(all_fs.begin(), all_fs.end(), root_provider) == all_fs.end())
-        throw std::runtime_error("Existing root filesystem " + root_fs +
-                                 " has no available qualified V2 installer; "
-                                 "BOOT was not changed");
-    if (std::find(chosen.begin(), chosen.end(), root_provider) == chosen.end())
-        chosen.push_back(root_provider);
     Strings selected = apps;
     selected.emplace_back("boot");
     selected.insert(selected.end(), temporal.begin(), temporal.end());
