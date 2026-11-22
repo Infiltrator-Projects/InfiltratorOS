@@ -344,12 +344,12 @@ struct Asset {
     size_t size = 0;
 };
 static constexpr const char *MINIMUM_BOOT_RELEASE = "0.1.50";
-// This target is not an approval to deploy the candidate: release_asset()
-// refuses prereleases until the kernel has been promoted after qualification.
+// A published stable release is required; release classification alone does not
+// establish qualification for physical UEFI boot.
 
 static Asset release_asset(const Entry &entry, json_object *meta, bool calendar_or_clock,
                            bool filesystem) {
-    if (boolean(meta, "draft") || (entry.id != "boot" && boolean(meta, "prerelease")))
+    if (boolean(meta, "draft") || boolean(meta, "prerelease"))
         throw std::runtime_error("Unpublished native component release");
     const std::string tag = str(meta, "tag_name");
     if (!std::regex_match(tag, std::regex("v[0-9]+\\.[0-9]+\\.[0-9]+(?:-[A-Za-z0-9.-]+)?")))
@@ -429,23 +429,9 @@ static Asset release_asset(const Entry &entry, json_object *meta, bool calendar_
 }
 static Document release(const Entry &entry) {
     const std::string directory = environment("INFILTRATOROS_RELEASE_DIR");
-    // BOOT publishes hardware-test releases as prereleases. Resolve the
-    // newest published release and verify the exact native RUN and digest.
-    // An unpublished release or malformed latest release must fail closed.
-    if (entry.id == "boot") {
-        Document versions = parse(fetch(
-            "https://api.github.com/repos/Infiltrator-Projects/Boot/releases?per_page=20"));
-        if (json_object_get_type(versions.ptr) != json_type_array)
-            throw std::runtime_error("BOOT releases response is not an array");
-        for (size_t i = 0; i < json_object_array_length(versions.ptr); ++i) {
-            auto *item = json_object_array_get_idx(versions.ptr, i);
-            if (boolean(item, "draft")) continue;
-            (void)release_asset(entry, item, false, false);
-            return Document(json_object_get(item));
-        }
-        throw std::runtime_error("BOOT has no published native installer release");
-    }
-    return parse(directory.empty() || entry.id == "calendar"
+    // BOOT selects GitHub's latest stable release, never a prerelease.
+    // Keep its release metadata independent of optional filesystem snapshots.
+    return parse(directory.empty() || entry.id == "calendar" || entry.id == "boot"
         ? fetch("https://api.github.com/repos/Infiltrator-Projects/" +
                 entry.repo + "/releases/latest")
         : read_file(fs::path(directory) / (entry.repo + ".json")));
