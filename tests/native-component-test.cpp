@@ -99,6 +99,23 @@ int main() {
 Boot0007* BOOT Boot Manager HD(1,GPT,1234)/File(\EFI\InfiltratorOS\BOOT\BOOTX64.EFI)
 )";
         check(boot_registered(firmware), "BOOT owns one active, first-priority native EFI entry");
+        // Secure Boot launches Shim and Shim launches the signed BOOTX64.EFI.
+        // Only an explicitly permitted, single active first-priority Shim
+        // entry inside BOOT's fixed directory can satisfy this contract.
+        const std::string shim_firmware = R"(BootOrder: 0007,0005,0003
+Boot0007* BOOT Boot Manager HD(1,GPT,1234)/File(\\EFI\\InfiltratorOS\\BOOT\\shimx64.efi)
+)";
+        check(boot_registered(shim_firmware, true),
+              "one first-priority BOOT Shim EFI entry accepted for Secure Boot");
+        check(!boot_registered(shim_firmware),
+              "Shim firmware entry without approved Secure Boot path rejected");
+        check(!boot_registered(shim_firmware + shim_firmware.substr(shim_firmware.find("Boot0007")), true),
+              "duplicate Shim entries rejected");
+        const std::string signed_shim_firmware = R"(BootOrder: 0007,0005
+Boot0007* BOOT Boot Manager HD(1,GPT,1234)/File(\\EFI\\InfiltratorOS\\BOOT\\shimx64.efi.signed)
+)";
+        check(boot_registered(signed_shim_firmware, true),
+              "installed Shim .efi.signed filename accepted");
         // Hardware-installation regression: BOOT reports Boot0006 first, and
         // the firmware describes the canonical InfiltratorOS/BOOT EFI path.
         // This must not be rejected by the OS post-install validation parser.
