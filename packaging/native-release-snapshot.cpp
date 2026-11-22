@@ -139,6 +139,83 @@ static std::string https_get(const std::string &url) {
     }
     throw std::runtime_error("Release snapshot unavailable");
 }
+/* A Github Pages manifest is a bandwidth-saving starting point, not proof
+ * that each provider is the latest stable version. GitHub's public latest
+ * release redirect reveals the current tag without consuming one REST API
+ * request per provider (63 standard providers exceed unauthenticated limits).
+ * Resolve this for every provider on every installation, and fetch fresh API
+ * metadata when the cached tag differs. A failed live check is fatal: never
+ * silently install an older version merely because a mirror is delayed. */
+static std::string live_latest_tag(const std::string &repository) {
+    if (!std::regex_match(repository, std::regex("[A-Za-z][A-Za-z0-9-]+")))
+        throw std::runtime_error("Invalid release repository identity");
+    const std::string base = "https://github.com/Infiltrator-Projects/" + repository;
+    const std::string url = base + "/releases/latest";
+    const std::string prefix = base + "/releases/tag/";
+    for (int attempt = 0; attempt != 4; ++attempt) {
+        CURL *curl = curl_easy_init();
+        if (!curl) throw std::runtime_error("Cannot initialise GitHub latest-release check");
+        curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+        curl_easy_setopt(curl, CURLOPT_NOBODY, 1L);
+        curl_easy_setopt(curl, CURLOPT_USERAGENT, "InfiltratorOS-native/1");
+        curl_easy_setopt(curl, CURLOPT_TIMEOUT, 30L);
+        curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 15L);
+        curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
+        curl_easy_setopt(curl, CURLOPT_MAXREDIRS, 5L);
+        curl_easy_setopt(curl, CURLOPT_REDIR_PROTOCOLS_STR, "https");
+        curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 1L);
+        curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 2L);
+        CURLcode result = curl_easy_perform(curl);
+        long status = 0;
+        char *final_url = nullptr;
+        curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &status);
+        curl_easy_getinfo(curl, CURLINFO_EFFECTIVE_URL, &final_url);
+        const std::string target = final_url ? final_url : "";
+        curl_easy_cleanup(curl);
+        if (result == CURLE_OK && status == 200 && target.rfind(prefix, 0) == 0) {
+            const std::string tag = target.substr(prefix.size());
+            if (std::regex_match(tag, std::regex("v[0-9]+\\.[0-9]+\\.[0-9]+")))
+                return tag;
+            throw std::runtime_error(repository + ": invalid latest release redirect");
+        }
+        if (status >= 400 && status < 500 && status != 408 && status != 429)
+            throw std::runtime_error(repository + ": live latest release HTTP " +
+                                     std::to_string(status));
+        if (attempt == 3)
+            throw std::runtime_error(repository + ": live latest release could not be verified");
+        std::this_thread::sleep_for(std::chrono::seconds(1 << attempt));
+    }
+    throw std::runtime_error(repository + ": live release lookup unavailable");
+}
+static void verify_release(const std::string &repo, json_object *release);
+static void refresh_latest_releases(json_object *releases) {
+    /* Snapshot all keys before replacing values; changing JSON ownership while
+     * iterating a json-c object can invalidate its enumeration state. */
+    std::vector<std::string> repositories;
+    json_object_object_foreach(releases, repository, metadata) {
+        (void)metadata;
+        repositories.emplace_back(repository);
+    }
+    std::sort(repositories.begin(), repositories.end());
+    for (const auto &repository : repositories) {
+        const std::string current_tag = live_latest_tag(repository);
+        json_object *stored = field(releases, repository.c_str());
+        const std::string cached_tag = string_field(stored, "tag_name");
+        if (cached_tag == current_tag) continue;
+        const std::string api = "https://api.github.com/repos/Infiltrator-Projects/" +
+                                repository + "/releases/latest";
+        const std::string body = https_get(api);
+        Json latest(json_tokener_parse(body.c_str()));
+        verify_release(repository, latest.object);
+        if (string_field(latest.object, "tag_name") != current_tag)
+            throw std::runtime_error(repository + ": release changed during validation");
+        json_object_get(latest.object);
+        json_object_object_add(releases, repository.c_str(), latest.object);
+        std::cout << "Refreshed " << repository << " from " << cached_tag
+                  << " to " << current_tag << '\n';
+    }
+}
+
 static std::set<std::string> expected_repos(const fs::path &providers,
                                             const fs::path &filesystems) {
     auto temporal = lines(read_text(providers));
@@ -240,6 +317,12 @@ static void prepare(const fs::path &destination, const fs::path &providers,
         verify_release(name, release);
     }
     if (seen != expected) throw std::runtime_error("Snapshot does not match provider list");
+    refresh_latest_releases(releases);
+    /* Re-run all integrity checks on the updated live metadata before any
+     * native worker receives a stable, run-specific release snapshot. */
+    json_object_object_foreach(releases, repository, release) {
+        verify_release(repository, release);
+    }
     if (!fs::create_directory(destination))
         throw std::runtime_error("Cannot create snapshot directory");
     chmod(destination.c_str(), 0755);
