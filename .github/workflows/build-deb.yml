@@ -300,17 +300,12 @@ jobs:
             exit 0
           fi
           # BOOT's native RUN owns installation and firmware registration.
-          # Its release may be marked prerelease while physical UEFI boot
-          # remains unqualified; require the published versioned asset and
-          # exact GitHub SHA-256 identity, never a staging-only preview.
-          boot_release=$(gh api 'repos/Infiltrator-Projects/Boot/releases?per_page=20' |
-            jq -c '[.[] | select(.draft == false)][0]')
-          [[ -n $boot_release && $boot_release != null ]] || {
-            echo "::error title=BOOT release unavailable::No published native BOOT release exists."
-            exit 1
-          }
+          # Require GitHub's latest stable release and verified native asset;
+          # prereleases and staging previews are never eligible.
+          boot_release=$(gh api 'repos/Infiltrator-Projects/Boot/releases/latest')
           if ! jq -e '
             .tag_name as $tag | .assets as $assets |
+            (.draft == false) and (.prerelease == false) and
             ($tag | test("^v[0-9]+\\.[0-9]+\\.[0-9]+$")) and
             ((($tag | ltrimstr("v")) | "boot-" + . + "-native-installer.run") as $run |
               any($assets[]; .name == $run and
