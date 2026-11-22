@@ -320,8 +320,10 @@ static void prepare(const fs::path &destination, const fs::path &providers,
     refresh_latest_releases(releases);
     /* Re-run all integrity checks on the updated live metadata before any
      * native worker receives a stable, run-specific release snapshot. */
-    json_object_object_foreach(releases, repository, release) {
-        verify_release(repository, release);
+    {
+        json_object_object_foreach(releases, repository, release) {
+            verify_release(repository, release);
+        }
     }
     if (!fs::create_directory(destination))
         throw std::runtime_error("Cannot create snapshot directory");
