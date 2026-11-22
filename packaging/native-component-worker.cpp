@@ -832,6 +832,17 @@ static void verify_install(const Entry &entry, const Asset &asset, bool applicat
     save(record, content);
     fs::rename(record, ROOT / ("native-verified-" + entry.id + ".json"));
 }
+// Only the independent provider owns its RUN arguments. BOOT deliberately
+// receives none: it always builds and installs to its sole EFI destination.
+static Strings native_installer_command(const Entry &entry, bool temporal,
+                                        bool filesystem, const fs::path &run) {
+    Strings command{run.string()};
+    if (temporal || filesystem)
+        command.insert(command.end(), {"--profile", "aggressive", "--system-package-mode"});
+    else if (entry.id != "defragmenter" && entry.id != "calendar" && entry.id != "boot")
+        command.push_back("--system-package-mode");
+    return command;
+}
 static bool install(const Entry &entry, Status &status, bool application_mode,
                     bool temporal, bool filesystem) {
     Document meta = release(entry);
@@ -845,13 +856,7 @@ static bool install(const Entry &entry, Status &status, bool application_mode,
     status.write("running", 20, "Downloading verified RUN", entry.repo);
     download(asset, run);
     status.write("running", 35, "Executing independent RUN", entry.repo);
-    Strings command_line{run.string()};
-    if (temporal || filesystem) {
-        command_line.insert(command_line.end(), {"--profile", "aggressive", "--system-package-mode"});
-    } else if (entry.id != "defragmenter" && entry.id != "calendar" && entry.id != "boot") {
-        command_line.push_back("--system-package-mode");
-    }
-    required(command_line);
+    required(native_installer_command(entry, temporal, filesystem, run));
     verify_install(entry, asset, application_mode);
     return false;
 }
