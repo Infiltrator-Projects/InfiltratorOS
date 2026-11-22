@@ -103,7 +103,7 @@ Boot0007* BOOT Boot Manager HD(1,GPT,1234)/File(\EFI\InfiltratorOS\BOOT\BOOTX64.
         // Only an explicitly permitted, single active first-priority Shim
         // entry inside BOOT's fixed directory can satisfy this contract.
         const std::string shim_firmware = R"(BootOrder: 0007,0005,0003
-Boot0007* BOOT Boot Manager HD(1,GPT,1234)/File(\\EFI\\InfiltratorOS\\BOOT\\shimx64.efi)
+Boot0007* BOOT Boot Manager HD(1,GPT,1234)/File(\EFI\InfiltratorOS\BOOT\shimx64.efi)
 )";
         check(boot_registered(shim_firmware, true),
               "one first-priority BOOT Shim EFI entry accepted for Secure Boot");
@@ -112,7 +112,7 @@ Boot0007* BOOT Boot Manager HD(1,GPT,1234)/File(\\EFI\\InfiltratorOS\\BOOT\\shim
         check(!boot_registered(shim_firmware + shim_firmware.substr(shim_firmware.find("Boot0007")), true),
               "duplicate Shim entries rejected");
         const std::string signed_shim_firmware = R"(BootOrder: 0007,0005
-Boot0007* BOOT Boot Manager HD(1,GPT,1234)/File(\\EFI\\InfiltratorOS\\BOOT\\shimx64.efi.signed)
+Boot0007* BOOT Boot Manager HD(1,GPT,1234)/File(\EFI\InfiltratorOS\BOOT\shimx64.efi.signed)
 )";
         check(boot_registered(signed_shim_firmware, true),
               "installed Shim .efi.signed filename accepted");
