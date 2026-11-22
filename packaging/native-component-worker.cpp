@@ -909,7 +909,8 @@ static void build(Job &job, const fs::path &logs, const std::vector<int> &cpus) 
         if (output({"/usr/bin/dpkg-deb", "-f", job.package.string(), name}) != value)
             throw std::runtime_error("Invalid component-built DEB identity");
 }
-static void build_packages(std::vector<Job> &jobs, const fs::path &statuses) {
+static void build_packages(std::vector<Job> &jobs, const fs::path &statuses,
+                           std::map<std::string, std::string> &failures) {
     using namespace infiltrator_native;
     std::ofstream timings(statuses / "smart-build-timings.log");
     if (!timings) throw std::runtime_error("Cannot open native build timing log");
@@ -932,8 +933,15 @@ static void build_packages(std::vector<Job> &jobs, const fs::path &statuses) {
                 ++it;
                 continue;
             }
-            it->result.get();
-            timings << elapsed() << "ms finished " << jobs[it->job].entry.slug() << std::endl;
+            const auto slug = jobs[it->job].entry.slug();
+            try {
+                it->result.get();
+                timings << elapsed() << "ms finished " << slug << std::endl;
+            } catch (const std::exception &error) {
+                failures[slug] = error.what();
+                Status(statuses, slug).write("failed", 100, "Native build failed", error.what());
+                timings << elapsed() << "ms failed " << slug << ": " << error.what() << std::endl;
+            }
             it = active.erase(it);
         }
         if (next < jobs.size()) {
@@ -1024,8 +1032,11 @@ static int smart_queue(const std::vector<Entry> &entries) {
     std::vector<Job> jobs;
     std::vector<Entry> serial;
     std::set<std::string> completed;
+    std::map<std::string, std::string> failures;
     try {
         for (const auto &e : chosen) {
+            Status status(statuses, e.slug());
+            try {
             const bool app = e.kind == "application";
             const bool temporal = e.kind == "calendar" || e.kind == "clock";
             Status status(statuses, e.slug());
@@ -1048,10 +1059,16 @@ static int smart_queue(const std::vector<Entry> &entries) {
             download(asset, job.run);
             fs::create_directory(job.folder);
             jobs.push_back(job);
+            } catch (const std::exception &error) {
+                failures[e.slug()] = error.what();
+                status.write("failed", 100, "Native preparation failed", error.what());
+            }
         }
-        build_packages(jobs, statuses);
+        build_packages(jobs, statuses, failures);
         for (auto &job : jobs) {
+            if (failures.count(job.entry.slug())) continue;
             Status status(statuses, job.entry.slug());
+            try {
             status.write("running", 85, "Installing native package", "Serial package transaction");
             const bool app = job.entry.kind == "application";
             if (app) {
@@ -1064,20 +1081,36 @@ static int smart_queue(const std::vector<Entry> &entries) {
             verify_install(job.entry, job.asset, app);
             status.write("complete", 100, "Native installation complete", "Verified installed package");
             completed.insert(job.entry.slug());
+            } catch (const std::exception &error) {
+                failures[job.entry.slug()] = error.what();
+                status.write("failed", 100, "Native package installation failed", error.what());
+            }
         }
         for (const auto &e : serial) {
             Status status(statuses, e.slug());
+            try {
             const bool app = e.kind == "application";
             const bool temporal = e.kind == "calendar" || e.kind == "clock";
             bool already = install(e, status, app, temporal, !app && !temporal);
             status.write("complete", 100, "Serial fallback complete",
                          already ? "Already installed" : "Component-owned RUN installed");
             completed.insert(e.slug());
+            } catch (const std::exception &error) {
+                failures[e.slug()] = error.what();
+                status.write("failed", 100, "Serial installation failed", error.what());
+            }
+        }
+        if (!failures.empty()) {
+            std::ostringstream summary;
+            summary << failures.size() << " independent native job(s) failed";
+            for (const auto &[slug, error] : failures)
+                summary << "\n" << slug << ": " << error;
+            throw std::runtime_error(summary.str());
         }
     } catch (const std::exception &error) {
         for (const auto &e : chosen)
-            if (!completed.count(e.slug()))
-                Status(statuses, e.slug()).write("failed", 100, "Smart build failed", error.what());
+            if (!completed.count(e.slug()) && !failures.count(e.slug()))
+                Status(statuses, e.slug()).write("failed", 100, "Smart queue interrupted", error.what());
         throw;
     }
     return 0;
