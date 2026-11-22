@@ -709,7 +709,9 @@ static fs::path installed_boot_image() {
     }
     return found;
 }
-static bool boot_registered(const std::string &firmware) {
+// Firmware must launch trusted Shim when Secure Boot is enabled. BOOT's
+// signed second stage is still BOOTX64.EFI in the fixed directory.
+static bool boot_registered(const std::string &firmware, bool allow_shim = false) {
     std::string first, matching;
     unsigned int count = 0;
     for (const auto &line : lines(firmware)) {
@@ -718,8 +720,12 @@ static bool boot_registered(const std::string &firmware) {
             const auto order = trim(lower.substr(10));
             first = order.substr(0, order.find(','));
         }
+        const bool direct = lower.find("file(\\efi\\infiltratoros\\boot\\bootx64.efi)") != std::string::npos;
+        const bool shim = allow_shim &&
+            (lower.find("file(\\efi\\infiltratoros\\boot\\shimx64.efi)") != std::string::npos ||
+             lower.find("file(\\efi\\infiltratoros\\boot\\shimx64.efi.signed)") != std::string::npos);
         if (lower.size() < 9 || lower.rfind("boot", 0) != 0 ||
-            lower.find("file(\\efi\\infiltratoros\\boot\\bootx64.efi)") == std::string::npos)
+            (!direct && !shim))
             continue;
         if (line[8] != '*') return false;
         const auto candidate = lower.substr(4, 4);
@@ -728,6 +734,20 @@ static bool boot_registered(const std::string &firmware) {
         ++count;
     }
     return count == 1 && first == matching;
+}
+// Read the UEFI SecureBoot variable, whose first four bytes are efivarfs
+// attributes, followed by the 0/1 data byte. Unknown values stay restrictive.
+static bool secure_boot_enabled() {
+    const fs::path modern =
+        "/sys/firmware/efi/efivars/SecureBoot-8be4df61-93ca-11d2-aa0d-00e098032b8c";
+    const fs::path legacy =
+        "/sys/firmware/efi/vars/SecureBoot-8be4df61-93ca-11d2-aa0d-00e098032b8c/data";
+    const fs::path path = fs::exists(modern) ? modern : legacy;
+    std::ifstream stream(path, std::ios::binary);
+    if (!stream) return false;
+    if (path == modern) stream.seekg(4);
+    char flag = 0;
+    return bool(stream.get(flag)) && flag == 1;
 }
 // UEFI utilities are installed under /usr/bin on modern Debian/Ubuntu but
 // under /usr/sbin on some other systems. Resolve only standard absolute
@@ -754,7 +774,12 @@ static bool native_boot_current(const Asset &asset, bool evidence, std::string *
     const int rc = execute({manager.string(), "-v"}, &firmware);
     if (rc != 0)
         return fail("Cannot verify BOOT firmware: efibootmgr -v failed");
-    if (!boot_registered(firmware))
+    bool allow_shim = false;
+    if (secure_boot_enabled()) {
+        for (const char *name : {"shimx64.efi", "shimx64.efi.signed"})
+            if (regular(image.parent_path() / name)) allow_shim = true;
+    }
+    if (!boot_registered(firmware, allow_shim))
         return fail("BOOT's fixed EFI entry is absent, duplicated, inactive, or not first in BootOrder");
     if (!evidence) return true;
     const auto attestation = ROOT / "native-verified-boot.json";
