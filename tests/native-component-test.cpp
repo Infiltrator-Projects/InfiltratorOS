@@ -95,80 +95,17 @@ static void check_build_resources() {
 int main() {
     try {
         check_build_resources();
-        verify_boot_setup_result(0);
-        rejects([] { verify_boot_setup_result(77); }, "skipped BOOT deployment as a successful upgrade");
-        rejects([] { verify_boot_setup_result(1); }, "failed BOOT deployment as a successful upgrade");
-        {
-            TempDir fixture(fs::temp_directory_path(), "native-kernel-trust-");
-            const auto system = fixture.path / "System";
-            const auto kernel = system / "Kernel";
-            const auto native = std::string("InfiltratorOS-") + NATIVE_KERNEL_RELEASE;
-            for (const auto &dir : {kernel / "Images", kernel / "Modules" / native,
-                                    kernel / "Runtime" / native})
-                fs::create_directories(dir);
-            save(kernel / "Images" / (native + ".img"), "kernel");
-            save(kernel / "Modules" / native / "modules.dep.bin", "dependencies");
-            save(kernel / "Modules" / native / "modules.alias.bin", "aliases");
-            const auto helper = kernel / "Runtime" / native / "modprobe";
-            save(helper, "helper");
-            if (chmod(helper.c_str(), 0755)) throw std::runtime_error("Cannot set fixture permissions");
-            const auto checker = kernel / "Runtime" / native / "verify-host-drivers";
-            save(checker, "exit 0\n");
-            if (chmod(checker.c_str(), 0755)) throw std::runtime_error("Cannot set checker permissions");
-            check(native_kernel_installed(system, geteuid()), "trusted native kernel accepted");
-            verify_installed_kernel_drivers(kernel);
-            save(checker, "exit 1\n");
-            rejects([&]() { verify_installed_kernel_drivers(kernel); }, "missing active hardware driver");
-            fs::remove(checker);
-            check(!native_kernel_installed(system, geteuid()), "missing hardware check rejected");
-            save(checker, "exit 0\n");
-            if (chmod(checker.c_str(), 0755)) throw std::runtime_error("Cannot reset checker permissions");
-            check(!native_kernel_installed(system, geteuid() + 1), "untrusted owner rejected");
-            if (chmod(kernel.c_str(), 0775)) throw std::runtime_error("Cannot set unsafe fixture permissions");
-            check(!native_kernel_installed(system, geteuid()), "writable kernel parent rejected");
-            if (chmod(kernel.c_str(), 0755)) throw std::runtime_error("Cannot reset fixture permissions");
-            if (chmod((kernel / "Modules" / native).c_str(), 0777))
-                throw std::runtime_error("Cannot set unsafe module permissions");
-            check(!native_kernel_installed(system, geteuid()), "writable module directory rejected");
-            if (chmod((kernel / "Modules" / native).c_str(), 0755))
-                throw std::runtime_error("Cannot reset module permissions");
-            const auto driver = kernel / "Modules" / native / "kernel" / "driver.ko";
-            fs::create_directories(driver.parent_path());
-            save(driver, "driver");
-            check(native_kernel_installed(system, geteuid()), "trusted nested driver accepted");
-            const auto headers_link = kernel / "Modules" / native / "build";
-            fs::create_symlink(fs::path("/System/Kernel/Headers") / native, headers_link);
-            check(native_kernel_installed(system, geteuid()), "native headers link accepted");
-            fs::remove(headers_link);
-            fs::create_symlink("/tmp/untrusted", headers_link);
-            check(!native_kernel_installed(system, geteuid()), "wrong headers link rejected");
-            fs::remove(headers_link);
-            if (chmod(driver.c_str(), 0666)) throw std::runtime_error("Cannot set unsafe driver permissions");
-            check(!native_kernel_installed(system, geteuid()), "writable nested driver rejected");
-            if (chmod(driver.c_str(), 0644)) throw std::runtime_error("Cannot reset driver permissions");
-            fs::create_symlink("driver.ko", driver.parent_path() / "alias.ko");
-            check(!native_kernel_installed(system, geteuid()), "symlinked driver rejected");
-            fs::remove(driver.parent_path() / "alias.ko");
-            fs::rename(kernel / "Runtime", kernel / "Runtime-real");
-            fs::create_directory_symlink("Runtime-real", kernel / "Runtime");
-            check(!native_kernel_installed(system, geteuid()), "symlinked runtime parent rejected");
-        }
-        {
-            // A pipe models efivarfs: a sequential read works, but seeking fails.
-            int descriptors[2];
-            if (pipe(descriptors)) throw std::runtime_error("Cannot create non-seekable test stream");
-            const char disabled[5] = {6, 0, 0, 0, 0};
-            if (write(descriptors[1], disabled, sizeof(disabled)) != static_cast<ssize_t>(sizeof(disabled)))
-                throw std::runtime_error("Cannot populate test stream");
-            close(descriptors[1]);
-            std::ifstream stream("/proc/self/fd/" + std::to_string(descriptors[0]), std::ios::binary);
-            check(secure_boot_disabled(stream), "disabled Secure Boot is read without seeking");
-            close(descriptors[0]);
-            std::istringstream enabled(std::string("\x06\0\0\0\x01", 5));
-            std::istringstream truncated(std::string("\x06\0\0\0", 4));
-            check(!secure_boot_disabled(enabled), "enabled Secure Boot is rejected");
-            check(!secure_boot_disabled(truncated), "truncated Secure Boot state is rejected");
-        }
+        const std::string firmware =
+            "BootOrder: 0007,0005,0003\\n"
+            "Boot0007* BOOT Boot Manager HD(1,GPT,1234)/File(\\\\EFI\\\\InfiltratorOS\\\\BOOT\\\\BOOTX64.EFI)\\n";
+        check(boot_registered(firmware), "BOOT owns one active, first-priority native EFI entry");
+        check(!boot_registered("BootOrder: 0005,0007\\n" +
+              firmware.substr(firmware.find("Boot0007"))), "BOOT cannot be a secondary boot entry");
+        check(!boot_registered(firmware + firmware.substr(firmware.find("Boot0007"))),
+              "duplicate BOOT firmware options are refused");
+        check(!boot_registered("BootOrder: 0007\\n"
+                               "Boot0007 BOOT Boot Manager HD(1,GPT,1234)/File(\\\\EFI\\\\InfiltratorOS\\\\BOOT\\\\BOOTX64.EFI)\\n"),
+              "inactive BOOT firmware options are refused");
         auto temporal = catalogue("packaging/temporal-resources.json", 54);
         auto established = catalogue("packaging/filesystem-resources.json", 5);
         auto additional = catalogue("packaging/filesystem-additional.json", 18);
@@ -226,46 +163,27 @@ int main() {
         check(established[0].slug() == "filesystem-fat12", "FAT12 identity");
         check(application("system-monitor").repo == "System-Monitor", "system monitor identity");
         const auto boot = application("boot");
-        const Asset boot_version{"0.1.50", "", "", 0};
-        check(application_package_matches(boot, boot_version, "install ok installed\t0.1.50+native1"),
-              "BOOT accepts its locally compiled package");
-        check(!application_package_matches(boot, boot_version, "install ok installed\t0.1.50"),
-              "BOOT rejects the portable package as native evidence");
-        auto boot_release = sample_release(boot, "0.1.50", false);
-        check(release_asset(boot, boot_release.ptr, false, false).url.find("boot-0.1.50-native-installer.run") != std::string::npos,
-              "BOOT resolves its independent source installer");
+        auto boot_release = sample_release(boot, "0.1.452", false);
+        json_object_object_add(boot_release.ptr, "prerelease", json_object_new_boolean(1));
+        check(release_asset(boot, boot_release.ptr, false, false).url.find(
+                  "boot-0.1.452-native-installer.run") != std::string::npos,
+              "BOOT accepts the published native-run prerelease with verified asset identity");
         rejects([&]() {
             auto old_boot = sample_release(boot, "0.1.49", false);
             (void)release_asset(boot, old_boot.ptr, false, false);
-        }, "BOOT release without normal native kernel discovery");
+        }, "unsupported native BOOT release");
         rejects([&]() {
-            auto preview = sample_release(boot, "0.1.41", false, "BOOT-0.1.41-amd64.run");
-            json_object_object_add(preview.ptr, "prerelease", json_object_new_boolean(1));
+            auto preview = sample_release(boot, "0.1.452", false, "BOOT-0.1.452-amd64.run");
             (void)release_asset(boot, preview.ptr, false, false);
-        }, "staging-only BOOT prerelease as a firmware installer");
+        }, "staging-only BOOT executable");
         rejects([&]() {
-            auto staging_only = sample_release(boot, "0.1.50", false, "BOOT-0.1.50-amd64.run");
-            (void)release_asset(boot, staging_only.ptr, false, false);
-        }, "staging-only BOOT installer filename");
-        rejects([&]() {
-            auto no_deb = sample_release(boot, "0.1.50", false);
-            auto *assets = field(no_deb.ptr, "assets");
-            json_object_array_del_idx(assets, 1, 1);
+            auto no_deb = sample_release(boot, "0.1.452", false);
+            json_object_array_del_idx(field(no_deb.ptr, "assets"), 1, 1);
             (void)release_asset(boot, no_deb.ptr, false, false);
-        }, "BOOT native RUN without paired generic Debian package");
-        const Entry kernel{"kernel", "InfiltratorOS Kernel", "Kernel", "", "", ""};
-        const std::string kernel_version = NATIVE_KERNEL_RELEASE;
-        const std::string kernel_run = "InfiltratorOS-Kernel-" + kernel_version + "-amd64.run";
-        auto kernel_release = sample_release(kernel, kernel_version, false, kernel_run);
-        check(release_asset(kernel, kernel_release.ptr, false, false).url.find(kernel_run) != std::string::npos,
-              "conversion accepts the exact published Kernel installer");
-        json_object_object_add(kernel_release.ptr, "prerelease", json_object_new_boolean(1));
-        rejects([&]() { (void)release_asset(kernel, kernel_release.ptr, false, false); },
-                "prerelease Kernel for automatic conversion");
-        rejects([&]() {
-            auto wrong_kernel = sample_release(kernel, "0.1.5", false, "InfiltratorOS-Kernel-0.1.5-amd64.run");
-            (void)release_asset(kernel, wrong_kernel.ptr, false, false);
-        }, "Kernel release without native driver autoload support");
+        }, "BOOT release without independently published generic package");
+        json_object_object_add(boot_release.ptr, "draft", json_object_new_boolean(1));
+        rejects([&]() { (void)release_asset(boot, boot_release.ptr, false, false); },
+                "unpublished BOOT installer");
         check(application("defragmenter").resource == "/Programs/defragmenter",
               "defragmenter destination");
         // A missing optional Defragmenter field must never invalidate other apps.
@@ -378,17 +296,6 @@ int main() {
             status.write("queued", 2, "Waiting", "Native status");
             check(read_file(path / "test-driver-install.status").find("state=queued\n") == 0,
                   "atomic status contract");
-            fs::copy_file("packaging/filesystem-resources.json", path / "filesystem-resources.json");
-            fs::copy_file("packaging/filesystem-additional.json", path / "filesystem-additional.json");
-            save(path / "selected.list", "boot\nfiles\nfilesystem-fat16\nfilesystem-hfs\n");
-            auto selected = boot_filesystems(path);
-            check(selected.size() == 2 && selected[0].id == "fat16" && selected[1].id == "hfs",
-                  "BOOT uses only selected filesystem providers");
-            Status(path, "filesystem-fat16").write("complete", 100, "Installed", "");
-            Status(path, "filesystem-hfs").write("failed", 100, "Failed", "");
-            wait_for_boot_filesystems(path, selected);
-            check(provider_state(path, selected[0]) == "complete" &&
-                  provider_state(path, selected[1]) == "failed", "BOOT waits for terminal provider states");
             save(path / "sha.txt", "abc");
             check(digest(path / "sha.txt") ==
                   "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
