@@ -171,11 +171,15 @@ Boot0007 BOOT Boot Manager HD(1,GPT,1234)/File(\EFI\InfiltratorOS\BOOT\BOOTX64.E
                   Strings({"/tmp/files.run", "--system-package-mode"}),
               "other native application options are preserved");
 
-        auto boot_release = sample_release(boot, "0.1.452", false);
-        json_object_object_add(boot_release.ptr, "prerelease", json_object_new_boolean(1));
+        auto boot_release = sample_release(boot, "0.1.456", false);
         check(release_asset(boot, boot_release.ptr, false, false).url.find(
-                  "boot-0.1.452-native-installer.run") != std::string::npos,
-              "BOOT accepts the published native-run prerelease with verified asset identity");
+                  "boot-0.1.456-native-installer.run") != std::string::npos,
+              "BOOT accepts the stable native-run release with verified asset identity");
+        rejects([&]() {
+            auto prerelease = sample_release(boot, "0.1.456", false);
+            json_object_object_add(prerelease.ptr, "prerelease", json_object_new_boolean(1));
+            (void)release_asset(boot, prerelease.ptr, false, false);
+        }, "BOOT prerelease installer");
         rejects([&]() {
             auto old_boot = sample_release(boot, "0.1.49", false);
             (void)release_asset(boot, old_boot.ptr, false, false);
