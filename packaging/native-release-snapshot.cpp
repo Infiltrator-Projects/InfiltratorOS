@@ -174,7 +174,7 @@ static std::string live_latest_tag(const std::string &repository) {
         curl_easy_cleanup(curl);
         if (result == CURLE_OK && status == 200 && target.rfind(prefix, 0) == 0) {
             const std::string tag = target.substr(prefix.size());
-            if (std::regex_match(tag, std::regex("v[0-9]+\\.[0-9]+\\.[0-9]+")))
+            if (std::regex_match(tag, std::regex("v[0-9]+\\.[0-9]+\\.[0-9]+(?:-[A-Za-z0-9.-]+)?")))
                 return tag;
             throw std::runtime_error(repository + ": invalid latest release redirect");
         }
