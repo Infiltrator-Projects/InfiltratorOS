@@ -1037,28 +1037,27 @@ static int smart_queue(const std::vector<Entry> &entries) {
         for (const auto &e : chosen) {
             Status status(statuses, e.slug());
             try {
-            const bool app = e.kind == "application";
-            const bool temporal = e.kind == "calendar" || e.kind == "clock";
-            Status status(statuses, e.slug());
-            status.write("queued", 2, "Smart build queued", "Awaiting native package lock");
-            Document meta = release(e);
-            Asset asset = release_asset(e, meta.ptr, temporal, !app && !temporal);
-            if (app ? application_current(e, asset, true) : provider_current(e, asset)) {
-                status.write("complete", 100, "Already installed", "Native package verified");
-                completed.insert(e.slug());
-                continue;
-            }
-            if (!can_build(e)) {
-                serial.push_back(e);
-                status.write("queued", 10, "Serial fallback queued",
-                             "Native prerequisites unavailable for parallel compilation");
-                continue;
-            }
-            Job job{e, asset, scratch.path / (e.slug() + ".run"), scratch.path / e.slug(), {}};
-            status.write("running", 15, "Downloading native RUN", "SHA-256 release verification");
-            download(asset, job.run);
-            fs::create_directory(job.folder);
-            jobs.push_back(job);
+                const bool app = e.kind == "application";
+                const bool temporal = e.kind == "calendar" || e.kind == "clock";
+                status.write("queued", 2, "Smart build queued", "Awaiting native package lock");
+                Document meta = release(e);
+                Asset asset = release_asset(e, meta.ptr, temporal, !app && !temporal);
+                if (app ? application_current(e, asset, true) : provider_current(e, asset)) {
+                    status.write("complete", 100, "Already installed", "Native package verified");
+                    completed.insert(e.slug());
+                    continue;
+                }
+                if (!can_build(e)) {
+                    serial.push_back(e);
+                    status.write("queued", 10, "Serial fallback queued",
+                                 "Native prerequisites unavailable for parallel compilation");
+                    continue;
+                }
+                Job job{e, asset, scratch.path / (e.slug() + ".run"), scratch.path / e.slug(), {}};
+                status.write("running", 15, "Downloading native RUN", "SHA-256 release verification");
+                download(asset, job.run);
+                fs::create_directory(job.folder);
+                jobs.push_back(job);
             } catch (const std::exception &error) {
                 failures[e.slug()] = error.what();
                 status.write("failed", 100, "Native preparation failed", error.what());
@@ -1069,18 +1068,18 @@ static int smart_queue(const std::vector<Entry> &entries) {
             if (failures.count(job.entry.slug())) continue;
             Status status(statuses, job.entry.slug());
             try {
-            status.write("running", 85, "Installing native package", "Serial package transaction");
-            const bool app = job.entry.kind == "application";
-            if (app) {
-                // Preserve Files' dependency handling and same-version repairs.
-                required({"/usr/bin/apt-get", "-o", "DPkg::Lock::Timeout=300", "install",
-                          "-y", "--reinstall", job.package.string()});
-            } else {
-                required({"/usr/bin/dpkg", "--install", job.package.string()});
-            }
-            verify_install(job.entry, job.asset, app);
-            status.write("complete", 100, "Native installation complete", "Verified installed package");
-            completed.insert(job.entry.slug());
+                status.write("running", 85, "Installing native package", "Serial package transaction");
+                const bool app = job.entry.kind == "application";
+                if (app) {
+                    // Preserve Files' dependency handling and same-version repairs.
+                    required({"/usr/bin/apt-get", "-o", "DPkg::Lock::Timeout=300", "install",
+                              "-y", "--reinstall", job.package.string()});
+                } else {
+                    required({"/usr/bin/dpkg", "--install", job.package.string()});
+                }
+                verify_install(job.entry, job.asset, app);
+                status.write("complete", 100, "Native installation complete", "Verified installed package");
+                completed.insert(job.entry.slug());
             } catch (const std::exception &error) {
                 failures[job.entry.slug()] = error.what();
                 status.write("failed", 100, "Native package installation failed", error.what());
@@ -1089,12 +1088,12 @@ static int smart_queue(const std::vector<Entry> &entries) {
         for (const auto &e : serial) {
             Status status(statuses, e.slug());
             try {
-            const bool app = e.kind == "application";
-            const bool temporal = e.kind == "calendar" || e.kind == "clock";
-            bool already = install(e, status, app, temporal, !app && !temporal);
-            status.write("complete", 100, "Serial fallback complete",
-                         already ? "Already installed" : "Component-owned RUN installed");
-            completed.insert(e.slug());
+                const bool app = e.kind == "application";
+                const bool temporal = e.kind == "calendar" || e.kind == "clock";
+                bool already = install(e, status, app, temporal, !app && !temporal);
+                status.write("complete", 100, "Serial fallback complete",
+                             already ? "Already installed" : "Component-owned RUN installed");
+                completed.insert(e.slug());
             } catch (const std::exception &error) {
                 failures[e.slug()] = error.what();
                 status.write("failed", 100, "Serial installation failed", error.what());
