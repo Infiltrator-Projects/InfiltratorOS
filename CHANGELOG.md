@@ -1,3 +1,10 @@
+## 1.0.96 — Supervise native installation and enforce BOOT prerequisites
+
+- Run the dispatcher outside the Debian transaction, reap each worker, and convert abnormal exits or missing terminal records into explicit failures.
+- Install BOOT only after all selected filesystem providers have passed; preserve the existing EFI installation if a prerequisite fails.
+- Apply lock-aware APT package transactions to independent temporal providers as well as filesystems. Check application dpkg verification output, and make worker cleanup non-throwing.
+- Report actual component identities instead of labelling every filesystem as FAT.
+
 ## 1.0.95 — Read Secure Boot variables without seeking
 
 - Read the efivarfs attributes and Secure Boot byte sequentially; firmware variable files do not implement seek operations.

@@ -509,14 +509,19 @@ struct TempDir {
         if (!result) throw std::runtime_error("Cannot create secure native temporary directory");
         path = result;
     }
-    ~TempDir() { if (!path.empty()) fs::remove_all(path); }
+    // Cleanup must not throw during exception unwinding and terminate a worker.
+    ~TempDir() { std::error_code error; if (!path.empty()) fs::remove_all(path, error); }
 };
 struct Lock {
     int fd;
     explicit Lock(const fs::path &name) {
-        fd = open(name.c_str(), O_CREAT | O_WRONLY | O_APPEND, 0644);
+        fd = open(name.c_str(), O_CREAT | O_WRONLY | O_APPEND | O_CLOEXEC | O_NOFOLLOW, 0644);
         if (fd < 0) throw std::runtime_error("Cannot open native lock");
-        if (flock(fd, LOCK_EX) != 0) throw std::runtime_error("Cannot acquire native lock");
+        while (flock(fd, LOCK_EX) != 0) {
+            if (errno == EINTR) continue;
+            close(fd);
+            throw std::runtime_error("Cannot acquire native lock");
+        }
     }
     ~Lock() { flock(fd, LOCK_UN); close(fd); }
 };
@@ -838,7 +843,7 @@ static bool application_current(const Entry &entry, const Asset &asset,
     }
     std::string verification;
     if (execute({"/usr/bin/dpkg", "--verify", entry.package},
-                entry.id == "calendar" ? &verification : nullptr) != 0 ||
+                &verification) != 0 ||
         !trim(verification).empty())
         return fail("dpkg verification rejected an installed application file");
     return true;
@@ -914,7 +919,7 @@ static bool install(const Entry &entry, Status &status, bool application_mode,
     status.write("running", 20, "Downloading verified RUN", entry.repo);
     download(asset, run);
     status.write("running", 35, "Executing independent RUN", entry.repo);
-    if (filesystem) {
+    if (filesystem || temporal) {
         // Build the provider's native DEB once, then retain it while APT waits.
         // This also covers providers outside the parallel compilation queue.
         const auto folder = directory.path / "package";

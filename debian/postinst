@@ -152,30 +152,26 @@ fi
 # worker stage. No run may remove shared /Temporary/InfiltratorOS or files
 # belonging to a previous or concurrent installation.
 mkdir -p "$stage/status"
-# One dispatcher owns enumeration, release preparation and component launches.
-# Individual component workers remain responsible for their own installations.
-if ! INFILTRATOROS_INSTALL_RUNTIME="$stage" "$stage/orchestrate-native-install" "$stage"; then
-    echo 'InfiltratorOS native installation dispatch failed.' >&2
-    exit 1
-fi
-
-# The monitor must only inspect statuses for this exact installation. A
-# subsequent package upgrade has another stage and cannot overwrite these.
-# The subshell inherits FD 9 and holds provision.lock until all launched jobs
-# reach a terminal state. A diagnostic deadline must NEVER unlock an active run:
-# detached workers close inherited descriptors and cannot protect this lock.
-# All statuses must be terminal before this run's binaries can be removed.
+# The background supervisor inherits FD 9 and retains the provision lock
+# while it waits for every child. Running the dispatcher synchronously here
+# would deadlock against the APT/dpkg transaction that invoked postinst.
+# No temporary runtime may be removed until all supervised workers have exited.
 (
     # The background monitor, not the parent's bootstrap handler, now owns
     # the final status, with its independent lock and run directory.
     trap - 0
     trap '' HUP INT TERM
     status_root="$stage/status"
-    elapsed=0
-    while :; do
-        # The GUI and monitor share the manifest and status parsers.
-        outcome=$("$stage/system-monitor-progress" --run-status "$status_root") || outcome=running
-        case "$outcome" in
+    # Dispatch and supervise outside the maintainer-script transaction.
+    if ! INFILTRATOROS_INSTALL_RUNTIME="$stage" "$stage/orchestrate-native-install" "$stage" >"$stage/dispatcher.log" 2>&1; then
+        printf '%s\n' 'Native dispatcher failed; see dispatcher.log.' > "$stage/FAILED"
+        publish_summary failed
+        exit 0
+    fi
+    # The dispatcher has reaped every worker. Missing or malformed terminal
+    # records now mean failure, never a reason to wait indefinitely.
+    outcome=$("$stage/system-monitor-progress" --run-status "$status_root") || outcome=running
+    case "$outcome" in
             complete)
                 # Keep diagnostic logs, including build timings, after success.
                 # Do not keep temporary source trees or executed native RUNs.
@@ -184,7 +180,7 @@ fi
                     cd "$stage"
                     tar -czf "$archive_tmp" status selected.list \
                         native-release-preparation.log \
-                        optional-filesystem-discovery.log \
+                        optional-filesystem-discovery.log dispatcher.log \
                         filesystems-optional.list filesystems-pending.list
                 ); then
                     chmod 0600 "$archive_tmp"
@@ -196,20 +192,12 @@ fi
                 rm -rf -- "$stage"
                 exit 0
                 ;;
-            failed)
-                printf '%s\n' 'Installation failed; this run retains its logs and statuses.' > "$stage/FAILED"
+            *)
+                printf '%s\n' 'Installation failed or a worker omitted its terminal status; this run retains its logs.' > "$stage/FAILED"
                 publish_summary failed
                 exit 0
                 ;;
-        esac
-        # A 24-hour deadline is diagnostic, not evidence of worker exit.
-        # Never release FD 9 while a worker status is still non-terminal.
-        if [ "$elapsed" -ge 86400 ] && [ ! -f "$stage/LONG_RUNNING" ]; then
-            printf '%s\n' 'Installation exceeded 24 hours; retaining the provisioning lock until every worker reaches a terminal state. Investigate retained status and log files.' > "$stage/LONG_RUNNING"
-        fi
-        sleep 5
-        elapsed=$((elapsed + 5))
-    done
+    esac
 ) </dev/null >/dev/null 2>&1 &
 
 # Disable the bootstrap handler only after spawning the terminal monitor.

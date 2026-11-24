@@ -27,7 +27,7 @@
 #define INSTALL_NAME "Calendars and clocks"
 #define INSTALL_SLUG "temporal-resources"
 #elif defined(INSTALL_FILESYSTEM_RESOURCES)
-#define INSTALL_NAME "FAT filesystems"
+#define INSTALL_NAME "Filesystem providers"
 #define INSTALL_SLUG "filesystem-resources"
 #endif
 

@@ -173,17 +173,51 @@ static Strings selection(const char *variable, const Strings &available, bool st
     }
     return selected;
 }
+// The dispatcher runs outside the Debian transaction and owns each worker
+// until waitpid returns. A process exit is authoritative; an orphaned status
+// file is not. The smart leader owns every member of its shared build batch.
+static std::string job_state(const fs::path &stage, const std::string &slug) {
+    std::ifstream input(stage / "status" / (slug + "-install.status"));
+    std::string line;
+    if (std::getline(input, line) && line.rfind("state=", 0) == 0)
+        return line.substr(6);
+    return {};
+}
+static void failed_job(const fs::path &stage, const std::string &slug,
+                       const std::string &reason) {
+    const auto target = stage / "status" / (slug + "-install.status");
+    const auto temporary = target.string() + ".supervisor";
+    write_text(temporary, "state=failed\nprogress=100\nstage=Native worker failed\ndetail=" +
+                           reason + "\n");
+    fs::rename(temporary, target);
+}
 static void launch(const fs::path &stage, const std::string &launcher,
-                   std::string slug = "", bool smart = false) {
-    Strings arguments{(stage / ("start-" + launcher + "-install")).string()};
-    if (!slug.empty()) arguments.push_back(slug);
-    int result = run(arguments, {}, false, true, smart);
-    if (!result) return;
+                   std::string slug = "", bool smart = false,
+                   const Strings &batch = {}) {
     const std::string name = slug.empty() ? launcher : slug;
-    std::cerr << "Native launcher failed: " << name << " (" << result << ")\n";
-    write_text(stage / "status" / (name + "-install.status"),
-               "state=failed\nprogress=100\nstage=Native installer could not start\n"
-               "detail=See the run logs.\n");
+    Strings arguments{"/usr/bin/timeout", "--signal=TERM", "--kill-after=30s",
+                      "86300s", (stage / ("install-" + launcher)).string()};
+    if (!slug.empty()) arguments.push_back(slug);
+    const Strings affected = smart ? batch : Strings{name};
+    for (const auto &job : affected) {
+        const auto status = stage / "status" / (job + "-install.status");
+        write_text(status, "state=queued\nprogress=0\nstage=Queued for native installation\ndetail=Waiting for supervised worker\n");
+    }
+    std::cout << "Installing " << name << (smart ? " (parallel build queue)" : "") << std::endl;
+    int result = run(arguments, stage / "status" / (name + "-install.log"), false, true, smart);
+    bool reported_failure = false;
+    for (const auto &job : affected) {
+        const auto state = job_state(stage, job);
+        if (state == "failed") reported_failure = true;
+        else if (state != "complete") {
+            failed_job(stage, job, "Worker exited without a terminal status (exit " + std::to_string(result) + ")");
+            reported_failure = true;
+        }
+    }
+    // A nonzero group result is expected if one member failed. If every
+    // member claimed success but the process failed, fail closed on its leader.
+    if (result != 0 && !reported_failure)
+        failed_job(stage, name, "Worker exited unsuccessfully (exit " + std::to_string(result) + ")");
 }
 static void dispatch(const fs::path &stage) {
     const fs::path canonical = fs::canonical(stage);
@@ -267,14 +301,21 @@ static void dispatch(const fs::path &stage) {
     if (smart) {
         const auto &first = queue.front();
         if (first.rfind("filesystem-", 0) == 0)
-            launch(canonical, "filesystem-resources", first, true);
+            launch(canonical, "filesystem-resources", first, true, queue);
         else if (first.rfind("calendar-", 0) == 0 || first.rfind("clock-", 0) == 0)
-            launch(canonical, "temporal-resources", first, true);
+            launch(canonical, "temporal-resources", first, true, queue);
         else
-            launch(canonical, first, "", true);
+            launch(canonical, first, "", true, queue);
     }
     for (const auto &s : chosen)
         if (!queued(s)) launch(canonical, "filesystem-resources", s);
+    // BOOT is one selected component, never a second installer. Do not
+    // replace a working EFI tree using incomplete filesystem prerequisites.
+    for (const auto &s : chosen)
+        if (job_state(canonical, s) != "complete") {
+            failed_job(canonical, "boot", "Preserved existing BOOT: filesystem prerequisite failed: " + s);
+            return;
+        }
     launch(canonical, "boot");
 }
 int main(int argc, char **argv) {

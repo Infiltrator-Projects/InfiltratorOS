@@ -71,10 +71,10 @@ grep -Fq 'INFILTRATOROS_PROGRESS_MODE' packaging/native-orchestrator.cpp
 grep -Fq 'INFILTRATOROS_PROGRESS_MODE=aggregate' debian/postinst
 grep -Fq 'provision.lock' debian/postinst
 grep -Fq 'flock -n 9' debian/postinst
-# An unresolved worker must never surrender the run-wide lock at 24 hours.
-grep -Fq 'while :; do' debian/postinst
-grep -Fq 'Installation exceeded 24 hours; retaining the provisioning lock' debian/postinst
-! grep -Fq 'while [ "$elapsed" -lt 86400 ]; do' debian/postinst
+# The supervisor must reap workers before the run-wide lock can be released.
+grep -Fq 'Worker exited without a terminal status' packaging/native-orchestrator.cpp
+grep -Fq 'Preserved existing BOOT: filesystem prerequisite failed' packaging/native-orchestrator.cpp
+grep -Fq 'The dispatcher has reaped every worker' debian/postinst
 ! grep -Fq 'publish_summary timeout' debian/postinst
 grep -Fq 'else if (strcmp(status.state, "complete") != 0)' packaging/native-progress-count.c
 ! grep -Fq 'rm -rf -- "$STATUS_ROOT"' debian/postinst
