@@ -21,6 +21,26 @@ grep -Fq '"--kill-after=30s", "86300s"' packaging/start-native-install.c
 
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT HUP INT TERM
+
+# Fault-injection tests deliberately exercise real production error paths.
+# Capture their diagnostics rather than showing successful negative tests as
+# installer errors. A genuine regression still prints the complete transcript
+# and propagates the original exit status; verbose mode exposes all diagnostics.
+run_fault_test() {
+    description=$1
+    shift
+    if "$@" >"$WORK/fault-test.log" 2>&1; then
+        if [ "${INFILTRATOROS_TEST_VERBOSE:-0}" = 1 ]; then
+            cat "$WORK/fault-test.log"
+        fi
+        printf '%s: passed\n' "$description"
+    else
+        result=$?
+        printf '%s: FAILED (exit %s)\n' "$description" "$result" >&2
+        cat "$WORK/fault-test.log" >&2
+        return "$result"
+    fi
+}
 c++ -std=c++17 -O2 -Wall -Wextra -Werror -Wpedantic -pthread \
     $(pkg-config --cflags libcurl json-c openssl) \
     tests/native-component-test.cpp -o "$WORK/native-component-test" \
@@ -28,12 +48,16 @@ c++ -std=c++17 -O2 -Wall -Wextra -Werror -Wpedantic -pthread \
 "$WORK/native-component-test"
 c++ -std=c++17 -O2 -Wall -Wextra -Werror -Wpedantic \
     tests/native-orchestrator-test.cpp -o "$WORK/native-orchestrator-test"
-"$WORK/native-orchestrator-test"
+run_fault_test 'Native worker supervision and failure recovery' "$WORK/native-orchestrator-test"
 
 for test in native-release-contract select-theme-command; do
     cc -std=c11 -O2 -Wall -Wextra -Werror -Wpedantic \
        "tests/$test-test.c" -o "$WORK/$test-test"
-    "$WORK/$test-test"
+    if [ "$test" = select-theme-command ]; then
+        run_fault_test 'Plymouth, GRUB and initramfs activation and failure handling' "$WORK/$test-test"
+    else
+        "$WORK/$test-test"
+    fi
 done
 sh tests/native-icons.sh
 

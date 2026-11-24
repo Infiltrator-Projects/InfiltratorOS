@@ -1,3 +1,8 @@
+## 1.0.100 — Clean local test and installation output
+
+- Capture expected fault-injection diagnostics and report concise successful test results; retain full output and exit codes on genuine regression failures, with optional verbose diagnostics.
+- Provide a local Debian package installation helper that stages readable bytes for APT without disabling its sandbox or suppressing real warnings.
+
 ## 1.0.99 — Test worker supervision and retain final GUI counts
 
 - Exercise actual worker success, premature exit, forced termination, smart-queue failure propagation and BOOT prerequisite decisions without touching the host package manager or ESP.
