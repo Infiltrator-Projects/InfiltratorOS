@@ -1,3 +1,8 @@
+## 1.0.95 — Read Secure Boot variables without seeking
+
+- Read the efivarfs attributes and Secure Boot byte sequentially; firmware variable files do not implement seek operations.
+- Exercise enabled, disabled and truncated non-seekable variables, legacy data and the actual Hyper-V Shim entry format.
+
 ## 1.0.94 — Wait for Debian package-manager locks
 
 - Install already-built native DEBs through APT with indefinite lock waiting and no package removals. Preserve same-version repair and local source compilation.

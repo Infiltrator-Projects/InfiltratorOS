@@ -737,6 +737,13 @@ static bool boot_registered(const std::string &firmware, bool allow_shim = false
 }
 // Read the UEFI SecureBoot variable, whose first four bytes are efivarfs
 // attributes, followed by the 0/1 data byte. Unknown values stay restrictive.
+// efivarfs is a non-seekable firmware interface, not an ordinary disk file.
+// Consume the four-byte attributes sequentially before reading the flag.
+static bool secure_boot_flag(std::istream &stream, bool attributes) {
+    if (attributes) stream.ignore(4);
+    char flag = 0;
+    return bool(stream.get(flag)) && flag == 1;
+}
 static bool secure_boot_enabled() {
     const fs::path modern =
         "/sys/firmware/efi/efivars/SecureBoot-8be4df61-93ca-11d2-aa0d-00e098032b8c";
@@ -745,9 +752,7 @@ static bool secure_boot_enabled() {
     const fs::path path = fs::exists(modern) ? modern : legacy;
     std::ifstream stream(path, std::ios::binary);
     if (!stream) return false;
-    if (path == modern) stream.seekg(4);
-    char flag = 0;
-    return bool(stream.get(flag)) && flag == 1;
+    return secure_boot_flag(stream, path == modern);
 }
 // UEFI utilities are installed under /usr/bin on modern Debian/Ubuntu but
 // under /usr/sbin on some other systems. Resolve only standard absolute

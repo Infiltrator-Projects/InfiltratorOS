@@ -102,8 +102,28 @@ Boot0007* BOOT Boot Manager HD(1,GPT,1234)/File(\EFI\InfiltratorOS\BOOT\BOOTX64.
         // Secure Boot launches Shim and Shim launches the signed BOOTX64.EFI.
         // Only an explicitly permitted, single active first-priority Shim
         // entry inside BOOT's fixed directory can satisfy this contract.
-        const std::string shim_firmware = R"(BootOrder: 0007,0005,0003
-Boot0007* BOOT Boot Manager HD(1,GPT,1234)/File(\EFI\InfiltratorOS\BOOT\shimx64.efi)
+        // Model efivarfs with a stream buffer that deliberately provides no
+        // seek operations. A seek-based implementation fails this regression.
+        struct NonSeekableVariable : std::streambuf {
+            char bytes[5] = {7, 0, 0, 0, 1};
+            explicit NonSeekableVariable(char flag, int size = 5) {
+                bytes[4] = flag;
+                setg(bytes, bytes, bytes + size);
+            }
+        };
+        NonSeekableVariable enabled_var(1), disabled_var(0), truncated_var(1, 4);
+        std::istream enabled_stream(&enabled_var), disabled_stream(&disabled_var),
+                     truncated_stream(&truncated_var);
+        check(secure_boot_flag(enabled_stream, true), "Non-seekable SecureBoot variable enabled");
+        check(!secure_boot_flag(disabled_stream, true), "Non-seekable SecureBoot variable disabled");
+        check(!secure_boot_flag(truncated_stream, true), "Truncated SecureBoot variable rejected");
+        std::istringstream legacy_enabled(std::string(1, '\1'));
+        check(secure_boot_flag(legacy_enabled, false), "Legacy SecureBoot data enabled");
+        const std::string shim_firmware = R"(BootCurrent: 0007
+Timeout: 0 seconds
+BootOrder: 0007,0004,0002,0000,0001,0005
+Boot0004* Ubuntu HD(1,GPT,1234)/File(\EFI\ubuntu\shimx64.efi)
+Boot0007* BOOT Boot Manager HD(1,GPT,1234)/File(\EFI\InfiltratorOS\BOOT\shimx64.efi) File(.BOOTX64.EFI)
 )";
         check(boot_registered(shim_firmware, true),
               "one first-priority BOOT Shim EFI entry accepted for Secure Boot");
