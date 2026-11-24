@@ -102,6 +102,19 @@ int main() {
     try {
         check_build_resources();
         {
+            std::string capture;
+            check(execute({"/bin/sh", "-c", "printf verified"}, &capture) == 0 &&
+                  capture == "verified", "Subprocess capture retains output");
+            rejects([&]() {
+                std::string large;
+                (void)execute({"/usr/bin/head", "-c", "5000000", "/dev/zero"}, &large);
+            }, "Oversized subprocess capture must be rejected after reaping");
+            int status = 0;
+            errno = 0;
+            check(waitpid(-1, &status, WNOHANG) == -1 && errno == ECHILD,
+                  "Oversized capture left an unreaped child");
+        }
+        {
             TempDir fixture(fs::temp_directory_path(), "native-efi-inventory-");
             const auto image = fixture.path / "BOOTX64.EFI";
             const auto drivers = fixture.path / "drivers_x64";

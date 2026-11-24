@@ -16,6 +16,7 @@
 #include <set>
 #include <stdexcept>
 #include <string>
+#include <signal.h>
 #include <sys/wait.h>
 #include <unistd.h>
 #include <vector>
@@ -108,7 +109,10 @@ static std::string output_of(const Strings &args, bool reset_selection = false) 
     int descriptors[2];
     if (pipe(descriptors) != 0) throw std::runtime_error("pipe failed");
     pid_t child = fork();
-    if (child < 0) throw std::runtime_error("fork failed");
+    if (child < 0) {
+        close(descriptors[0]); close(descriptors[1]);
+        throw std::runtime_error("fork failed");
+    }
     if (child == 0) {
         close(descriptors[0]);
         if (dup2(descriptors[1], STDOUT_FILENO) < 0) _exit(126);
@@ -126,17 +130,25 @@ static std::string output_of(const Strings &args, bool reset_selection = false) 
     close(descriptors[1]);
     std::string result;
     char buffer[4096];
-    ssize_t n;
-    while ((n = read(descriptors[0], buffer, sizeof(buffer))) > 0) {
-        result.append(buffer, static_cast<size_t>(n));
-        if (result.size() > 1024 * 1024) {
-            close(descriptors[0]);
-            throw std::runtime_error("Provider list exceeded 1 MiB");
+    const char *error = nullptr;
+    for (;;) {
+        const ssize_t n = read(descriptors[0], buffer, sizeof(buffer));
+        if (n < 0 && errno == EINTR) continue;
+        if (n < 0) { error = "Provider list read failed"; break; }
+        if (n == 0) break;
+        if (result.size() + static_cast<size_t>(n) > 1024 * 1024) {
+            error = "Provider list exceeded 1 MiB"; break;
         }
+        try { result.append(buffer, static_cast<size_t>(n)); }
+        catch (...) { error = "Cannot retain provider list"; break; }
     }
     close(descriptors[0]);
+    if (error) (void)kill(child, SIGKILL);
     int status = 0;
-    while (waitpid(child, &status, 0) < 0 && errno == EINTR) {}
+    pid_t waited;
+    do { waited = waitpid(child, &status, 0); } while (waited < 0 && errno == EINTR);
+    if (waited != child) throw std::runtime_error("Provider enumeration wait failed");
+    if (error) throw std::runtime_error(error);
     if (!WIFEXITED(status) || WEXITSTATUS(status) != 0)
         throw std::runtime_error("Provider enumeration failed: " + args.front());
     return result;
@@ -281,9 +293,17 @@ static void dispatch(const fs::path &stage) {
     Strings apps = selection("INFILTRATOROS_SELECTED_APPLICATIONS",
                             {"system-monitor", "calculator", "calendar", "files", "defragmenter"});
     temporal = selection("INFILTRATOROS_SELECTED_TEMPORAL", temporal);
-    Strings all_fs = established;
-    all_fs.insert(all_fs.end(), optional.begin(), optional.end());
+    // Selection uses the complete signed catalogue, not a subset that
+    // happened to respond over HTTPS. The default run requires all 23.
+    Strings all_fs = lines(output_of({(canonical / "install-filesystem-resources").string(), "--list-all"}, true));
+    const std::set<std::string> all_names(all_fs.begin(), all_fs.end());
+    if (all_fs.size() != 23 || all_names.size() != 23 ||
+        !std::all_of(established.begin(), established.end(), [&](const auto &slug) { return all_names.count(slug); }) ||
+        !std::all_of(optional.begin(), optional.end(), [&](const auto &slug) { return all_names.count(slug); }))
+        throw std::runtime_error("Complete filesystem catalogue is invalid");
     Strings chosen = selection("INFILTRATOROS_SELECTED_FILESYSTEMS", all_fs, true);
+    Strings available = established;
+    available.insert(available.end(), optional.begin(), optional.end());
     Strings selected = apps;
     selected.emplace_back("boot");
     selected.insert(selected.end(), temporal.begin(), temporal.end());
@@ -291,6 +311,17 @@ static void dispatch(const fs::path &stage) {
     const fs::path manifest = canonical / ".selected.list.tmp";
     write_text(manifest, joined(selected));
     fs::rename(manifest, canonical / "selected.list");
+    // Fail before native builds if any requested release is unavailable.
+    Strings missing;
+    for (const auto &slug : chosen)
+        if (std::find(available.begin(), available.end(), slug) == available.end())
+            missing.push_back(slug);
+    if (!missing.empty()) {
+        for (const auto &slug : missing)
+            failed_job(canonical, slug, "Requested filesystem release not verified");
+        failed_job(canonical, "boot", "Preserved existing BOOT: filesystem discovery incomplete");
+        throw std::runtime_error("Required filesystem releases unavailable:\n" + joined(missing));
+    }
     // The manifest is now authoritative. The UI can change from release
     // preparation to measured component progress without guessing durations.
     const auto phase = canonical / ".phase.dispatcher";

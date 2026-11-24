@@ -16,6 +16,13 @@ int main() {
     const fs::path stage(root);
     try {
         fs::create_directory(stage / "status");
+        bool rejected = false;
+        try { (void)output_of({"/usr/bin/head", "-c", "2000000", "/dev/zero"}); }
+        catch (const std::runtime_error &) { rejected = true; }
+        int child_status = 0;
+        errno = 0;
+        check(rejected && waitpid(-1, &child_status, WNOHANG) == -1 && errno == ECHILD,
+              "Oversized provider output must fail and reap its child");
         const auto worker = stage / "install-filesystem-resources";
         auto script = [&](const std::string &body) {
             write_text(worker, "#!/bin/sh\n" + body + "\n");

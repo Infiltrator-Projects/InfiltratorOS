@@ -28,6 +28,7 @@
 #include <string_view>
 #include <sys/file.h>
 #include <sys/stat.h>
+#include <signal.h>
 #include <sys/wait.h>
 #include <thread>
 #include <unistd.h>
@@ -165,23 +166,30 @@ static int execute(const Strings &args, std::string *capture = nullptr, const fs
         else execvp(argv.front(), argv.data());
         _exit(127);
     }
+    const char *capture_error = nullptr;
     if (capture) {
         close(pipes[1]);
         char buffer[8192];
-        ssize_t n = 0;
-        while ((n = read(pipes[0], buffer, sizeof(buffer))) > 0) {
+        for (;;) {
+            const ssize_t n = read(pipes[0], buffer, sizeof(buffer));
+            if (n < 0 && errno == EINTR) continue;
+            if (n < 0) { capture_error = "Cannot read command output"; break; }
+            if (n == 0) break;
             if (capture->size() + static_cast<size_t>(n) > MAX_JSON) {
-                close(pipes[0]);
-                throw std::runtime_error("Command output exceeds 4 MiB");
+                capture_error = "Command output exceeds 4 MiB"; break;
             }
-            capture->append(buffer, static_cast<size_t>(n));
+            try { capture->append(buffer, static_cast<size_t>(n)); }
+            catch (...) { capture_error = "Cannot retain command output"; break; }
         }
         close(pipes[0]);
+        // Reap the producer even when output is invalid or oversized.
+        if (capture_error) (void)kill(child, SIGKILL);
     }
     int status = 0;
     while (waitpid(child, &status, 0) < 0) {
         if (errno != EINTR) throw std::runtime_error("Cannot wait for native command");
     }
+    if (capture_error) throw std::runtime_error(capture_error);
     if (WIFEXITED(status)) return WEXITSTATUS(status);
     return 128 + (WIFSIGNALED(status) ? WTERMSIG(status) : 0);
 }
@@ -758,15 +766,20 @@ static bool secure_boot_flag(std::istream &stream, bool attributes) {
     char flag = 0;
     return bool(stream.get(flag)) && flag == 1;
 }
-static bool secure_boot_enabled() {
+static int secure_boot_state() {
     const fs::path modern =
         "/sys/firmware/efi/efivars/SecureBoot-8be4df61-93ca-11d2-aa0d-00e098032b8c";
     const fs::path legacy =
         "/sys/firmware/efi/vars/SecureBoot-8be4df61-93ca-11d2-aa0d-00e098032b8c/data";
     const fs::path path = fs::exists(modern) ? modern : legacy;
     std::ifstream stream(path, std::ios::binary);
-    if (!stream) return false;
-    return secure_boot_flag(stream, path == modern);
+    if (!stream) return -1;
+    if (secure_boot_flag(stream, path == modern)) return 1;
+    // Reopen the nonseekable variable to distinguish disabled from invalid.
+    std::ifstream disabled(path, std::ios::binary);
+    if (path == modern) disabled.ignore(4);
+    char flag = 1;
+    return disabled.get(flag) && flag == 0 ? 0 : -1;
 }
 // UEFI utilities are installed under /usr/bin on modern Debian/Ubuntu but
 // under /usr/sbin on some other systems. Resolve only standard absolute
@@ -819,6 +832,15 @@ static std::string boot_efi_inventory(const fs::path &image) {
     for (const auto &[name, hash] : hashes) inventory += hash + "  " + name + "\n";
     return inventory;
 }
+static bool efi_signature_present(const fs::path &image) {
+    if (!regular(image)) return false;
+    std::string report;
+    if (execute({"/usr/bin/sbverify", "--list", image.string()}, &report) != 0) return false;
+    const auto lower = lowercase(report);
+    return lower.find("signature 1") != std::string::npos &&
+           lower.find("no signature table") == std::string::npos;
+}
+
 static bool native_boot_current(const Asset &asset, bool evidence, std::string *reason) {
     auto fail = [&](const char *message) {
         if (reason) *reason = message;
@@ -833,13 +855,28 @@ static bool native_boot_current(const Asset &asset, bool evidence, std::string *
     const int rc = execute({manager.string(), "-v"}, &firmware);
     if (rc != 0)
         return fail("Cannot verify BOOT firmware: efibootmgr -v failed");
+    const int secure = secure_boot_state();
+    if (secure < 0) return fail("Cannot establish UEFI Secure Boot state");
     bool allow_shim = false;
-    if (secure_boot_enabled()) {
+    if (secure == 1) {
         for (const char *name : {"shimx64.efi", "shimx64.efi.signed"})
             if (regular(image.parent_path() / name)) allow_shim = true;
     }
     if (!boot_registered(firmware, allow_shim))
         return fail("BOOT's fixed EFI entry is absent, duplicated, inactive, or not first in BootOrder");
+    if (secure == 1) {
+        // Presence of a parseable signature is not proof of firmware DB,
+        // DBX or MOK trust. Never modify firmware or assert a boot test.
+        if (!efi_signature_present(image))
+            return fail("Secure Boot BOOTX64.EFI signature cannot be established");
+        const auto lower_firmware = lowercase(firmware);
+        for (const char *name : {"shimx64.efi", "shimx64.efi.signed"}) {
+            const std::string path = "file(\\efi\\infiltratoros\\boot\\" + std::string(name) + ")";
+            if (lower_firmware.find(path) != std::string::npos &&
+                !efi_signature_present(image.parent_path() / name))
+                return fail("Secure Boot Shim signature cannot be established");
+        }
+    }
     std::string inventory;
     try { inventory = boot_efi_inventory(image); }
     catch (const std::exception &error) { if (reason) *reason = error.what(); return false; }
@@ -1144,6 +1181,15 @@ static bool can_build(const Entry &e) {
         packages.insert(packages.end(), {"cmake", "git", "pkg-config", "libssl-dev",
                                          "libsqlite3-dev", "exfatprogs", "dosfstools"});
     if (e.id == "btrfs") packages.push_back("btrfs-progs");
+    if (e.id == "xfs") packages.push_back("xfsprogs");
+    if (e.id == "ext2" || e.id == "ext3" || e.id == "ext4")
+        packages.push_back("e2fsprogs");
+    if (e.id == "fat12" || e.id == "fat16" || e.id == "fat32")
+        packages.push_back("dosfstools");
+    if (e.id == "minix") packages.push_back("util-linux");
+    if (e.slug().rfind("filesystem-", 0) == 0 &&
+        execute({"/usr/bin/pkg-config", "--exists", "openssl", "sqlite3"}) != 0)
+        return false;
     if (e.id == "ntfs") {
         packages.insert(packages.end(), {"cmake", "git", "pkg-config", "libssl-dev",
                                          "libsqlite3-dev", "autoconf", "automake", "libtool",

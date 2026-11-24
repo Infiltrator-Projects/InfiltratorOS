@@ -1,3 +1,9 @@
+## 1.0.104 — InfiltratorOS audit corrections
+
+- Reject incomplete requested filesystem discovery before starting native builds; preserve BOOT.
+- Reap child processes after interrupted or oversized output capture; qualify filesystem build prerequisites more carefully.
+- Require readable Secure Boot state and parseable loader signatures when enabled; firmware trust still requires separate qualification.
+
 ## 1.0.103 — Install interface fonts in their final location before GTK
 
 - Install or verify the five required interface faces directly in `/System/Resources/Fonts` before launching GTK. Remove temporary source copies; never use a second runtime font directory.
