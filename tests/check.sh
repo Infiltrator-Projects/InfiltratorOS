@@ -61,6 +61,7 @@ for test in native-release-contract select-theme-command; do
 done
 sh tests/native-icons.sh
 sh tests/bootstrap-fonts.sh
+sh tests/supervisor-recovery.sh
 
 profile=packaging/installer-profile.h
 grep -Fq '#define STATUS_DIR "/Temporary/InfiltratorOS"' "$profile"

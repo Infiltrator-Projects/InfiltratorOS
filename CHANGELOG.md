@@ -1,3 +1,9 @@
+## 1.0.105 — Graphical startup and interrupted installation recovery
+
+- Prefer active graphical sessions and distinguish a drawn early GTK frame from a failed or headless launch; retry failed launches during postinst.
+- Publish the early font recovery pointer before replacing permanent faces, and restore abandoned journals on the next install.
+- Detect abandoned supervisor stages under the installation lock, preserve logs and mark the old run failed. Add recovery regression coverage.
+
 ## 1.0.104 — InfiltratorOS audit corrections
 
 - Reject incomplete requested filesystem discovery before starting native builds; preserve BOOT.

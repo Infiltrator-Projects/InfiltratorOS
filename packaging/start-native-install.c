@@ -40,6 +40,7 @@ typedef struct {
     char bus[TEXT_LIMIT];
     char xauthority[TEXT_LIMIT];
     bool found;
+    int rank;
 } DesktopSession;
 
 static void die(const char *message)
@@ -153,6 +154,67 @@ static bool session_from_process(const char *pid_name, DesktopSession *session)
         cursor += runtime_length;
         memcpy(cursor, suffix, sizeof(suffix));
     }
+    // Prefer an active graphical logind session, followed by the invoking
+    // desktop user and known session leaders. Fall back to graphical processes
+    // for systems without logind. Never take the first DISPLAY blindly.
+    candidate.rank = 1;
+    const char *caller = getenv("SUDO_UID");
+    if (caller && numeric_name(caller) && strtoul(caller, NULL, 10) == candidate.uid)
+        candidate.rank += 20;
+    char comm[256] = {0};
+    if (snprintf(path, sizeof(path), "/proc/%s/comm", pid_name) < (int)sizeof(path)) {
+        FILE *process = fopen(path, "r");
+        if (process) {
+            if (fgets(comm, sizeof(comm), process) &&
+                (strstr(comm, "cinnamon-sess") || strstr(comm, "gnome-session") ||
+                 strstr(comm, "xfce4-session") || strstr(comm, "mate-session") ||
+                 strstr(comm, "startplasma") || strstr(comm, "ksmserver")))
+                candidate.rank += 10;
+            (void)fclose(process);
+        }
+    }
+    if (snprintf(path, sizeof(path), "/proc/%s/cgroup", pid_name) < (int)sizeof(path)) {
+        FILE *groups = fopen(path, "r");
+        if (groups) {
+            char line[TEXT_LIMIT];
+            while (fgets(line, sizeof(line), groups)) {
+                const char *scope = strstr(line, "/session-");
+                if (!scope) continue;
+                scope += strlen("/session-");
+                const char *end = strstr(scope, ".scope");
+                if (!end || end == scope || (size_t)(end - scope) >= 64U) continue;
+                char id[64];
+                memcpy(id, scope, (size_t)(end - scope));
+                id[end - scope] = '\0';
+                if (strspn(id, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_") != strlen(id))
+                    continue;
+                char session_path[256];
+                snprintf(session_path, sizeof(session_path), "/run/systemd/sessions/%s", id);
+                int session_fd = open(session_path, O_RDONLY | O_CLOEXEC | O_NOFOLLOW);
+                struct stat info;
+                if (session_fd < 0) continue;
+                if (fstat(session_fd, &info) != 0 || info.st_uid != 0 ||
+                    !S_ISREG(info.st_mode) || (info.st_mode & 022)) {
+                    close(session_fd);
+                    continue;
+                }
+                FILE *record = fdopen(session_fd, "r");
+                if (!record) { close(session_fd); continue; }
+                bool active = false, graphical = false, owner = false;
+                char expected[64];
+                snprintf(expected, sizeof(expected), "UID=%lu\n", (unsigned long)candidate.uid);
+                while (fgets(line, sizeof(line), record)) {
+                    if (strcmp(line, "ACTIVE=1\n") == 0 || strcmp(line, "STATE=active\n") == 0) active = true;
+                    if (strcmp(line, "TYPE=x11\n") == 0 || strcmp(line, "TYPE=wayland\n") == 0) graphical = true;
+                    if (strcmp(line, expected) == 0) owner = true;
+                }
+                (void)fclose(record);
+                if (active && graphical && owner) candidate.rank += 100;
+                break;
+            }
+            (void)fclose(groups);
+        }
+    }
     candidate.found = true;
     *session = candidate;
     return true;
@@ -167,7 +229,10 @@ static DesktopSession find_desktop_session(void)
     struct dirent *entry;
     while ((entry = readdir(proc)) != NULL) {
         if (!numeric_name(entry->d_name)) continue;
-        if (session_from_process(entry->d_name, &result)) break;
+        DesktopSession candidate;
+        if (session_from_process(entry->d_name, &candidate) &&
+            (!result.found || candidate.rank > result.rank))
+            result = candidate;
     }
     closedir(proc);
     return result;
@@ -193,9 +258,10 @@ static int prepare_progress(void *context)
         setenv("XDG_RUNTIME_DIR", session->runtime, 1) != 0 ||
         setenv("DBUS_SESSION_BUS_ADDRESS", session->bus, 1) != 0)
         return -1;
-    if (session->display[0] && setenv("DISPLAY", session->display, 1) != 0) return -1;
-    if (session->wayland[0] && setenv("WAYLAND_DISPLAY", session->wayland, 1) != 0) return -1;
-    if (session->xauthority[0] && setenv("XAUTHORITY", session->xauthority, 1) != 0) return -1;
+    // Clear any display credentials inherited from a different caller.
+    if (session->display[0] ? setenv("DISPLAY", session->display, 1) : unsetenv("DISPLAY")) return -1;
+    if (session->wayland[0] ? setenv("WAYLAND_DISPLAY", session->wayland, 1) : unsetenv("WAYLAND_DISPLAY")) return -1;
+    if (session->xauthority[0] ? setenv("XAUTHORITY", session->xauthority, 1) : unsetenv("XAUTHORITY")) return -1;
     return installer_redirect_io("/dev/null");
 }
 
@@ -219,9 +285,9 @@ static void resolve_temporary_runtime(void)
 
 static int spawn_progress_ui(DesktopSession *session)
 {
-    if (!session->found) return 0;
+    if (!session->found) return 1;
     const char *progress_mode = getenv("INFILTRATOROS_PROGRESS_MODE");
-    if (progress_mode != NULL && strcmp(progress_mode, "none") == 0) return 0;
+    if (progress_mode != NULL && strcmp(progress_mode, "none") == 0) return 1;
     if (progress_mode != NULL && strcmp(progress_mode, "aggregate") == 0) {
 #ifdef INSTALL_SYSTEM_MONITOR
         char directory[TEXT_LIMIT];
@@ -260,6 +326,13 @@ static int spawn_progress_ui(DesktopSession *session)
                 (void)nanosleep(&interval, NULL);
             }
             fprintf(stderr, "InfiltratorOS graphical window has not acknowledged its first frame; continuing installation.\n");
+            // Cancel a late preinst window before postinst tries again.
+            char cancel[TEXT_LIMIT];
+            if (snprintf(cancel, sizeof(cancel), "%s/early-ui-cancelled", runtime) < (int)sizeof(cancel)) {
+                int fd = open(cancel, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, 0644);
+                if (fd >= 0) (void)close(fd);
+            }
+            return -1;
         }
 #endif
         return 0;
@@ -327,7 +400,8 @@ int main(int argc, char **argv)
     if (argc == 2 && strcmp(argv[1], "--show-progress") == 0) {
         resolve_temporary_runtime();
         DesktopSession session = find_desktop_session();
-        return spawn_progress_ui(&session) == 0 ? EXIT_SUCCESS : EXIT_FAILURE;
+        const int result = spawn_progress_ui(&session);
+        return result == 0 ? EXIT_SUCCESS : result > 0 ? 2 : EXIT_FAILURE;
     }
 #endif
 #if defined(INSTALL_TEMPORAL_RESOURCES) || defined(INSTALL_FILESYSTEM_RESOURCES)

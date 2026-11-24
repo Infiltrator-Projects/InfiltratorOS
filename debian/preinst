@@ -9,6 +9,7 @@ STATUS_ROOT=/Temporary/InfiltratorOS
 BOOTSTRAP_SHA256='@BOOTSTRAP_SHA256@'
 VERSION='@VERSION@'
 # @BOOTSTRAP_FONT_FUNCTIONS@
+# @SUPERVISOR_RECOVERY_FUNCTIONS@
 
 unpack_bootstrap() {
     target=$1
@@ -37,22 +38,34 @@ fi
 case "${1:-}" in install|upgrade) ;; *) exit 0 ;; esac
 [ ! -L /Temporary ] && [ ! -L "$STATUS_ROOT" ] || exit 1
 mkdir -p "$STATUS_ROOT"
+for directory in /Temporary "$STATUS_ROOT"; do
+    [ "$(find "$directory" -maxdepth 0 -type d -uid 0 ! -perm /022 -print)" = "$directory" ] || exit 1
+done
 chmod 0755 "$STATUS_ROOT"
+[ ! -L "$STATUS_ROOT/provision.lock" ] || exit 1
 exec 9>"$STATUS_ROOT/provision.lock"
 # Never wait on a native installer that might itself be waiting for dpkg.
 # The existing deferred postinst path handles overlapping upgrades.
 flock -n 9 || exit 0
+recover_abandoned_supervisor "$STATUS_ROOT"
 pending="$STATUS_ROOT/preinstall-$VERSION.pending"
-if [ -f "$pending" ]; then
-    old=$(cat "$pending")
+# Recover abandoned preinst stages, including a previous package version.
+for stale in "$STATUS_ROOT"/preinstall-*.pending; do
+    [ -f "$stale" ] && [ ! -L "$stale" ] || continue
+    old=$(cat "$stale")
     case "$old" in
         "$STATUS_ROOT"/native-worker.*)
-            if [ "${old%/*}" = "$STATUS_ROOT" ] && [ -d "$old" ] && [ ! -L "$old" ]; then
+            if [ "${old%/*}" = "$STATUS_ROOT" ] && [ -d "$old" ] && [ ! -L "$old" ] &&
+               [ "$(stat -c '%u:%a' "$old")" = 0:755 ]; then
+                bootstrap_rollback_fonts "$old" "" || {
+                    echo 'Could not recover abandoned early font changes.' >&2
+                    exit 1
+                }
                 touch "$old/early-failed"
             fi ;;
     esac
-    rm -f -- "$pending"
-fi
+    rm -f -- "$stale"
+done
 
 stage=$(mktemp -d "$STATUS_ROOT/native-worker.XXXXXXXX")
 chmod 0755 "$stage"
@@ -76,6 +89,10 @@ unpack_bootstrap "$stage" || {
     echo 'InfiltratorOS could not verify the early graphical installer.' >&2
     exit 1
 }
+# Publish the recovery pointer before touching permanent fonts, so even a
+# SIGKILL between font replacements leaves a discoverable journal.
+printf '%s\n' "$stage" > "$pending.tmp"
+mv -f -- "$pending.tmp" "$pending"
 # At this point all five source faces came from the checksum-verified
 # archive. Install them into their final native directory before any UI exec.
 if ! bootstrap_install_fonts "$stage" ""; then
@@ -84,8 +101,6 @@ if ! bootstrap_install_fonts "$stage" ""; then
 fi
 printf '%s\n' "$VERSION" > "$stage/bootstrap-version"
 printf 'unpacking\n' > "$stage/phase"
-printf '%s\n' "$stage" > "$pending.tmp"
-mv -f -- "$pending.tmp" "$pending"
 printf 'state=running\nstage=%s\n' "$stage" > "$STATUS_ROOT/.early-summary.$$"
 chmod 0644 "$STATUS_ROOT/.early-summary.$$"
 mv -f -- "$STATUS_ROOT/.early-summary.$$" "$STATUS_ROOT/last-provision.status"

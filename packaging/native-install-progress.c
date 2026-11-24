@@ -1,5 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include <gtk/gtk.h>
+#include <sys/file.h>
+#include <fcntl.h>
+#include <unistd.h>
 #include <pango/pangocairo.h>
 #include <pango/pangofc-font.h>
 #include <pango/pangofc-fontmap.h>
@@ -94,7 +97,10 @@ static gboolean close_after_success(gpointer data)
 static int finished_run_outcome(const char *status_path, int *total)
 {
     char aborted[4096];
+    *total = 0;
     if (snprintf(aborted, sizeof(aborted), "%s/../early-failed", status_path) < (int)sizeof(aborted) &&
+        g_file_test(aborted, G_FILE_TEST_IS_REGULAR)) return 2;
+    if (snprintf(aborted, sizeof(aborted), "%s/../FAILED", status_path) < (int)sizeof(aborted) &&
         g_file_test(aborted, G_FILE_TEST_IS_REGULAR)) return 2;
     FILE *file = fopen("/Temporary/InfiltratorOS/last-provision.status", "r");
     if (!file) return 0;
@@ -118,6 +124,19 @@ static int finished_run_outcome(const char *status_path, int *total)
     if (strcmp(state, "state=complete\n") == 0) return 1;
     if (strcmp(state, "state=failed\n") == 0) return 2;
     if (strcmp(state, "state=timeout\n") == 0) return 3;
+    // A running supervisor retains the provision lock, inherited by the
+    // dispatcher and its workers. A free lock after supervisor launch means
+    // no cooperating writer remains. Do not infer this during dpkg unpack.
+    if (snprintf(aborted, sizeof(aborted), "%s/../supervisor-started", status_path) < (int)sizeof(aborted) &&
+        g_file_test(aborted, G_FILE_TEST_IS_REGULAR)) {
+        int fd = open("/Temporary/InfiltratorOS/provision.lock", O_RDONLY | O_CLOEXEC | O_NOFOLLOW);
+        if (fd >= 0) {
+            int available = flock(fd, LOCK_SH | LOCK_NB);
+            if (available == 0) (void)flock(fd, LOCK_UN);
+            (void)close(fd);
+            if (available == 0) return 2;
+        }
+    }
     return 0;
 }
 
@@ -581,11 +600,25 @@ static void add_activity(Ui *ui, GtkWidget *card, unsigned int spacing)
 // The acknowledgement is written by the unprivileged GUI after GTK's first
 // draw, not merely after exec. The privileged launcher may then permit dpkg
 // to unpack the full payload while the same window is already visible.
+static gboolean early_window_cancelled(const char *status_path)
+{
+    const char *early = g_getenv("INFILTRATOROS_EARLY_PROGRESS");
+    if (!early || strcmp(early, "1") != 0) return FALSE;
+    char path[4096];
+    return snprintf(path, sizeof(path), "%s/../early-ui-cancelled", status_path) < (int)sizeof(path) &&
+           g_file_test(path, G_FILE_TEST_IS_REGULAR);
+}
+
 static gboolean acknowledge_first_frame(GtkWidget *widget, cairo_t *cr, gpointer data)
 {
     (void)cr;
     Ui *ui = data;
     if (!ui->aggregate || ui->ready_notified || !gtk_widget_get_mapped(widget)) return FALSE;
+    if (early_window_cancelled(ui->status_path)) {
+        gtk_widget_hide(widget);
+        gtk_main_quit();
+        return FALSE;
+    }
     ui->ready_notified = TRUE;
     char path[4096];
     if (snprintf(path, sizeof(path), "%s/../gui-ready", ui->status_path) >= (int)sizeof(path) ||
@@ -615,7 +648,7 @@ int main(int argc, char **argv)
 #endif
     if (strlen(argv[aggregate ? 2 : 1]) >= sizeof(((Ui *)0)->status_path))
         return EXIT_FAILURE;
-    gtk_init(&argc, &argv);
+    if (!gtk_init_check(&argc, &argv)) return EXIT_FAILURE;
 
     /* Common owns semantic colours, and unresolved fonts are an error. */
     // The early and normal windows resolve the very same canonical directory.
@@ -708,6 +741,7 @@ int main(int argc, char **argv)
     g_signal_connect(ui.window, "destroy", G_CALLBACK(gtk_main_quit), NULL);
     g_signal_connect_after(ui.window, "draw", G_CALLBACK(acknowledge_first_frame), &ui);
     (void)refresh_status(&ui);
+    if (early_window_cancelled(ui.status_path)) return EXIT_FAILURE;
     gtk_widget_show_all(ui.window);
     g_timeout_add(250U, refresh_status, &ui);
     gtk_main();

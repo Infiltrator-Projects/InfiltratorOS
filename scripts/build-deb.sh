@@ -120,6 +120,9 @@ done
 for script in preinst postrm; do
     sed -i "/^# @BOOTSTRAP_FONT_FUNCTIONS@$/r $ROOT/packaging/bootstrap-fonts.sh" "$PKGROOT/DEBIAN/$script"
 done
+for script in preinst postinst; do
+    sed -i "/^# @SUPERVISOR_RECOVERY_FUNCTIONS@$/r $ROOT/packaging/supervisor-recovery.sh" "$PKGROOT/DEBIAN/$script"
+done
 install -m 0755 "$ROOT/packaging/ensure-native-fonts.sh" \
     "$PKGROOT/System/Commands/InfiltratorOS/ensure-native-fonts"
 install -m 0755 "$ROOT/packaging/ensure-native-icons.sh" \

@@ -8,6 +8,7 @@ STATUS_ROOT=/Temporary/InfiltratorOS
 # All InfiltratorOS-owned installation files stay under the native /Temporary root.
 BUNDLE_SHA256='@NATIVE_RUNTIME_SHA256@'
 VERSION='@VERSION@'
+# @SUPERVISOR_RECOVERY_FUNCTIONS@
 
 migrate_legacy_calendar_pin() (
     pin=$1
@@ -86,8 +87,13 @@ if ! migrate_legacy_calendar_pin /etc/apt/preferences.d/infiltrator-calendar.pre
     echo 'Could not migrate the legacy Calendar APT preference.' >&2
 fi
 
+[ ! -L /Temporary ] && [ ! -L "$STATUS_ROOT" ] || exit 1
 mkdir -p "$STATUS_ROOT"
+for directory in /Temporary "$STATUS_ROOT"; do
+    [ "$(find "$directory" -maxdepth 0 -type d -uid 0 ! -perm /022 -print)" = "$directory" ] || exit 1
+done
 chmod 0755 "$STATUS_ROOT"
+[ ! -L "$STATUS_ROOT/provision.lock" ] || exit 1
 # Hold a run-wide lock across the detached monitor lifetime. A reinstall
 # during active native compilation must not spawn duplicate jobs.
 if ! command -v flock >/dev/null 2>&1; then
@@ -108,6 +114,7 @@ if ! flock -n 9; then
     fi
     exit 0
 fi
+recover_abandoned_supervisor "$STATUS_ROOT"
 TMPDIR="$STATUS_ROOT"
 export TMPDIR
 
@@ -183,10 +190,11 @@ fi
 
 publish_phase fonts
 if [ ! -f "$stage/early-ui-started" ]; then
-    if ! INFILTRATOROS_PROGRESS_MODE=aggregate INFILTRATOROS_INSTALL_RUNTIME="$stage" \
-            "$stage/start-system-monitor-install" --show-progress; then
+    result=0
+    INFILTRATOROS_PROGRESS_MODE=aggregate INFILTRATOROS_INSTALL_RUNTIME="$stage" \
+        "$stage/start-system-monitor-install" --show-progress || result=$?
+    [ "$result" -eq 0 ] || [ "$result" -eq 2 ] ||
         echo 'Could not start InfiltratorOS graphical progress.' >&2
-    fi
 fi
 /System/Commands/InfiltratorOS/ensure-native-fonts
 publish_phase icons
@@ -209,6 +217,7 @@ mkdir -p "$stage/status"
     trap - 0
     trap '' HUP INT TERM
     status_root="$stage/status"
+    touch "$stage/supervisor-started"
     # Dispatch and supervise outside the maintainer-script transaction.
     if ! INFILTRATOROS_INSTALL_RUNTIME="$stage" "$stage/orchestrate-native-install" "$stage" >"$stage/dispatcher.log" 2>&1; then
         printf '%s\n' 'Native dispatcher failed; see dispatcher.log.' > "$stage/FAILED"

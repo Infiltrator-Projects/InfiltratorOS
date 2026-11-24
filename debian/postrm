@@ -12,7 +12,8 @@ case "$stage" in
     "$root"/native-worker.*) ;;
     *) exit 0 ;;
 esac
-[ "${stage%/*}" = "$root" ] && [ -d "$stage" ] && [ ! -L "$stage" ] || exit 0
+[ "${stage%/*}" = "$root" ] && [ -d "$stage" ] && [ ! -L "$stage" ] &&
+    [ "$(stat -c '%u:%a' "$stage")" = 0:755 ] || exit 0
 bootstrap_rollback_fonts "$stage" "" ||
     echo 'InfiltratorOS could not fully restore the early font changes; see retained stage.' >&2
 touch "$stage/early-failed"
