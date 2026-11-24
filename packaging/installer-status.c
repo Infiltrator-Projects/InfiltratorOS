@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #include "installer-status.h"
 #include <errno.h>
 #include <stdio.h>

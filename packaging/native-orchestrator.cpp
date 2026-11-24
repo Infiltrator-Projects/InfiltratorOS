@@ -219,6 +219,14 @@ static void launch(const fs::path &stage, const std::string &launcher,
     if (result != 0 && !reported_failure)
         failed_job(stage, name, "Worker exited unsuccessfully (exit " + std::to_string(result) + ")");
 }
+// The filesystem dependency is evaluated against this run's exact selected
+// inventory, not against previous-run statuses or the launch order alone.
+static std::string failed_filesystem_prerequisite(const fs::path &stage,
+                                                   const Strings &filesystems) {
+    for (const auto &slug : filesystems)
+        if (job_state(stage, slug) != "complete") return slug;
+    return {};
+}
 static void dispatch(const fs::path &stage) {
     const fs::path canonical = fs::canonical(stage);
     if (canonical.parent_path() != STATUS_ROOT ||
@@ -310,11 +318,11 @@ static void dispatch(const fs::path &stage) {
         if (!queued(s)) launch(canonical, "filesystem-resources", s);
     // BOOT is one selected component, never a second installer. Do not
     // replace a working EFI tree using incomplete filesystem prerequisites.
-    for (const auto &s : chosen)
-        if (job_state(canonical, s) != "complete") {
-            failed_job(canonical, "boot", "Preserved existing BOOT: filesystem prerequisite failed: " + s);
-            return;
-        }
+    const auto failed = failed_filesystem_prerequisite(canonical, chosen);
+    if (!failed.empty()) {
+        failed_job(canonical, "boot", "Preserved existing BOOT: filesystem prerequisite failed: " + failed);
+        return;
+    }
     launch(canonical, "boot");
 }
 int main(int argc, char **argv) {

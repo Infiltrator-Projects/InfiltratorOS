@@ -1,3 +1,9 @@
+## 1.0.99 — Test worker supervision and retain final GUI counts
+
+- Exercise actual worker success, premature exit, forced termination, smart-queue failure propagation and BOOT prerequisite decisions without touching the host package manager or ESP.
+- Publish the selected component total with successful run summaries so the aggregate GTK window can show the correct completed count after staging cleanup.
+- Strengthen hashing error propagation and add missing SPDX headers to core launcher, status, progress and maintainer sources.
+
 ## 1.0.98 — Verify EFI driver deployment and reconcile installation documentation
 
 - Validate and attest deployed BOOT EFI executable and driver inventory without treating mutable configuration as executable integrity evidence.

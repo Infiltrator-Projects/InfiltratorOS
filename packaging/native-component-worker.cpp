@@ -206,6 +206,10 @@ static std::string digest(const fs::path &path) {
             throw std::runtime_error("Cannot hash native installer");
         }
     }
+    if (stream.bad()) {
+        EVP_MD_CTX_free(context);
+        throw std::runtime_error("I/O error reading file for SHA-256");
+    }
     unsigned char bytes[EVP_MAX_MD_SIZE];
     unsigned length = 0;
     if (EVP_DigestFinal_ex(context, bytes, &length) != 1 || length != 32) {

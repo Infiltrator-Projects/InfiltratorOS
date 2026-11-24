@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #include <gtk/gtk.h>
 #include <pango/pangocairo.h>
 #include <pango/pangofc-font.h>
@@ -84,13 +85,20 @@ static gboolean close_after_success(gpointer data)
 
 /* The run outcome remains after successful cleanup of the per-run manifests.
  * Match the recorded stage exactly; never read another installation's result. */
-static int finished_run_outcome(const char *status_path)
+static int finished_run_outcome(const char *status_path, int *total)
 {
     FILE *file = fopen("/Temporary/InfiltratorOS/last-provision.status", "r");
     if (!file) return 0;
-    char state[64], stage[4096], expected[4096];
+    char state[64], stage[4096], expected[4096], count[64];
+    *total = 0;
     const int valid = fgets(state, sizeof(state), file) != NULL &&
                       fgets(stage, sizeof(stage), file) != NULL;
+    if (valid && fgets(count, sizeof(count), file) && strncmp(count, "total=", 6) == 0) {
+        char *end = NULL;
+        const long value = strtol(count + 6, &end, 10);
+        if (value > 0 && value <= NATIVE_PROGRESS_MAX_JOBS &&
+            end != NULL && strcmp(end, "\n") == 0) *total = (int)value;
+    }
     (void)fclose(file);
     if (!valid || strncmp(stage, "stage=", 6) != 0) return 0;
     const size_t length = strlen(stage);
@@ -106,7 +114,8 @@ static int finished_run_outcome(const char *status_path)
 
 static gboolean refresh_aggregate(Ui *ui)
 {
-    const int outcome = finished_run_outcome(ui->status_path);
+    int final_total = 0;
+    const int outcome = finished_run_outcome(ui->status_path, &final_total);
     if (outcome != 0) {
         gtk_label_set_text(GTK_LABEL(ui->title),
             outcome == 1 ? "Upgrade complete" :
@@ -114,7 +123,10 @@ static gboolean refresh_aggregate(Ui *ui)
         gtk_label_set_text(GTK_LABEL(ui->stage),
             outcome == 1 ? "All selected components are ready." : "Review the installation logs.");
         set_detail(ui, outcome == 1 ? "" : "Logs: /Temporary/InfiltratorOS");
-        if (outcome == 1) set_progress(ui, 1.0);
+        if (outcome == 1) {
+            set_progress(ui, 1.0);
+            if (final_total > 0) set_metrics(ui, final_total, final_total, 0, 0, 0);
+        }
         gtk_widget_show(ui->close_button);
         if (outcome == 1 && ui->close_timer_id == 0U)
             ui->close_timer_id = g_timeout_add_seconds(8U, close_after_success, ui);

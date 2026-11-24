@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #ifndef INFILTRATOR_INSTALL_PROFILE_H
 #define INFILTRATOR_INSTALL_PROFILE_H
 

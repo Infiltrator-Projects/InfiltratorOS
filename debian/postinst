@@ -1,4 +1,5 @@
 #!/bin/sh
+# SPDX-License-Identifier: GPL-3.0-or-later
 # InfiltratorOS installation entry point. The embedded native workers are
 # installation-only; they are never installed in /System/Commands.
 set -eu
@@ -115,8 +116,11 @@ stage=$(mktemp -d "$STATUS_ROOT/native-worker.XXXXXXXX")
 chmod 0755 "$stage"
 publish_summary() {
     summary_state=$1
-    summary_tmp="$STATUS_ROOT/.last-provision.$.tmp"
+    summary_tmp="$STATUS_ROOT/.last-provision.$$.tmp"
     printf 'state=%s\nstage=%s\n' "$summary_state" "$stage" > "$summary_tmp"
+    if [ "$summary_state" = complete ] && [ -f "$stage/selected.list" ]; then
+        printf 'total=%s\n' "$(wc -l < "$stage/selected.list" | tr -d '[:space:]')" >> "$summary_tmp"
+    fi
     chmod 0644 "$summary_tmp"
     mv -f -- "$summary_tmp" "$STATUS_ROOT/last-provision.status"
 }
@@ -189,7 +193,7 @@ mkdir -p "$stage/status"
             complete)
                 # Keep diagnostic logs, including build timings, after success.
                 # Do not keep temporary source trees or executed native RUNs.
-                archive_tmp="$STATUS_ROOT/.last-provision-logs.$.tar.gz"
+                archive_tmp="$STATUS_ROOT/.last-provision-logs.$$.tar.gz"
                 if (umask 077
                     cd "$stage"
                     tar -czf "$archive_tmp" status selected.list \

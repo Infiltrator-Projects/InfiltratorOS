@@ -26,6 +26,9 @@ c++ -std=c++17 -O2 -Wall -Wextra -Werror -Wpedantic -pthread \
     tests/native-component-test.cpp -o "$WORK/native-component-test" \
     $(pkg-config --libs libcurl json-c openssl)
 "$WORK/native-component-test"
+c++ -std=c++17 -O2 -Wall -Wextra -Werror -Wpedantic \
+    tests/native-orchestrator-test.cpp -o "$WORK/native-orchestrator-test"
+"$WORK/native-orchestrator-test"
 
 for test in native-release-contract select-theme-command; do
     cc -std=c11 -O2 -Wall -Wextra -Werror -Wpedantic \
