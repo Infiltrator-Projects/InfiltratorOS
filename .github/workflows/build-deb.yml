@@ -61,14 +61,18 @@ jobs:
             grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'
           "$RUNNER_TEMP/native-snapshot" --check-latest Defragmenter |
             grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+-[A-Za-z0-9.-]+$'
-          # Exercise the full 63-repository installed preflight, not just
+          # Exercise the full native catalogue, not just
           # isolated redirect lookups. Catch HTML throttling or stale Pages
           # metadata before any user's native installer runs.
           mkdir -p "$RUNNER_TEMP/live-release-check"
           "$RUNNER_TEMP/install-temporal-resources" --list > "$RUNNER_TEMP/live-release-check/providers.list"
           "$RUNNER_TEMP/install-filesystem-resources" --list > "$RUNNER_TEMP/live-release-check/filesystems.list"
-          sudo "$RUNNER_TEMP/native-snapshot" "$RUNNER_TEMP/live-release-check/verified"             "$RUNNER_TEMP/live-release-check/providers.list"             "$RUNNER_TEMP/live-release-check/filesystems.list"
-          test "$(find "$RUNNER_TEMP/live-release-check/verified" -maxdepth 1 -name '*.json' | wc -l)" -eq 63
+          "$RUNNER_TEMP/install-filesystem-resources" --list-all > "$RUNNER_TEMP/live-release-check/filesystems-all.list"
+          ! grep -En 'api\.github\.com|GITHUB_TOKEN' packaging/native-release-snapshot.cpp packaging/native-component-worker.cpp
+          sudo "$RUNNER_TEMP/native-snapshot" "$RUNNER_TEMP/live-release-check/verified" "$RUNNER_TEMP/live-release-check/providers.list" "$RUNNER_TEMP/live-release-check/filesystems.list" "$RUNNER_TEMP/live-release-check/filesystems-all.list"
+          test "$(find "$RUNNER_TEMP/live-release-check/verified" -maxdepth 1 -name '*.sha256' | wc -l)" -ge 65
+          test -s "$RUNNER_TEMP/live-release-check/verified/Boot.json"
+          test -s "$RUNNER_TEMP/live-release-check/verified/Calendar.json"
           test -x "$RUNNER_TEMP/native-activate-calendar"
       - name: Exercise production process and status contracts
         run: sh tests/check.sh

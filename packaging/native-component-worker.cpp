@@ -249,10 +249,9 @@ static size_t receive(char *buf, size_t width, size_t count, void *context) {
     sink.data.append(buf, n);
     return n;
 }
-static void transfer(const std::string &url, Transfer &result, bool binary = false,
+static void transfer(const std::string &url, Transfer &result,
                      long timeout = 120L) {
     if (url.rfind("https://", 0) != 0) throw std::runtime_error("Unsafe native download URL");
-    bool api = url.rfind("https://api.github.com/", 0) == 0;
     for (int attempt = 0; attempt < 4; ++attempt) {
         if (result.file) {
             rewind(result.file);
@@ -262,18 +261,7 @@ static void transfer(const std::string &url, Transfer &result, bool binary = fal
         result.too_large = false;
         CURL *curl = curl_easy_init();
         if (!curl) throw std::runtime_error("Cannot initialise libcurl");
-        struct curl_slist *headers = nullptr;
-        if (api) {
-            headers = curl_slist_append(headers, binary ?
-                            "Accept: application/octet-stream" : "Accept: application/vnd.github+json");
-            const std::string token = environment("GITHUB_TOKEN");
-            if (!token.empty()) {
-                std::string value = "Authorization: Bearer " + token;
-                headers = curl_slist_append(headers, value.c_str());
-            }
-        }
         curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
-        curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
         curl_easy_setopt(curl, CURLOPT_USERAGENT, "InfiltratorOS-CXX/1");
         curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
         curl_easy_setopt(curl, CURLOPT_MAXREDIRS, 5L);
@@ -287,7 +275,6 @@ static void transfer(const std::string &url, Transfer &result, bool binary = fal
         CURLcode code = curl_easy_perform(curl);
         long http = 0;
         curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http);
-        curl_slist_free_all(headers);
         curl_easy_cleanup(curl);
         if (result.too_large) throw std::runtime_error("Native download exceeds maximum size");
         if (code == CURLE_OK && http >= 200 && http < 300) {
@@ -303,7 +290,7 @@ static void transfer(const std::string &url, Transfer &result, bool binary = fal
 }
 static std::string fetch(const std::string &url, long timeout = 120L) {
     Transfer result;
-    transfer(url, result, false, timeout);
+    transfer(url, result, timeout);
     return result.data;
 }
 struct Entry {
@@ -448,75 +435,35 @@ static Asset release_asset(const Entry &entry, json_object *meta, bool calendar_
     return result;
 }
 static Document release(const Entry &entry) {
-    const std::string directory = environment("INFILTRATOROS_RELEASE_DIR");
-    // BOOT selects GitHub's latest stable release, never a prerelease.
-    // Keep its release metadata independent of optional filesystem snapshots.
-    return parse(directory.empty() || entry.id == "calendar" || entry.id == "boot"
-        ? fetch("https://api.github.com/repos/Infiltrator-Projects/" +
-                entry.repo + "/releases/latest")
-        : read_file(fs::path(directory) / (entry.repo + ".json")));
+    const std::string directory=environment("INFILTRATOROS_RELEASE_DIR");
+    if(!directory.empty())
+        return parse(read_file(fs::path(directory)/(entry.repo+".json")));
+    // Standalone worker invocations still use authenticated publisher
+    // metadata. No runtime REST request or GitHub account is required.
+    Document catalogue=parse(fetch("https://raw.githubusercontent.com/Infiltrator-Projects/Infiltrator-Repository/main/catalogue/native-installers-v4.json"));
+    auto *meta=field(field(catalogue.ptr,"releases"),entry.repo.c_str());
+    return parse(json_object_to_json_string_ext(meta,JSON_C_TO_STRING_PLAIN));
 }
-static std::string api_asset_url(const Asset &asset) {
-    const std::string prefix = "https://github.com/Infiltrator-Projects/";
-    if (asset.url.rfind(prefix, 0) != 0)
-        throw std::runtime_error("Noncanonical alternate asset");
-    std::smatch match;
-    const std::string relative = asset.url.substr(prefix.size());
-    if (!std::regex_match(relative, match, std::regex(
-            "([A-Za-z0-9-]+)/releases/download/(v[0-9]+\\.[0-9]+\\.[0-9]+)/([A-Za-z0-9_.+-]+)")))
-        throw std::runtime_error("Invalid alternate asset identity");
-    std::string repo = match[1], tag = match[2], name = match[3];
-    Document meta = parse(fetch("https://api.github.com/repos/Infiltrator-Projects/" +
-                                repo + "/releases/tags/" + tag));
-    if (str(meta.ptr, "tag_name") != tag || boolean(meta.ptr, "draft") ||
-        boolean(meta.ptr, "prerelease"))
-        throw std::runtime_error("Alternate asset resolved a different release");
-    auto *assets = field(meta.ptr, "assets");
-    int64_t id = 0;
-    unsigned matches = 0;
-    for (size_t i = 0; i < json_object_array_length(assets); ++i) {
-        auto *item = json_object_array_get_idx(assets, i);
-        if (str(item, "name") != name) continue;
-        auto *identity = field(item, "id");
-        if (str(item, "browser_download_url") != asset.url ||
-            str(item, "digest") != "sha256:" + asset.sha || integer(item, "size") != asset.size ||
-            json_object_get_type(identity) != json_type_int ||
-            json_object_get_int64(identity) <= 0)
-            throw std::runtime_error("Alternate asset does not match original SHA-256");
-        ++matches;
-        id = json_object_get_int64(identity);
-    }
-    if (matches != 1) throw std::runtime_error("Ambiguous GitHub asset identity");
-    return "https://api.github.com/repos/Infiltrator-Projects/" + repo +
-           "/releases/assets/" + std::to_string(id);
-}
-static void download(const Asset &asset, const fs::path &target) {
-    for (int route = 0; route != 2; ++route) {
-        const std::string address = route ? api_asset_url(asset) : asset.url;
-        FILE *file = fopen(target.c_str(), "wb+");
-        if (!file) throw std::runtime_error("Cannot create installer");
-        Transfer sink;
-        sink.file = file;
-        sink.limit = asset.size;
-        bool closed = false;
-        try {
-            transfer(address, sink, route != 0);
-            if (fclose(file) != 0) {
-                closed = true;
-                throw std::runtime_error("Cannot close native installer");
-            }
-            closed = true;
-            if (sink.length != asset.size || digest(target) != asset.sha)
-                throw std::runtime_error("Installer digest/length mismatch");
-            if (chmod(target.c_str(), 0700) != 0)
-                throw std::runtime_error("Cannot make installer executable");
-            return;
-        } catch (const std::exception &error) {
-            if (!closed) fclose(file);
-            fs::remove(target);
-            if (route != 0) throw;
-            std::cerr << "Retrying exact GitHub asset API: " << error.what() << "\n";
-        }
+static void download(const Asset &asset,const fs::path &target) {
+    FILE *file=fopen(target.c_str(),"wb+");
+    if(!file)throw std::runtime_error("Cannot create installer");
+    Transfer sink;
+    sink.file=file;
+    sink.limit=asset.size;
+    bool closed=false;
+    try {
+        transfer(asset.url,sink);
+        const int close_status=fclose(file);
+        closed=true;
+        if(close_status)throw std::runtime_error("Cannot close native installer");
+        if(sink.length!=asset.size || digest(target)!=asset.sha)
+            throw std::runtime_error("Installer digest/length mismatch");
+        if(chmod(target.c_str(),0700)!=0)
+            throw std::runtime_error("Cannot make installer executable");
+    } catch(...) {
+        if(!closed)fclose(file);
+        fs::remove(target);
+        throw;
     }
 }
 struct TempDir {
@@ -1321,26 +1268,24 @@ static void discover(const std::vector<Entry> &extra, const fs::path &snapshot) 
     if (directory.parent_path().parent_path() != ROOT ||
         directory.parent_path().filename().string().rfind("native-worker.", 0) != 0)
         throw std::runtime_error("Invalid additional filesystem snapshot directory");
-    std::map<std::string, std::string> published, pending;
-    for (const auto &e : extra) {
+    Document pending=parse(read_file(directory/"optional-pending.json"));
+    Strings available,missing;
+    for(const auto &e:extra) {
         try {
-            std::string raw = fetch("https://api.github.com/repos/Infiltrator-Projects/" +
-                                    e.repo + "/releases/latest", 12);
-            Document meta = parse(raw);
-            (void)release_asset(e, meta.ptr, false, true);
-            published[e.repo] = raw;
-        } catch (const std::exception &error) {
-            pending[e.repo] = error.what();
+            auto file=directory/(e.repo+".json");
+            if(!fs::is_regular_file(file)) {
+                auto *reason=field(pending.ptr,e.repo.c_str());
+                if(json_object_get_type(reason)!=json_type_string)
+                    throw std::runtime_error("Invalid optional provider status");
+                throw std::runtime_error(json_object_get_string(reason));
+            }
+            Document meta=parse(read_file(file));
+            (void)release_asset(e,meta.ptr,false,true);
+            available.push_back(e.slug());
+        } catch(const std::exception &error) {
+            missing.push_back(e.repo+": "+error.what());
         }
     }
-    Strings available, missing;
-    for (const auto &[name, raw] : published) {
-        auto file = directory / (name + ".json");
-        if (fs::exists(file)) throw std::runtime_error("Filesystem snapshot collision");
-        save(file, raw + "\n");
-        available.push_back(lowercase(name));
-    }
-    for (const auto &[name, message] : pending) missing.push_back(name + ": " + message);
     save(directory.parent_path() / "filesystems-optional.list", joined(available));
     save(directory.parent_path() / "filesystems-pending.list", joined(missing));
     std::cout << "Filesystem publication: " << available.size() << " installable, "

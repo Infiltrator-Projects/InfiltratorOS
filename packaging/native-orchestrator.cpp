@@ -249,11 +249,16 @@ static void dispatch(const fs::path &stage) {
     Strings temporal = catalogue(canonical, "install-temporal-resources", "providers.list", 54);
     Strings established = catalogue(canonical, "install-filesystem-resources", "filesystems.list", 5);
 
+    auto full_fs = lines(output_of({(canonical / "install-filesystem-resources").string(), "--list-all"}, true));
+    if (full_fs.size()!=23 || std::set<std::string>(full_fs.begin(),full_fs.end()).size()!=23)
+        throw std::runtime_error("Incomplete full filesystem catalogue");
+    write_text(canonical/"filesystems-all.list",joined(full_fs));
     const fs::path log = canonical / "native-release-preparation.log";
     int code = run({(canonical / "prepare-native-releases").string(),
                     (canonical / "release-json").string(),
                     (canonical / "providers.list").string(),
-                    (canonical / "filesystems.list").string()}, log);
+                    (canonical / "filesystems.list").string(),
+                    (canonical / "filesystems-all.list").string()}, log);
     if (code != 0) {
         std::cerr << read_text(log);
         throw std::runtime_error("Native release preparation failed");
