@@ -39,7 +39,7 @@ int main(void)
     CHECK(native_progress_total_jobs(status) == -1);
     CHECK(native_progress_phase(status) == NATIVE_PHASE_UNKNOWN);
     CHECK(snprintf(path, sizeof(path), "%s/phase", stage) < (int)sizeof(path));
-    const char *phases[] = {"fonts", "icons", "host", "releases", "components", "finalising"};
+    const char *phases[] = {"unpacking", "fonts", "icons", "host", "releases", "components", "finalising"};
     for (unsigned int i = 0; i < sizeof(phases) / sizeof(phases[0]); ++i) {
         FILE *phase = fopen(path, "w");
         CHECK(phase != NULL);

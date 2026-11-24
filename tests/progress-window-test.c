@@ -52,19 +52,21 @@ void gtk_main(void)
     GtkWidget *activity = find_named(window, "installer-activity-caption");
     check(GTK_IS_LABEL(activity) && gtk_widget_get_visible(activity), "missing activity heading");
     const char *expect = g_getenv("PROGRESS_EXPECT");
-    if (g_strcmp0(expect, "preparing") == 0) {
+    if (g_strcmp0(expect, "preparing") == 0 || g_strcmp0(expect, "unpacking") == 0) {
+        const gboolean unpacking = g_strcmp0(expect, "unpacking") == 0;
         GtkWidget *fonts = find_named(window, "phase-fonts");
         GtkWidget *icons = find_named(window, "phase-icons");
         GtkWidget *releases = find_named(window, "phase-releases");
         GtkWidget *components = find_named(window, "phase-components");
         check(fonts && icons && releases && components, "missing installation phase indicators");
-        check(gtk_style_context_has_class(gtk_widget_get_style_context(fonts), "phase-complete") &&
-              gtk_style_context_has_class(gtk_widget_get_style_context(icons), "phase-complete") &&
-              gtk_style_context_has_class(gtk_widget_get_style_context(releases), "phase-active") &&
+        check(gtk_style_context_has_class(gtk_widget_get_style_context(fonts), unpacking ? "phase-active" : "phase-complete") &&
+              gtk_style_context_has_class(gtk_widget_get_style_context(icons), unpacking ? "phase-active" : "phase-complete") &&
+              gtk_style_context_has_class(gtk_widget_get_style_context(releases), unpacking ? "phase-pending" : "phase-active") &&
               gtk_style_context_has_class(gtk_widget_get_style_context(components), "phase-pending"),
-              "phase indicators must reflect real release preparation");
+              "phase indicators must reflect real unpacking or release preparation");
         GtkWidget *stage = find_named(window, "installer-stage");
-        check(GTK_IS_LABEL(stage) && strstr(gtk_label_get_text(GTK_LABEL(stage)), "Discovering current releases"),
+        check(GTK_IS_LABEL(stage) && strstr(gtk_label_get_text(GTK_LABEL(stage)),
+              unpacking ? "Installing packaged fonts" : "Discovering current releases"),
               "preparation activity does not match phase");
         check(!gtk_widget_get_visible(percent) && !gtk_widget_get_visible(close),
               "preparation should show a pulse without 0% or a Close button");

@@ -12,7 +12,7 @@ Independent application, calendar, clock and filesystem Debian packages own thei
 
 ## Provisioning and release acquisition
 
-The root `debian/postinst` embeds a SHA-256-sealed, installation-only runtime. It unpacks that runtime under `/Temporary/InfiltratorOS/native-worker.*`, checks the worker executables and delegates work to separate application and provider launchers. These build helpers are **not** permanent OS commands.
+The root `debian/preinst` embeds a separately SHA-256-sealed early GTK bootstrap containing its launcher, progress executable and exactly five required font faces. Its temporary run is created before dpkg unpacks the full package-owned font and icon collection, and the unprivileged desktop GUI acknowledges its first drawn frame. The bounded handshake cannot block a headless installation indefinitely. The same stage is adopted by postinst; aborted unpack is reported by postrm. The root `debian/postinst` embeds a SHA-256-sealed, installation-only runtime. It unpacks that runtime under `/Temporary/InfiltratorOS/native-worker.*`, checks the worker executables and delegates work to separate application and provider launchers. These build helpers are **not** permanent OS commands.
 
 The work inventory is sourced from the checked catalogues:
 

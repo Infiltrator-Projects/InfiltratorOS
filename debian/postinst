@@ -7,6 +7,7 @@ set -eu
 STATUS_ROOT=/Temporary/InfiltratorOS
 # All InfiltratorOS-owned installation files stay under the native /Temporary root.
 BUNDLE_SHA256='@NATIVE_RUNTIME_SHA256@'
+VERSION='@VERSION@'
 
 migrate_legacy_calendar_pin() (
     pin=$1
@@ -112,8 +113,29 @@ export TMPDIR
 
 # Assign a fresh run identity before any fallible setup; stale success from a
 # previous installation must never outlive a failed new bootstrap.
-stage=$(mktemp -d "$STATUS_ROOT/native-worker.XXXXXXXX")
-chmod 0755 "$stage"
+# Reuse the pre-unpack run only when its identity belongs to this package
+# version and to a root-owned, non-symlink stage directly under STATUS_ROOT.
+# Configuration retries and overlapping upgrades can legitimately lack it.
+pending="$STATUS_ROOT/preinstall-$VERSION.pending"
+stage=
+if [ -f "$pending" ] && [ ! -L "$pending" ]; then
+    candidate=$(cat "$pending")
+    case "$candidate" in
+        "$STATUS_ROOT"/native-worker.*)
+            if [ "${candidate%/*}" = "$STATUS_ROOT" ] &&
+               [ -d "$candidate" ] && [ ! -L "$candidate" ] &&
+               [ "$(stat -c '%u:%a' "$candidate")" = 0:755 ] &&
+               [ "$(cat "$candidate/bootstrap-version" 2>/dev/null || :)" = "$VERSION" ] &&
+               [ ! -e "$candidate/early-failed" ]; then
+                stage=$candidate
+            fi ;;
+    esac
+    rm -f -- "$pending"
+fi
+if [ -z "$stage" ]; then
+    stage=$(mktemp -d "$STATUS_ROOT/native-worker.XXXXXXXX")
+    chmod 0755 "$stage"
+fi
 publish_summary() {
     summary_state=$1
     summary_tmp="$STATUS_ROOT/.last-provision.$$.tmp"
@@ -145,20 +167,22 @@ publish_phase() {
     mv -f -- "$stage/.phase.$$" "$stage/phase"
 }
 
-# The package already contains the font files, and the GUI validates its actual
-# font selections directly. Extract the verified runtime before starting the
-# window, so resource registration and integrity checks can be shown as they run.
+# The preinst GUI may still be executing its bootstrap binary. Unlink those
+# two verified temporary names before extracting the full sealed runtime;
+# Linux retains the mapped executable without a second window or ETXTBSY.
 mkdir -p "$stage/status"
-# Progress windows run as the graphical desktop user and need directory access.
+rm -f -- "$stage/start-system-monitor-install" "$stage/system-monitor-progress"
 if ! unpack_native_workers "$stage"; then
     echo 'InfiltratorOS could not verify its native installation workers.' >&2
     exit 1
 fi
 
 publish_phase fonts
-if ! INFILTRATOROS_PROGRESS_MODE=aggregate INFILTRATOROS_INSTALL_RUNTIME="$stage" \
-        "$stage/start-system-monitor-install" --show-progress; then
-    echo 'Could not start InfiltratorOS graphical progress.' >&2
+if [ ! -f "$stage/early-ui-started" ]; then
+    if ! INFILTRATOROS_PROGRESS_MODE=aggregate INFILTRATOROS_INSTALL_RUNTIME="$stage" \
+            "$stage/start-system-monitor-install" --show-progress; then
+        echo 'Could not start InfiltratorOS graphical progress.' >&2
+    fi
 fi
 /System/Commands/InfiltratorOS/ensure-native-fonts
 publish_phase icons

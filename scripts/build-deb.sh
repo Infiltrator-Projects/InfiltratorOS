@@ -110,6 +110,11 @@ test "$(find "$ICON_DIR" -maxdepth 1 -type f | wc -l)" -eq 1233
 sed "s/@VERSION@/$VERSION/g" "$ROOT/debian/control.in" > "$PKGROOT/DEBIAN/control"
 install -m 0755 "$ROOT/debian/postinst" "$PKGROOT/DEBIAN/postinst"
 install -m 0755 "$ROOT/debian/prerm" "$PKGROOT/DEBIAN/prerm"
+install -m 0755 "$ROOT/debian/preinst" "$PKGROOT/DEBIAN/preinst"
+install -m 0755 "$ROOT/debian/postrm" "$PKGROOT/DEBIAN/postrm"
+for script in preinst postinst postrm; do
+    sed -i "s/@VERSION@/$VERSION/g" "$PKGROOT/DEBIAN/$script"
+done
 install -m 0755 "$ROOT/packaging/ensure-native-fonts.sh" \
     "$PKGROOT/System/Commands/InfiltratorOS/ensure-native-fonts"
 install -m 0755 "$ROOT/packaging/ensure-native-icons.sh" \
@@ -213,6 +218,32 @@ for product in system-monitor calculator calendar files defragmenter boot tempor
         test ! -e "$PKGROOT/System/Commands/InfiltratorOS/$tool"
     done
 done
+# The early window needs only these five actual font roles, not the complete
+# resource collection. Embed a separately sealed bootstrap in preinst so dpkg
+# can display the real UI before unpacking its package-owned resource files.
+BOOTSTRAP="$WORK/bootstrap"
+mkdir -p "$BOOTSTRAP/bootstrap-fonts"
+for tool in start-system-monitor-install system-monitor-progress; do
+    install -m 0755 "$RUNTIME_BUILD/$tool" "$BOOTSTRAP/$tool"
+done
+for font in mb_corpo_a_title_cond_regular.ttf mb_corpo_s_title_bold.ttf \
+            mb_corpo_s_text_regular.ttf mb_corpo_s_text_cond_regular.ttf \
+            mb_corpo_a_screen_2_cond_regular.ttf; do
+    install -m 0644 "$FONT_DIR/$font" "$BOOTSTRAP/bootstrap-fonts/$font"
+done
+tar --sort=name --mtime="@$SOURCE_DATE_EPOCH" --owner=0 --group=0 \
+    --numeric-owner -czf "$WORK/bootstrap.tar.gz" -C "$BOOTSTRAP" .
+bootstrap_digest=$(sha256sum "$WORK/bootstrap.tar.gz" | cut -d' ' -f1)
+sed -i "s/@BOOTSTRAP_SHA256@/$bootstrap_digest/g" "$PKGROOT/DEBIAN/preinst"
+cat >> "$PKGROOT/DEBIAN/preinst" <<'BOOTSTRAP_MARKER'
+: <<'__INFILTRATOROS_BOOTSTRAP_END__'
+__INFILTRATOROS_BOOTSTRAP_BEGIN__
+BOOTSTRAP_MARKER
+base64 -w 76 "$WORK/bootstrap.tar.gz" >> "$PKGROOT/DEBIAN/preinst"
+printf '%s\n' '__INFILTRATOROS_BOOTSTRAP_END__' >> "$PKGROOT/DEBIAN/preinst"
+sh -n "$PKGROOT/DEBIAN/preinst" "$PKGROOT/DEBIAN/postrm"
+sh "$PKGROOT/DEBIAN/preinst" --verify-bootstrap-bundle
+
 # The package contains one maintainer-script-driven installation transaction.
 # The internal workers exist only in this integrity-checked
 # embedded bundle, NOT as permanent entries in the installed filesystem.

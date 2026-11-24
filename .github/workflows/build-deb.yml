@@ -90,7 +90,13 @@ jobs:
           version=$(tr -d '\r\n' < VERSION)
           test "$(dpkg-deb -f dist/*.deb Version)" = "$version"
           dpkg-deb -e dist/*.deb "$RUNNER_TEMP/control"
-          sh -n "$RUNNER_TEMP/control/postinst" "$RUNNER_TEMP/control/prerm"
+          sh -n "$RUNNER_TEMP/control/preinst" "$RUNNER_TEMP/control/postinst" "$RUNNER_TEMP/control/prerm" "$RUNNER_TEMP/control/postrm"
+          sh "$RUNNER_TEMP/control/preinst" --verify-bootstrap-bundle
+          cp "$RUNNER_TEMP/control/preinst" "$RUNNER_TEMP/tampered-preinst"
+          sed -i -E "s/^BOOTSTRAP_SHA256=.*/BOOTSTRAP_SHA256='0000000000000000000000000000000000000000000000000000000000000000'/" "$RUNNER_TEMP/tampered-preinst"
+          if sh "$RUNNER_TEMP/tampered-preinst" --verify-bootstrap-bundle; then
+            echo 'Tampered early bootstrap accepted' >&2; exit 1
+          fi
           dpkg-deb -x dist/*.deb "$RUNNER_TEMP/payload"
           cmp assets/infiltratoros.png "$RUNNER_TEMP/payload/usr/share/plymouth/themes/infiltratoros/infiltratoros.png"
           test ! -e "$RUNNER_TEMP/payload/usr/lib/infiltrator/temporal"
@@ -262,7 +268,18 @@ jobs:
           printf '<fontconfig><cachedir>%s/font-cache</cachedir></fontconfig>\n' "$fixture" > "$fixture/fonts.conf"
           printf '%s\n' 'state=complete' 'progress=100' 'stage=Installed' 'detail=' > "$fixture/status/done.status"
           progress="$RUNNER_TEMP/verified-native-worker/system-monitor-progress"
+          # Exercise the exact minimal preinst bundle before accessing the full
+          # package fonts. The early window must use only its five sealed faces.
+          mkdir -p "$fixture/early/status"
+          awk '/^__INFILTRATOROS_BOOTSTRAP_BEGIN__$/ { within=1; next }
+               /^__INFILTRATOROS_BOOTSTRAP_END__$/ { exit } within { print }' \
+              "$RUNNER_TEMP/control/preinst" | base64 -d | tar -xz -C "$fixture/early"
+          test "$(find "$fixture/early/bootstrap-fonts" -type f | wc -l)" -eq 5
+          printf 'unpacking\n' > "$fixture/early/phase"
           for theme in Adwaita Adwaita:dark; do
+            xvfb-run -a env GTK_THEME="$theme" FONTCONFIG_FILE="$fixture/fonts.conf" \
+              LD_PRELOAD="$fixture/inspect.so" PROGRESS_EXPECT=unpacking \
+              "$fixture/early/system-monitor-progress" --aggregate "$fixture/early/status"
             xvfb-run -a env GTK_THEME="$theme" FONTCONFIG_FILE="$fixture/fonts.conf" \
               LD_PRELOAD="$fixture/inspect.so" PROGRESS_EXPECT=preparing \
               "$progress" --aggregate "$fixture/status"

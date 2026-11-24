@@ -34,6 +34,7 @@ typedef struct {
     char status_path[4096];
     char product_name[128];
     gboolean aggregate;
+    gboolean ready_notified;
     guint close_timer_id;
 } Ui;
 
@@ -92,6 +93,9 @@ static gboolean close_after_success(gpointer data)
  * Match the recorded stage exactly; never read another installation's result. */
 static int finished_run_outcome(const char *status_path, int *total)
 {
+    char aborted[4096];
+    if (snprintf(aborted, sizeof(aborted), "%s/../early-failed", status_path) < (int)sizeof(aborted) &&
+        g_file_test(aborted, G_FILE_TEST_IS_REGULAR)) return 2;
     FILE *file = fopen("/Temporary/InfiltratorOS/last-provision.status", "r");
     if (!file) return 0;
     char state[64], stage[4096], expected[4096], count[64];
@@ -128,7 +132,8 @@ static void update_phase_chips(Ui *ui, NativeProgressPhase phase, int outcome)
     for (int i = 0; i < CHIP_COUNT; ++i) {
         if (!ui->chips[i]) continue;
         const int state = outcome == 1 || (phase > phases[i] && i != CHIP_COMPONENTS) ? 2 :
-            phase == phases[i] || (i == CHIP_COMPONENTS && phase == NATIVE_PHASE_FINALISING)
+            phase == phases[i] || (phase == NATIVE_PHASE_UNPACKING && i <= CHIP_ICONS) ||
+            (i == CHIP_COMPONENTS && phase == NATIVE_PHASE_FINALISING)
             ? (outcome > 1 ? 3 : 1) : 0;
         if (ui->chip_states[i] == state) continue;
         ui->chip_states[i] = state;
@@ -151,6 +156,7 @@ static void update_phase_chips(Ui *ui, NativeProgressPhase phase, int outcome)
 static const char *preparation_activity(NativeProgressPhase phase)
 {
     switch (phase) {
+    case NATIVE_PHASE_UNPACKING: return "Installing packaged fonts, icons and system resources…";
     case NATIVE_PHASE_FONTS: return "Verifying and registering system fonts…";
     case NATIVE_PHASE_ICONS: return "Verifying the native icon collection…";
     case NATIVE_PHASE_HOST: return "Configuring Plymouth and regenerating boot files…";
@@ -572,6 +578,42 @@ static void add_activity(Ui *ui, GtkWidget *card, unsigned int spacing)
     gtk_box_pack_start(GTK_BOX(card), row, FALSE, FALSE, 0);
 }
 
+// The acknowledgement is written by the unprivileged GUI after GTK's first
+// draw, not merely after exec. The privileged launcher may then permit dpkg
+// to unpack the full payload while the same window is already visible.
+static gboolean acknowledge_first_frame(GtkWidget *widget, cairo_t *cr, gpointer data)
+{
+    (void)cr;
+    Ui *ui = data;
+    if (!ui->aggregate || ui->ready_notified || !gtk_widget_get_mapped(widget)) return FALSE;
+    ui->ready_notified = TRUE;
+    char path[4096];
+    if (snprintf(path, sizeof(path), "%s/../gui-ready", ui->status_path) >= (int)sizeof(path) ||
+        !g_file_test(path, G_FILE_TEST_IS_REGULAR)) return FALSE;
+    FILE *ready = fopen(path, "w");
+    if (ready) {
+        (void)fputs("drawn\n", ready);
+        (void)fclose(ready);
+    }
+    return FALSE;
+}
+
+/* Isolate the sealed bootstrap faces from any older system font versions.
+ * This is process-local Fontconfig state; no duplicate permanent fonts or
+ * system-wide font registration is performed before the GUI appears. */
+static bool bootstrap_fonts_visible(const char *directory)
+{
+    FcConfig *config = FcConfigCreate();
+    if (!config) return false;
+    bool ready = FcConfigBuildFonts(config) && FcConfigSetCurrent(config);
+    FcConfigDestroy(config);
+    if (!ready) return false;
+    PangoFontMap *map = pango_cairo_font_map_get_default();
+    if (!PANGO_IS_FC_FONT_MAP(map)) return false;
+    pango_fc_font_map_set_config(PANGO_FC_FONT_MAP(map), FcConfigGetCurrent());
+    return required_fonts_visible(directory);
+}
+
 int main(int argc, char **argv)
 {
     if (argc == 3 && strcmp(argv[1], "--check-fonts") == 0)
@@ -592,7 +634,18 @@ int main(int argc, char **argv)
     gtk_init(&argc, &argv);
 
     /* Common owns semantic colours, and unresolved fonts are an error. */
-    if (!required_fonts_visible("/System/Resources/Fonts") || !install_common_theme()) {
+    bool fonts_valid;
+    gchar *bootstrap = aggregate ? g_canonicalize_filename(argv[2], NULL) : NULL;
+    gchar *directory = bootstrap ? g_build_filename(bootstrap, "..", "bootstrap-fonts", NULL) : NULL;
+    gchar *canonical = directory ? g_canonicalize_filename(directory, NULL) : NULL;
+    if (canonical && g_file_test(canonical, G_FILE_TEST_IS_DIR))
+        fonts_valid = bootstrap_fonts_visible(canonical);
+    else
+        fonts_valid = required_fonts_visible("/System/Resources/Fonts");
+    g_free(canonical);
+    g_free(directory);
+    g_free(bootstrap);
+    if (!fonts_valid || !install_common_theme()) {
         fprintf(stderr, "InfiltratorOS: verified fonts or Common theme unavailable.\n");
         GtkWidget *error = gtk_message_dialog_new(NULL, GTK_DIALOG_MODAL,
             GTK_MESSAGE_ERROR, GTK_BUTTONS_CLOSE,
@@ -678,6 +731,7 @@ int main(int argc, char **argv)
     gtk_box_pack_end(GTK_BOX(box), ui.close_button, FALSE, FALSE, 0);
 
     g_signal_connect(ui.window, "destroy", G_CALLBACK(gtk_main_quit), NULL);
+    g_signal_connect_after(ui.window, "draw", G_CALLBACK(acknowledge_first_frame), &ui);
     (void)refresh_status(&ui);
     gtk_widget_show_all(ui.window);
     g_timeout_add(250U, refresh_status, &ui);

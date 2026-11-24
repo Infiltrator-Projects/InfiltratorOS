@@ -14,6 +14,7 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <time.h>
 #include <unistd.h>
 #include "installer-profile.h"
 #include "installer-process.h"
@@ -216,11 +217,11 @@ static void resolve_temporary_runtime(void)
         die("temporary installation runtime path is too long");
 }
 
-static void spawn_progress_ui(DesktopSession *session)
+static int spawn_progress_ui(DesktopSession *session)
 {
-    if (!session->found) return;
+    if (!session->found) return 0;
     const char *progress_mode = getenv("INFILTRATOROS_PROGRESS_MODE");
-    if (progress_mode != NULL && strcmp(progress_mode, "none") == 0) return;
+    if (progress_mode != NULL && strcmp(progress_mode, "none") == 0) return 0;
     if (progress_mode != NULL && strcmp(progress_mode, "aggregate") == 0) {
 #ifdef INSTALL_SYSTEM_MONITOR
         char directory[TEXT_LIMIT];
@@ -228,21 +229,51 @@ static void spawn_progress_ui(DesktopSession *session)
         if (runtime == NULL ||
             snprintf(directory, sizeof(directory), "%s/status", runtime) >= (int)sizeof(directory)) {
             fprintf(stderr, "InfiltratorOS aggregate status path is invalid\n");
-            return;
+            return -1;
+        }
+        const char *early = getenv("INFILTRATOROS_EARLY_PROGRESS");
+        bool wait_for_draw = early && strcmp(early, "1") == 0;
+        char ready[TEXT_LIMIT];
+        if (wait_for_draw) {
+            if (snprintf(ready, sizeof(ready), "%s/gui-ready", runtime) >= (int)sizeof(ready))
+                return -1;
+            // Only this unprivileged desktop user may write the acknowledgement.
+            // The parent directory remains root-owned; the token controls no
+            // installation decision other than presentation timing.
+            int fd = open(ready, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, 0600);
+            if (fd < 0) return -1;
+            int owned = fchown(fd, session->uid, session->gid);
+            (void)close(fd);
+            if (owned != 0) return -1;
         }
         char *const arguments[] = {runtime_progress, "--aggregate", directory, NULL};
-        if (installer_spawn_detached(runtime_progress, arguments, prepare_progress, session) != 0)
+        if (installer_spawn_detached(runtime_progress, arguments, prepare_progress, session) != 0) {
             fprintf(stderr, "InfiltratorOS aggregate progress window: %s\n", strerror(errno));
+            return -1;
+        }
+        if (wait_for_draw) {
+            const struct timespec interval = {0, 100000000L};
+            for (int i = 0; i < 150; ++i) {
+                struct stat state;
+                if (lstat(ready, &state) == 0 && S_ISREG(state.st_mode) && state.st_size > 0)
+                    return 0;
+                (void)nanosleep(&interval, NULL);
+            }
+            fprintf(stderr, "InfiltratorOS graphical window has not acknowledged its first frame; continuing installation.\n");
+        }
 #endif
-        return;
+        return 0;
     }
     #if defined(INSTALL_TEMPORAL_RESOURCES) || defined(INSTALL_FILESYSTEM_RESOURCES)
     char *const arguments[] = { runtime_progress, run_status, provider_slug, NULL };
 #else
     char *const arguments[] = { runtime_progress, (char *)status_file(), NULL };
 #endif
-    if (installer_spawn_detached(runtime_progress, arguments, prepare_progress, session) != 0)
+    if (installer_spawn_detached(runtime_progress, arguments, prepare_progress, session) != 0) {
         fprintf(stderr, INSTALL_NAME " progress window: %s\n", strerror(errno));
+        return -1;
+    }
+    return 0;
 }
 
 static void report_start_failure(int error)
@@ -296,8 +327,7 @@ int main(int argc, char **argv)
     if (argc == 2 && strcmp(argv[1], "--show-progress") == 0) {
         resolve_temporary_runtime();
         DesktopSession session = find_desktop_session();
-        spawn_progress_ui(&session);
-        return EXIT_SUCCESS;
+        return spawn_progress_ui(&session) == 0 ? EXIT_SUCCESS : EXIT_FAILURE;
     }
 #endif
 #if defined(INSTALL_TEMPORAL_RESOURCES) || defined(INSTALL_FILESYSTEM_RESOURCES)

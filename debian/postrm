@@ -1,0 +1,23 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Close the early presentation if dpkg rolls back an interrupted unpack.
+set -eu
+case "${1:-}" in abort-install|abort-upgrade) ;; *) exit 0 ;; esac
+root=/Temporary/InfiltratorOS
+pending="$root/preinstall-@VERSION@.pending"
+[ -f "$pending" ] && [ ! -L "$pending" ] || exit 0
+stage=$(cat "$pending")
+case "$stage" in
+    "$root"/native-worker.*) ;;
+    *) exit 0 ;;
+esac
+[ "${stage%/*}" = "$root" ] && [ -d "$stage" ] && [ ! -L "$stage" ] || exit 0
+touch "$stage/early-failed"
+rm -f -- "$pending"
+# Only update the shared summary if it still describes this aborted run.
+if grep -Fxq "stage=$stage" "$root/last-provision.status"; then
+    printf 'state=failed\nstage=%s\n' "$stage" > "$root/.abort-summary.$$"
+    chmod 0644 "$root/.abort-summary.$$"
+    mv -f -- "$root/.abort-summary.$$" "$root/last-provision.status"
+fi
+exit 0

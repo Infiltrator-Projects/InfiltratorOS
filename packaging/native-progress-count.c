@@ -39,7 +39,7 @@ NativeProgressPhase native_progress_phase(const char *status_directory)
     if (fclose(stream) != 0) valid = false;
     if (!valid) return NATIVE_PHASE_UNKNOWN;
     static const char *const names[] = {
-        "", "fonts\n", "icons\n", "host\n", "releases\n", "components\n", "finalising\n"
+        "", "unpacking\n", "fonts\n", "icons\n", "host\n", "releases\n", "components\n", "finalising\n"
     };
     for (unsigned int i = 1; i < sizeof(names) / sizeof(names[0]); ++i)
         if (strcmp(token, names[i]) == 0) return (NativeProgressPhase)i;

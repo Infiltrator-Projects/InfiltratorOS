@@ -14,7 +14,7 @@ typedef struct {
 /* Monotonic bootstrap phases, published by the process that owns each task.
  * UNKNOWN is not evidence that an earlier task has succeeded. */
 typedef enum {
-    NATIVE_PHASE_UNKNOWN, NATIVE_PHASE_FONTS, NATIVE_PHASE_ICONS,
+    NATIVE_PHASE_UNKNOWN, NATIVE_PHASE_UNPACKING, NATIVE_PHASE_FONTS, NATIVE_PHASE_ICONS,
     NATIVE_PHASE_HOST, NATIVE_PHASE_RELEASES, NATIVE_PHASE_COMPONENTS,
     NATIVE_PHASE_FINALISING
 } NativeProgressPhase;

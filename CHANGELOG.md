@@ -1,3 +1,10 @@
+## 1.0.102 — Show the installer before unpacking system resources
+
+- Start the real GTK interface from a separately verified, temporary preinst bootstrap using exactly its five font faces, before dpkg unpacks the full package-owned resource payload.
+- Wait for the first drawn GUI frame on desktop systems with a bounded acknowledgement. Keep headless and overlapping upgrade paths functional.
+- Adopt the same run in postinst, verify the full fonts and icons, and report aborted unpack through postrm. No persistent bootstrap resources or additional component jobs.
+- Qualify the early bootstrap and unpacking state under the packaged Day/Night GTK tests.
+
 ## 1.0.101 — Refine the native GTK installation window
 
 - Implement the approved progress-card design using Common Day/Night colours and canonical typography, explicit inner padding, refined statistics and progress bar, and a current-activity section.

@@ -1,0 +1,92 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Open the installation UI before dpkg unpacks the full system payload.
+# Only the new release's sealed UI executable, launcher and five font faces
+# are extracted here, into the same temporary run that postinst will adopt.
+set -eu
+umask 022
+STATUS_ROOT=/Temporary/InfiltratorOS
+BOOTSTRAP_SHA256='@BOOTSTRAP_SHA256@'
+VERSION='@VERSION@'
+
+unpack_bootstrap() {
+    target=$1
+    archive="$target/bootstrap.tar.gz"
+    awk '
+        /^__INFILTRATOROS_BOOTSTRAP_BEGIN__$/ { within=1; next }
+        /^__INFILTRATOROS_BOOTSTRAP_END__$/ { exit }
+        within { print }
+    ' "$0" | base64 -d > "$archive" || return 1
+    printf '%s  %s\n' "$BOOTSTRAP_SHA256" "$archive" | sha256sum -c - >/dev/null || return 1
+    tar -xzf "$archive" -C "$target" --no-same-owner --no-same-permissions || return 1
+    rm -f -- "$archive"
+    test -x "$target/start-system-monitor-install" &&
+    test -x "$target/system-monitor-progress" &&
+    test "$(find "$target/bootstrap-fonts" -maxdepth 1 -type f -name '*.ttf' | wc -l)" -eq 5
+}
+
+# This path is read-only with respect to the host and works without privileges.
+if [ "${1:-}" = --verify-bootstrap-bundle ]; then
+    inspect=$(mktemp -d)
+    trap 'rm -rf -- "$inspect"' EXIT
+    unpack_bootstrap "$inspect"
+    exit 0
+fi
+
+case "${1:-}" in install|upgrade) ;; *) exit 0 ;; esac
+[ ! -L /Temporary ] && [ ! -L "$STATUS_ROOT" ] || exit 1
+mkdir -p "$STATUS_ROOT"
+chmod 0755 "$STATUS_ROOT"
+exec 9>"$STATUS_ROOT/provision.lock"
+# Never wait on a native installer that might itself be waiting for dpkg.
+# The existing deferred postinst path handles overlapping upgrades.
+flock -n 9 || exit 0
+pending="$STATUS_ROOT/preinstall-$VERSION.pending"
+if [ -f "$pending" ]; then
+    old=$(cat "$pending")
+    case "$old" in
+        "$STATUS_ROOT"/native-worker.*)
+            if [ "${old%/*}" = "$STATUS_ROOT" ] && [ -d "$old" ] && [ ! -L "$old" ]; then
+                touch "$old/early-failed"
+            fi ;;
+    esac
+    rm -f -- "$pending"
+fi
+
+stage=$(mktemp -d "$STATUS_ROOT/native-worker.XXXXXXXX")
+chmod 0755 "$stage"
+mkdir -m 0755 "$stage/status"
+fail_bootstrap() {
+    result=$?
+    trap - EXIT
+    if [ "$result" -ne 0 ]; then
+        touch "$stage/early-failed"
+        rm -f -- "$pending"
+        printf 'state=failed\nstage=%s\n' "$stage" > "$STATUS_ROOT/.early-summary.$$"
+        chmod 0644 "$STATUS_ROOT/.early-summary.$$"
+        mv -f -- "$STATUS_ROOT/.early-summary.$$" "$STATUS_ROOT/last-provision.status"
+    fi
+    exit "$result"
+}
+trap fail_bootstrap EXIT
+unpack_bootstrap "$stage" || {
+    echo 'InfiltratorOS could not verify the early graphical installer.' >&2
+    exit 1
+}
+printf '%s\n' "$VERSION" > "$stage/bootstrap-version"
+printf 'unpacking\n' > "$stage/phase"
+printf '%s\n' "$stage" > "$pending.tmp"
+mv -f -- "$pending.tmp" "$pending"
+printf 'state=running\nstage=%s\n' "$stage" > "$STATUS_ROOT/.early-summary.$$"
+chmod 0644 "$STATUS_ROOT/.early-summary.$$"
+mv -f -- "$STATUS_ROOT/.early-summary.$$" "$STATUS_ROOT/last-provision.status"
+
+# The launcher waits for the first mapped/drawn frame when a desktop exists.
+# Headless systems continue immediately; unavailable graphics do not prevent
+# dpkg from installing, and postinst may retry an unsuccessful launch.
+if INFILTRATOROS_PROGRESS_MODE=aggregate INFILTRATOROS_INSTALL_RUNTIME="$stage" \
+        INFILTRATOROS_EARLY_PROGRESS=1 "$stage/start-system-monitor-install" --show-progress; then
+    touch "$stage/early-ui-started"
+fi
+trap - EXIT
+exit 0
