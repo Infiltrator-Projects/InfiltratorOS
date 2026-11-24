@@ -362,6 +362,19 @@ Boot0007 BOOT Boot Manager HD(1,GPT,1234)/File(\EFI\InfiltratorOS\BOOT\BOOTX64.E
         }
         rejects([&]() { (void)application("unrecognised"); }, "application");
 
+        // Both the new network-only two-asset release and immutable legacy
+        // releases must be accepted; arbitrary extras and missing DEBs must not.
+        {
+            auto release = sample_release(temporal[0], "1.0.5", true);
+            auto *assets = field(release.ptr, "assets");
+            json_object_array_del_idx(assets, 2, 1);
+            check(release_asset(temporal[0], release.ptr, true, false).version == "1.0.5",
+                  "two-asset temporal release");
+            json_object_array_del_idx(assets, 1, 1);
+            rejects([&]() { (void)release_asset(temporal[0], release.ptr, true, false); },
+                    "missing temporal generic DEB");
+        }
+
         {
             auto release = sample_release(temporal[0], "1.0.5", true);
             auto asset = release_asset(temporal[0], release.ptr, true, false);

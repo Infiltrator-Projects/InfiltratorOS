@@ -427,10 +427,16 @@ static Asset release_asset(const Entry &entry, json_object *meta, bool calendar_
         if (name == run_name) result = {tag.substr(1), url, sha.substr(7), size, source};
     }
     if (result.url.empty()) throw std::runtime_error("Native RUN asset is missing");
-    if (calendar_or_clock && (names.size() != 3 ||
-        !names.count(entry.slug() + "-" + result.version + "-source.zip") ||
-        !names.count(entry.package + "_" + result.version + "_amd64.deb")))
-        throw std::runtime_error("Unqualified temporal release assets");
+    if (calendar_or_clock) {
+        // New releases upload only the RUN and generic DEB. Immutable older
+        // releases may also carry their historical source ZIP.
+        const std::set<std::string> required_names{
+            run_name, entry.package + "_" + result.version + "_amd64.deb"};
+        auto legacy_names = required_names;
+        legacy_names.insert(entry.slug() + "-" + result.version + "-source.zip");
+        if (names != required_names && names != legacy_names)
+            throw std::runtime_error("Unqualified temporal release assets");
+    }
     if (filesystem && !names.count(entry.package + "_" + result.version + "_amd64.deb"))
         throw std::runtime_error("Filesystem native release is missing its generic package");
     // BOOT must publish both its hardware-native source installer and a
@@ -1017,7 +1023,7 @@ static bool install(const Entry &entry, Status &status, bool application_mode,
             // The temporal build-only contract refuses to install prerequisites.
             // Resolve the shared calendar/clock toolchain before invoking it.
             Strings dependencies{"build-essential", "binutils", "pkg-config", "jq",
-                                 "ghostscript", "gettext", "libglib2.0-dev", "libicu-dev"};
+                                 "ghostscript", "gettext", "libglib2.0-dev", "libicu-dev", "git"};
             Strings missing;
             for (const auto &dep : dependencies)
                 if (pkg_query(dep, std::string("$") + "{Status}") != "install ok installed")
@@ -1170,7 +1176,7 @@ static bool can_build(const Entry &e) {
         if (execute({"pkg-config", "--exists", "gtk4 >= 4.10", "libarchive"}) != 0)
             return false;
     } else if (e.kind == "calendar" || e.kind == "clock") {
-        packages.insert(packages.end(), {"pkg-config", "jq", "ghostscript", "gettext"});
+        packages.insert(packages.end(), {"pkg-config", "jq", "ghostscript", "gettext", "git"});
         packages.insert(packages.end(), {"libglib2.0-dev", "libicu-dev"});
         if (execute({"pkg-config", "--exists", "glib-2.0", "icu-i18n"}) != 0)
             return false;
