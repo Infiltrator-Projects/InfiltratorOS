@@ -1,3 +1,9 @@
+## 1.0.94 — Wait for Debian package-manager locks
+
+- Install already-built native DEBs through APT with indefinite lock waiting and no package removals. Preserve same-version repair and local source compilation.
+- Apply the same transaction to serial filesystem providers, retaining their built DEB while APT waits instead of restarting compilation.
+- Record individual package transaction logs and retain package identity checks. BOOT remains an independent native RUN in the aggregate installation.
+
 ## 1.0.93 — Recognise the Secure Boot firmware entry
 
 - Release the corrected BOOT verifier: recognise the fixed-directory Shim entry when Secure Boot is enabled and the corresponding Shim file is present, while retaining uniqueness, active-entry and first-priority checks.

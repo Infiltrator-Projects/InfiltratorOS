@@ -213,6 +213,10 @@ Boot0007 BOOT Boot Manager HD(1,GPT,1234)/File(\EFI\InfiltratorOS\BOOT\BOOTX64.E
               "do not admit unrelated independent providers");
         check(established[0].slug() == "filesystem-fat12", "FAT12 identity");
         check(application("system-monitor").repo == "System-Monitor", "system monitor identity");
+        check(package_install_command("/tmp/native.deb") ==
+                  Strings({"/usr/bin/apt-get", "-o", "DPkg::Lock::Timeout=-1",
+                           "install", "-y", "--no-remove", "--reinstall", "/tmp/native.deb"}),
+              "Native DEB transactions wait for APT locks and prohibit removals");
         const auto boot = application("boot");
         check(native_installer_command(boot, false, false, "/tmp/boot.run") ==
                   Strings{"/tmp/boot.run"},

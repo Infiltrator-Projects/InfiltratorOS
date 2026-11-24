@@ -872,6 +872,30 @@ static Strings native_installer_command(const Entry &entry, bool temporal,
         command.push_back("--system-package-mode");
     return command;
 }
+// Providers own native compilation; the orchestrator owns package transactions.
+// APT waits for the actual Debian package-manager locks. Do not delete lock
+// files or use a check-then-dpkg sequence which races external package tools.
+static Strings package_install_command(const fs::path &package) {
+    return {"/usr/bin/apt-get", "-o", "DPkg::Lock::Timeout=-1", "install",
+            "-y", "--no-remove", "--reinstall", package.string()};
+}
+static fs::path native_package_from(const fs::path &folder, const Entry &entry,
+                                    const Asset &asset) {
+    std::vector<fs::path> packages;
+    for (const auto &item : fs::directory_iterator(folder))
+        if (item.path().extension() == ".deb") packages.push_back(item.path());
+    if (packages.size() != 1 || !regular(packages.front()))
+        throw std::runtime_error("Native build produced no unique regular DEB");
+    const auto package = packages.front();
+    const std::map<std::string, std::string> expected{
+        {"Package", entry.package},
+        {"Version", asset.version + "+native1"},
+        {"Architecture", "amd64"}};
+    for (const auto &[name, value] : expected)
+        if (output({"/usr/bin/dpkg-deb", "-f", package.string(), name}) != value)
+            throw std::runtime_error("Invalid component-built DEB identity");
+    return package;
+}
 static bool install(const Entry &entry, Status &status, bool application_mode,
                     bool temporal, bool filesystem) {
     Document meta = release(entry);
@@ -885,7 +909,20 @@ static bool install(const Entry &entry, Status &status, bool application_mode,
     status.write("running", 20, "Downloading verified RUN", entry.repo);
     download(asset, run);
     status.write("running", 35, "Executing independent RUN", entry.repo);
-    required(native_installer_command(entry, temporal, filesystem, run));
+    if (filesystem) {
+        // Build the provider's native DEB once, then retain it while APT waits.
+        // This also covers providers outside the parallel compilation queue.
+        const auto folder = directory.path / "package";
+        fs::create_directory(folder);
+        auto command = native_installer_command(entry, temporal, filesystem, run);
+        command.insert(command.end(), {"--build-only", "--output", folder.string()});
+        required(command);
+        const auto package = native_package_from(folder, entry, asset);
+        status.write("running", 85, "Installing native package", "Waiting for Debian package manager");
+        required(package_install_command(package), status.root / (entry.slug() + "-package.log"));
+    } else {
+        required(native_installer_command(entry, temporal, filesystem, run));
+    }
     verify_install(entry, asset, application_mode);
     return false;
 }
@@ -939,18 +976,7 @@ static void build(Job &job, const fs::path &logs, const std::vector<int> &cpus) 
                                       "--output", job.folder.string()});
     if (execute(arguments, nullptr, logs / (job.entry.slug() + "-build.log")) != 0)
         throw std::runtime_error("Native build failed: " + job.entry.slug());
-    std::vector<fs::path> packages;
-    for (auto &item : fs::directory_iterator(job.folder))
-        if (item.path().extension() == ".deb") packages.push_back(item.path());
-    if (packages.size() != 1) throw std::runtime_error("Native build produced no unique DEB");
-    job.package = packages.front();
-    const std::map<std::string, std::string> expected{
-        {"Package", job.entry.package},
-        {"Version", job.asset.version + "+native1"},
-        {"Architecture", "amd64"}};
-    for (const auto &[name, value] : expected)
-        if (output({"/usr/bin/dpkg-deb", "-f", job.package.string(), name}) != value)
-            throw std::runtime_error("Invalid component-built DEB identity");
+    job.package = native_package_from(job.folder, job.entry, job.asset);
 }
 static void build_packages(std::vector<Job> &jobs, const fs::path &statuses,
                            std::map<std::string, std::string> &failures) {
@@ -1113,13 +1139,9 @@ static int smart_queue(const std::vector<Entry> &entries) {
             try {
                 status.write("running", 85, "Installing native package", "Serial package transaction");
                 const bool app = job.entry.kind == "application";
-                if (app) {
-                    // Preserve Files' dependency handling and same-version repairs.
-                    required({"/usr/bin/apt-get", "-o", "DPkg::Lock::Timeout=300", "install",
-                              "-y", "--reinstall", job.package.string()});
-                } else {
-                    required({"/usr/bin/dpkg", "--install", job.package.string()});
-                }
+                // Use the same lock-aware transaction for every queued DEB.
+                required(package_install_command(job.package),
+                         statuses / (job.entry.slug() + "-package.log"));
                 verify_install(job.entry, job.asset, app);
                 status.write("complete", 100, "Native installation complete", "Verified installed package");
                 completed.insert(job.entry.slug());
