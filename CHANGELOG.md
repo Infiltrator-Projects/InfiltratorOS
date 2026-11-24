@@ -1,3 +1,8 @@
+## 1.0.106 — Source licensing and installer audit finalisation
+
+- Add the verbatim GPL version 3 licence and consistent SPDX identifiers to installer sources and public helper headers.
+- Document the lifecycle contract and enable the required POSIX/GNU file flags for the GTK recovery implementation.
+
 ## 1.0.105 — Graphical startup and interrupted installation recovery
 
 - Prefer active graphical sessions and distinguish a drawn early GTK frame from a failed or headless launch; retry failed launches during postinst.

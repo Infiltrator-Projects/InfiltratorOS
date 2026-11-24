@@ -1,5 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #define _POSIX_C_SOURCE 200809L
-/* v1.0.0 installation and removal operations in C. */
+/* Debian lifecycle integration for Plymouth and generated boot files.
+ * Keep activation steps ordered and propagate failure so dpkg can retry an
+ * interrupted configuration rather than accepting a partially updated theme. */
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>

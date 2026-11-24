@@ -74,3 +74,5 @@ Routine installation, management and recovery are intended to have complete grap
 [Documentation index](docs/README.md) · [Engineering philosophy](docs/PHILOSOPHY.md) · [Product-family contract](docs/PRODUCT-FAMILY.md) · [Architecture](docs/ARCHITECTURE.md) · [Validation](docs/VALIDATION.md) · [Changelog](CHANGELOG.md)
 
 Historical version-specific implementation notes belong in the changelog and immutable Git history, not in this current-state overview.
+
+InfiltratorOS's original source is licensed GPL-3.0-or-later; see [LICENSE](LICENSE). Third-party assets retain their own terms.

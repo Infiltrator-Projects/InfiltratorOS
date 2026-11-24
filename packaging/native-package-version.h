@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 /* Inspect the actual dpkg database, not merely dpkg-query's exit code. */
 #ifndef INFILTRATOR_NATIVE_PACKAGE_VERSION_H
 #define INFILTRATOR_NATIVE_PACKAGE_VERSION_H

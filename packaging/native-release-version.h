@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 /* Validate that the selected release tag and installer basename identify the same build. */
 #ifndef INFILTRATOR_NATIVE_RELEASE_VERSION_H
 #define INFILTRATOR_NATIVE_RELEASE_VERSION_H

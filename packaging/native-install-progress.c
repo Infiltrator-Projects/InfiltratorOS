@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
+#define _GNU_SOURCE
 #include <gtk/gtk.h>
 #include <sys/file.h>
 #include <fcntl.h>

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #define _POSIX_C_SOURCE 200809L
 #include "../packaging/native-release-version.h"
 #include "../packaging/native-package-version.h"
