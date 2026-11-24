@@ -1,3 +1,9 @@
+## 1.0.98 — Verify EFI driver deployment and reconcile installation documentation
+
+- Validate and attest deployed BOOT EFI executable and driver inventory without treating mutable configuration as executable integrity evidence.
+- Retain recent supervised failed-run diagnostics and leave unresolved and legacy stages untouched.
+- Document actual 83-job scheduling, Secure Boot, worker supervision, and the unfinished Common V2 firmware/kernel transition. Check additional BTRFS/NTFS build prerequisites before parallel admission.
+
 ## 1.0.97 — Expand scheduling and verify source identity
 
 - Admit selected filesystem, temporal and Files packages to the smart queue, with a hard 16-build limit and I/O pressure-aware admission.

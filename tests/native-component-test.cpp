@@ -101,6 +101,23 @@ static void check_build_resources() {
 int main() {
     try {
         check_build_resources();
+        {
+            TempDir fixture(fs::temp_directory_path(), "native-efi-inventory-");
+            const auto image = fixture.path / "BOOTX64.EFI";
+            const auto drivers = fixture.path / "drivers_x64";
+            fs::create_directory(drivers);
+            save(image, "MZboot");
+            save(fixture.path / "shimx64.efi", "MZshim");
+            for (const auto *name : {"ext2", "ext4", "reiserfs", "iso9660", "hfs", "btrfs"})
+                save(drivers / (std::string(name) + "_x64.efi"), "MZdriver");
+            const auto initial = boot_efi_inventory(image);
+            save(fixture.path / "boot.conf", "user-edited configuration");
+            check(initial == boot_efi_inventory(image), "mutable BOOT configuration excluded");
+            save(drivers / "btrfs_x64.efi", "MZchanged");
+            check(initial != boot_efi_inventory(image), "EFI driver mutation changes attestation");
+            fs::remove(drivers / "btrfs_x64.efi");
+            rejects([&]() { (void)boot_efi_inventory(image); }, "missing required EFI driver");
+        }
         const std::string firmware = R"(BootOrder: 0007,0005,0003
 Boot0007* BOOT Boot Manager HD(1,GPT,1234)/File(\EFI\InfiltratorOS\BOOT\BOOTX64.EFI)
 )";

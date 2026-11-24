@@ -775,6 +775,46 @@ static fs::path efibootmgr_executable(const std::vector<fs::path> &candidates = 
             return candidate;
     return {};
 }
+// Verify and attest the EFI executable set separately from editable boot.conf,
+// logs and firmware variables. This is file-deployment evidence, not a claim
+// that UEFI can mount every filesystem or that a future V2 bridge is complete.
+static std::string boot_efi_inventory(const fs::path &image) {
+    std::map<std::string, std::string> hashes;
+    const auto directory = image.parent_path();
+    auto add = [&](const fs::path &file, bool executable) {
+        if (!regular(file) || fs::file_size(file) == 0)
+            throw std::runtime_error("Missing or unsafe BOOT EFI file: " + file.string());
+        if (executable) {
+            std::ifstream input(file, std::ios::binary);
+            char magic[2]{};
+            if (!input.read(magic, 2) || magic[0] != 'M' || magic[1] != 'Z')
+                throw std::runtime_error("Invalid BOOT EFI executable header: " + file.string());
+        }
+        hashes.emplace(file.lexically_relative(directory).generic_string(), digest(file));
+    };
+    add(image, true);
+    for (const auto &file : fs::directory_iterator(directory)) {
+        const auto name = lowercase(file.path().filename().string());
+        if (file.path() != image &&
+            (lowercase(file.path().extension().string()) == ".efi" || name == "shimx64.efi.signed"))
+            add(file.path(), true);
+    }
+    const auto drivers = directory / "drivers_x64";
+    if (fs::is_symlink(drivers) || !fs::is_directory(drivers))
+        throw std::runtime_error("BOOT EFI driver directory is missing or unsafe");
+    for (const auto &file : fs::directory_iterator(drivers)) {
+        const auto extension = lowercase(file.path().extension().string());
+        if (extension == ".efi" || extension == ".so") add(file.path(), extension == ".efi");
+    }
+    // The present BOOT native RUN builds and requests all six EFI drivers.
+    // This contract must be revised in tandem with BOOT's future V2 transition.
+    for (const auto *name : {"ext2", "ext4", "reiserfs", "iso9660", "hfs", "btrfs"})
+        if (!hashes.count(std::string("drivers_x64/") + name + "_x64.efi"))
+            throw std::runtime_error(std::string("BOOT EFI driver missing: ") + name);
+    std::string inventory;
+    for (const auto &[name, hash] : hashes) inventory += hash + "  " + name + "\n";
+    return inventory;
+}
 static bool native_boot_current(const Asset &asset, bool evidence, std::string *reason) {
     auto fail = [&](const char *message) {
         if (reason) *reason = message;
@@ -796,6 +836,9 @@ static bool native_boot_current(const Asset &asset, bool evidence, std::string *
     }
     if (!boot_registered(firmware, allow_shim))
         return fail("BOOT's fixed EFI entry is absent, duplicated, inactive, or not first in BootOrder");
+    std::string inventory;
+    try { inventory = boot_efi_inventory(image); }
+    catch (const std::exception &error) { if (reason) *reason = error.what(); return false; }
     if (!evidence) return true;
     const auto attestation = ROOT / "native-verified-boot.json";
     if (!regular(attestation)) return fail("BOOT native installation attestation is absent");
@@ -803,7 +846,8 @@ static bool native_boot_current(const Asset &asset, bool evidence, std::string *
         Document proof = parse(read_file(attestation));
         if (str(proof.ptr, "version") != asset.version ||
             str(proof.ptr, "installer_sha256") != asset.sha ||
-            str(proof.ptr, "program_sha256") != digest(image))
+            str(proof.ptr, "program_sha256") != digest(image) ||
+            str(proof.ptr, "efi_inventory") != inventory)
             return fail("BOOT release attestation differs from its installed EFI image");
     } catch (...) {
         return fail("BOOT native installation attestation cannot be verified");
@@ -869,6 +913,9 @@ static void verify_install(const Entry &entry, const Asset &asset, bool applicat
     json_object_object_add(proof, "installer_sha256", json_object_new_string(asset.sha.c_str()));
     std::string value = digest(entry.id == "boot" ? installed_boot_image() : fs::path(entry.resource));
     json_object_object_add(proof, "program_sha256", json_object_new_string(value.c_str()));
+    if (entry.id == "boot")
+        json_object_object_add(proof, "efi_inventory",
+                               json_object_new_string(boot_efi_inventory(installed_boot_image()).c_str()));
     std::string content = json_object_to_json_string_ext(proof, JSON_C_TO_STRING_PLAIN);
     json_object_put(proof);
     TempDir staging(ROOT, "verified-native-");
@@ -1092,9 +1139,11 @@ static bool can_build(const Entry &e) {
     if (e.id == "exfat")
         packages.insert(packages.end(), {"cmake", "git", "pkg-config", "libssl-dev",
                                          "libsqlite3-dev", "exfatprogs", "dosfstools"});
+    if (e.id == "btrfs") packages.push_back("btrfs-progs");
     if (e.id == "ntfs") {
         packages.insert(packages.end(), {"cmake", "git", "pkg-config", "libssl-dev",
-                                         "libsqlite3-dev"});
+                                         "libsqlite3-dev", "autoconf", "automake", "libtool",
+                                         "libgcrypt20-dev"});
         const std::string status = std::string("$") + "{Status}";
         if (pkg_query("libntfs-3g89t64", status) != "install ok installed" &&
             pkg_query("libntfs-3g89", status) != "install ok installed")

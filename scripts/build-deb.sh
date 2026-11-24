@@ -190,7 +190,7 @@ for product in system-monitor calculator calendar files defragmenter boot tempor
 done
 
 # The controlling dispatcher and release verification are native C++.
-# Python is retained only in legacy component workers pending their migration.
+# The embedded OS dispatcher and worker implementations are native C/C++.
 c++ -std=c++17 -O2 -Wall -Wextra -Werror -Wpedantic \
     $(pkg-config --cflags libcurl json-c) \
     "$ROOT/packaging/native-release-snapshot.cpp" \

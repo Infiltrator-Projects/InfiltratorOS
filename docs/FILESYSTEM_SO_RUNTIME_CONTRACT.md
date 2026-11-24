@@ -1,6 +1,6 @@
 # InfiltratorOS filesystem execution model — one `.so`, all consumers
 
-Each format's canonical driver is one trusted Common V2 `.so` under `/System/Filesystems/`. BOOT loads firmware-compatible modules and applications load their hosted interfaces. The planned kernel bridge will use the same format engines. The [single-filesystem-module contract](https://github.com/Infiltrator-Projects/Filesystems/blob/main/docs/UNIFIED_FILESYSTEM_MODULE_ARCHITECTURE.md) defines cross-project ownership.
+Each format's canonical driver is one trusted Common V2 `.so` under `/System/Filesystems/`. Applications load their hosted interfaces; BOOT currently uses transitional EFI drivers, while firmware-compatible Common V2 module loading remains a separate qualification target. The planned kernel bridge will use the same format engines. The [single-filesystem-module contract](https://github.com/Infiltrator-Projects/Filesystems/blob/main/docs/UNIFIED_FILESYSTEM_MODULE_ARCHITECTURE.md) defines cross-project ownership.
 
 ## Generic kernel integration is owned by the OS
 
@@ -11,7 +11,7 @@ Until the new kernel bridge exists, stock Linux mounts its root through a qualif
 ## Boot/root preparation and ownership
 
 - Setup/installer selects one real filesystem identity, verifies format/root capabilities and installs that format's one `.so` without installing unrelated formats.
-- BOOT can discover additional filesystems using the same Common V2 module bytes staged on firmware-readable media. Its current loader accepts these modules with Secure Boot disabled. BOOT's EFI executable supplies the generic firmware adapter.
+- The target BOOT design discovers filesystems using the same canonical Common V2 module bytes staged on firmware-readable media. The current independent BOOT native RUN installs its own EFI drivers. A generic V2 firmware adapter and Secure Boot trust model require separate qualification.
 - If the chosen filesystem holds the root, early kernel/initramfs needs its generic loader and the verified exact module before mounting that root. Boot-loading a kernel from a filesystem does not prove Linux or InfiltratorOS can mount it as root.
 - Applications including Filesystems, Disks, Files, Defragmenter and Test Media load the same module and use its versioned capabilities; per-format format/mutation engines must not be duplicated.
 - Common/Libraries owns reusable contract, ABI and validation mechanics when integrated. Format semantics and released source are owned by each independent filesystem repository.

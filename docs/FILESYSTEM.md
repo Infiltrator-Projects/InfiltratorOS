@@ -1,6 +1,6 @@
 # Native filesystem skeleton
 
-Each independent format has one Common V2 shared object under `/System/Filesystems`. BOOT and applications use the capabilities exposed by that module. The generic kernel adapter is planned in the [OS runtime contract](FILESYSTEM_SO_RUNTIME_CONTRACT.md).
+Each independent format has one Common V2 shared object under `/System/Filesystems`. Applications use the capabilities exposed by that module; BOOT integration through the same canonical module remains the target. The generic kernel adapter is planned in the [OS runtime contract](FILESYSTEM_SO_RUNTIME_CONTRACT.md).
 
 InfiltratorOS defines a small, human-readable native filesystem model alongside the conventional Debian/Linux hierarchy during the transition period. The Linux base may continue to use `/bin`, `/usr`, `/etc`, `/var` and other compatibility paths, but new Infiltrator executables do not extend the old `/usr/bin` application namespace.
 
@@ -74,7 +74,7 @@ Defragmenter's OS worker verifies the two native launchables `/Programs/defragme
 
 ## Transitional status
 
-The active Linux kernel remains in the distribution's existing boot/module/firmware locations until a future migration is explicitly designed and qualified. The current `/usr/lib/infiltrator/temporal` experiment is retained in parallel until temporal resources are migrated deliberately; it is not silently removed by establishing this hierarchy.
+The active Linux kernel remains in the distribution's existing boot/module/firmware locations until a future migration is explicitly designed and qualified. Temporal modules occupy the native `/System/Resources/Calendars` and `/System/Resources/Clocks` directories; the OS does not install a duplicate `/usr/lib/infiltrator/temporal` tree.
 
 The hierarchy should stay small. New top-level directories require a distinct user-visible role rather than mirroring implementation detail.
 
