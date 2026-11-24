@@ -24,6 +24,28 @@ static bool valid_slug(const char *slug)
            starts_with(slug, "filesystem-");
 }
 
+/* The phase is a single atomically replaced token, not a simulated timer.
+ * Malformed, unavailable or stale (different stage) data cannot advance it. */
+NativeProgressPhase native_progress_phase(const char *status_directory)
+{
+    if (!status_directory || !*status_directory) return NATIVE_PHASE_UNKNOWN;
+    char path[4096], token[64];
+    if (snprintf(path, sizeof(path), "%s/../phase", status_directory) >=
+        (int)sizeof(path)) return NATIVE_PHASE_UNKNOWN;
+    FILE *stream = fopen(path, "r");
+    if (!stream) return NATIVE_PHASE_UNKNOWN;
+    bool valid = fgets(token, sizeof(token), stream) != NULL && fgetc(stream) == EOF &&
+                 !ferror(stream);
+    if (fclose(stream) != 0) valid = false;
+    if (!valid) return NATIVE_PHASE_UNKNOWN;
+    static const char *const names[] = {
+        "", "fonts\n", "icons\n", "host\n", "releases\n", "components\n", "finalising\n"
+    };
+    for (unsigned int i = 1; i < sizeof(names) / sizeof(names[0]); ++i)
+        if (strcmp(token, names[i]) == 0) return (NativeProgressPhase)i;
+    return NATIVE_PHASE_UNKNOWN;
+}
+
 int native_progress_load_jobs(const char *status_directory, NativeProgressJobs *jobs)
 {
     if (!status_directory || !*status_directory || !jobs) return -1;

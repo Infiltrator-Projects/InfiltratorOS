@@ -137,20 +137,35 @@ trap 'bootstrap_on_exit $?' 0
 publish_summary running
 rm -f -- "$STATUS_ROOT/filesystems-pending.list"
 
-/System/Commands/InfiltratorOS/ensure-native-fonts
-/System/Commands/InfiltratorOS/ensure-native-icons
+# Publish real preparation activity to the per-run GUI. Each phase advances
+# only after its predecessor has succeeded; atomic replacement avoids torn reads.
+publish_phase() {
+    printf '%s\n' "$1" > "$stage/.phase.$$"
+    chmod 0644 "$stage/.phase.$$"
+    mv -f -- "$stage/.phase.$$" "$stage/phase"
+}
 
+# The package already contains the font files, and the GUI validates its actual
+# font selections directly. Extract the verified runtime before starting the
+# window, so resource registration and integrity checks can be shown as they run.
+mkdir -p "$stage/status"
 # Progress windows run as the graphical desktop user and need directory access.
 if ! unpack_native_workers "$stage"; then
     echo 'InfiltratorOS could not verify its native installation workers.' >&2
     exit 1
 fi
 
+publish_phase fonts
 if ! INFILTRATOROS_PROGRESS_MODE=aggregate INFILTRATOROS_INSTALL_RUNTIME="$stage" \
         "$stage/start-system-monitor-install" --show-progress; then
     echo 'Could not start InfiltratorOS graphical progress.' >&2
 fi
+/System/Commands/InfiltratorOS/ensure-native-fonts
+publish_phase icons
+/System/Commands/InfiltratorOS/ensure-native-icons
+publish_phase host
 /System/Commands/InfiltratorOS/select-theme configure
+publish_phase releases
 
 # Every run owns its own status and log directory beneath its temporary
 # worker stage. No run may remove shared /Temporary/InfiltratorOS or files
@@ -178,6 +193,7 @@ mkdir -p "$stage/status"
     # Retain five recent failed, fully supervised runs. Never prune legacy or
     # unresolved stages: a FAILED marker alone does not prove process exit.
     touch "$stage/SUPERVISOR_REAPED"
+    if [ "$outcome" = complete ]; then publish_phase finalising; fi
     prune_failed_runs() (
         kept=0
         find "$STATUS_ROOT" -maxdepth 1 -type d -name 'native-worker.*' -printf '%T@ %p\n' |
@@ -196,7 +212,7 @@ mkdir -p "$stage/status"
                 archive_tmp="$STATUS_ROOT/.last-provision-logs.$$.tar.gz"
                 if (umask 077
                     cd "$stage"
-                    tar -czf "$archive_tmp" status selected.list \
+                    tar -czf "$archive_tmp" status selected.list phase \
                         native-release-preparation.log \
                         optional-filesystem-discovery.log dispatcher.log \
                         filesystems-optional.list filesystems-pending.list

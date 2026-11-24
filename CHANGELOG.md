@@ -1,3 +1,9 @@
+## 1.0.101 — Refine the native GTK installation window
+
+- Implement the approved progress-card design using Common Day/Night colours and canonical typography, explicit inner padding, refined statistics and progress bar, and a current-activity section.
+- Publish real font, icon, host boot preparation, release discovery and component-installation phases. Phase indicators derive from atomic run-scoped records; no simulated progress or unverified completion claims.
+- Show actual queued component activity and validate phase parsing and the packaged Day/Night GTK indicators with regression tests.
+
 ## 1.0.100 — Clean local test and installation output
 
 - Capture expected fault-injection diagnostics and report concise successful test results; retain full output and exit codes on genuine regression failures, with optional verbose diagnostics.

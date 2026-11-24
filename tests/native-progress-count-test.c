@@ -37,6 +37,22 @@ int main(void)
     CHECK(mkdir(stage, 0700) == 0);
     CHECK(mkdir(status, 0700) == 0);
     CHECK(native_progress_total_jobs(status) == -1);
+    CHECK(native_progress_phase(status) == NATIVE_PHASE_UNKNOWN);
+    CHECK(snprintf(path, sizeof(path), "%s/phase", stage) < (int)sizeof(path));
+    const char *phases[] = {"fonts", "icons", "host", "releases", "components", "finalising"};
+    for (unsigned int i = 0; i < sizeof(phases) / sizeof(phases[0]); ++i) {
+        FILE *phase = fopen(path, "w");
+        CHECK(phase != NULL);
+        CHECK(fprintf(phase, "%s\n", phases[i]) > 0);
+        CHECK(fclose(phase) == 0);
+        CHECK(native_progress_phase(status) == (NativeProgressPhase)(i + 1));
+    }
+    FILE *bad_phase = fopen(path, "w");
+    CHECK(bad_phase != NULL);
+    CHECK(fputs("components\nextra\n", bad_phase) >= 0);
+    CHECK(fclose(bad_phase) == 0);
+    CHECK(native_progress_phase(status) == NATIVE_PHASE_UNKNOWN);
+    CHECK(unlink(path) == 0);
     FILE *file = fopen(manifest, "w");
     CHECK(file != NULL);
     CHECK(fputs("system-monitor\ncalculator\ncalendar\nfiles\ndefragmenter\n", file) >= 0);

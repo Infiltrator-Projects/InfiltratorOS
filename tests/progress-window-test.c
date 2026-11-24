@@ -49,7 +49,23 @@ void gtk_main(void)
     GtkWidget *percent = find_named(window, "installer-percent");
     GtkWidget *close = find_named(window, "installer-close");
     check(GTK_IS_LABEL(percent) && GTK_IS_BUTTON(close), "missing progress or Close widget");
-    if (g_strcmp0(g_getenv("PROGRESS_EXPECT"), "preparing") == 0) {
+    GtkWidget *activity = find_named(window, "installer-activity-caption");
+    check(GTK_IS_LABEL(activity) && gtk_widget_get_visible(activity), "missing activity heading");
+    const char *expect = g_getenv("PROGRESS_EXPECT");
+    if (g_strcmp0(expect, "preparing") == 0) {
+        GtkWidget *fonts = find_named(window, "phase-fonts");
+        GtkWidget *icons = find_named(window, "phase-icons");
+        GtkWidget *releases = find_named(window, "phase-releases");
+        GtkWidget *components = find_named(window, "phase-components");
+        check(fonts && icons && releases && components, "missing installation phase indicators");
+        check(gtk_style_context_has_class(gtk_widget_get_style_context(fonts), "phase-complete") &&
+              gtk_style_context_has_class(gtk_widget_get_style_context(icons), "phase-complete") &&
+              gtk_style_context_has_class(gtk_widget_get_style_context(releases), "phase-active") &&
+              gtk_style_context_has_class(gtk_widget_get_style_context(components), "phase-pending"),
+              "phase indicators must reflect real release preparation");
+        GtkWidget *stage = find_named(window, "installer-stage");
+        check(GTK_IS_LABEL(stage) && strstr(gtk_label_get_text(GTK_LABEL(stage)), "Discovering current releases"),
+              "preparation activity does not match phase");
         check(!gtk_widget_get_visible(percent) && !gtk_widget_get_visible(close),
               "preparation should show a pulse without 0% or a Close button");
     } else {

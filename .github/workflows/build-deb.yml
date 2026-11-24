@@ -253,6 +253,7 @@ jobs:
           set -euo pipefail
           fixture="$RUNNER_TEMP/progress-window-test"
           mkdir -p "$fixture/status"
+          printf 'releases\n' > "$fixture/phase"
           sudo install -d /System/Resources/Fonts
           sudo cp -a "$RUNNER_TEMP/payload/System/Resources/Fonts/." /System/Resources/Fonts/
           cc -std=c11 -Wall -Wextra -Werror -Wpedantic -shared -fPIC \

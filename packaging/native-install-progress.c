@@ -15,6 +15,7 @@
 #include <string.h>
 
 enum { METRIC_FINISHED, METRIC_RUNNING, METRIC_QUEUED, METRIC_FAILED, METRIC_COUNT };
+enum { CHIP_FONTS, CHIP_ICONS, CHIP_RELEASES, CHIP_COMPONENTS, CHIP_COUNT };
 
 typedef struct {
     GtkWidget *window;
@@ -26,6 +27,10 @@ typedef struct {
     GtkWidget *metrics;
     GtkWidget *metric_values[METRIC_COUNT];
     GtkWidget *close_button;
+    GtkWidget *chips[CHIP_COUNT];
+    GtkWidget *chip_marks[CHIP_COUNT];
+    GtkWidget *chip_spinners[CHIP_COUNT];
+    int chip_states[CHIP_COUNT];
     char status_path[4096];
     char product_name[128];
     gboolean aggregate;
@@ -112,10 +117,56 @@ static int finished_run_outcome(const char *status_path, int *total)
     return 0;
 }
 
+/* Phase indicators describe completed operations, not elapsed time. Host boot
+ * preparation sits between the resource and release phases. A failed run never
+ * receives a completed mark for the phase that failed. */
+static void update_phase_chips(Ui *ui, NativeProgressPhase phase, int outcome)
+{
+    static const NativeProgressPhase phases[CHIP_COUNT] = {
+        NATIVE_PHASE_FONTS, NATIVE_PHASE_ICONS, NATIVE_PHASE_RELEASES, NATIVE_PHASE_COMPONENTS
+    };
+    for (int i = 0; i < CHIP_COUNT; ++i) {
+        if (!ui->chips[i]) continue;
+        const int state = outcome == 1 || (phase > phases[i] && i != CHIP_COMPONENTS) ? 2 :
+            phase == phases[i] || (i == CHIP_COMPONENTS && phase == NATIVE_PHASE_FINALISING)
+            ? (outcome > 1 ? 3 : 1) : 0;
+        if (ui->chip_states[i] == state) continue;
+        ui->chip_states[i] = state;
+        GtkStyleContext *style = gtk_widget_get_style_context(ui->chips[i]);
+        const char *classes[] = {"phase-pending", "phase-active", "phase-complete", "phase-failed"};
+        for (size_t j = 0; j < G_N_ELEMENTS(classes); ++j)
+            gtk_style_context_remove_class(style, classes[j]);
+        gtk_style_context_add_class(style, classes[state]);
+        gtk_label_set_text(GTK_LABEL(ui->chip_marks[i]), state == 2 ? "✓" : state == 3 ? "!" : "○");
+        gtk_widget_set_visible(ui->chip_marks[i], state != 1);
+        gtk_widget_set_visible(ui->chip_spinners[i], state == 1);
+        if (state == 1) gtk_spinner_start(GTK_SPINNER(ui->chip_spinners[i]));
+        else gtk_spinner_stop(GTK_SPINNER(ui->chip_spinners[i]));
+        const char *tips[] = {"Pending", "In progress", "Completed", "Failed"};
+        gtk_widget_set_tooltip_text(ui->chips[i], tips[state]);
+        atk_object_set_description(gtk_widget_get_accessible(ui->chips[i]), tips[state]);
+    }
+}
+
+static const char *preparation_activity(NativeProgressPhase phase)
+{
+    switch (phase) {
+    case NATIVE_PHASE_FONTS: return "Verifying and registering system fonts…";
+    case NATIVE_PHASE_ICONS: return "Verifying the native icon collection…";
+    case NATIVE_PHASE_HOST: return "Configuring Plymouth and regenerating boot files…";
+    case NATIVE_PHASE_RELEASES: return "Discovering current releases and verifying integrity…";
+    case NATIVE_PHASE_COMPONENTS: return "Preparing native component installation…";
+    case NATIVE_PHASE_FINALISING: return "Finalising verified installation…";
+    default: return "Preparing the installation environment…";
+    }
+}
+
 static gboolean refresh_aggregate(Ui *ui)
 {
     int final_total = 0;
     const int outcome = finished_run_outcome(ui->status_path, &final_total);
+    const NativeProgressPhase phase = native_progress_phase(ui->status_path);
+    update_phase_chips(ui, phase, outcome);
     if (outcome != 0) {
         gtk_label_set_text(GTK_LABEL(ui->title),
             outcome == 1 ? "Upgrade complete" :
@@ -140,7 +191,7 @@ static gboolean refresh_aggregate(Ui *ui)
     if (total_jobs <= 0) {
         cancel_success_close(ui);
         gtk_label_set_text(GTK_LABEL(ui->title), "Preparing the upgrade");
-        gtk_label_set_text(GTK_LABEL(ui->stage), "Checking available components…");
+        gtk_label_set_text(GTK_LABEL(ui->stage), preparation_activity(phase));
         set_detail(ui, "");
         gtk_widget_hide(ui->metrics);
         gtk_widget_hide(ui->close_button);
@@ -150,6 +201,7 @@ static gboolean refresh_aggregate(Ui *ui)
     int complete = 0, failed = 0, queued = 0, running = 0;
     double fraction = 0.0;
     char active_name[96] = {0}, active_stage[128] = {0};
+    char queued_name[96] = {0}, queued_stage[128] = {0};
     /* Read only the signed run inventory. An unexpected status file must
      * never substitute for a missing expected worker or close the UI early. */
     for (int index = 0; index < jobs.count; ++index) {
@@ -181,6 +233,12 @@ static gboolean refresh_aggregate(Ui *ui)
             }
         } else {
             ++queued;
+            // Only display a specific waiting task when its own worker has
+            // published that state; manifest order does not imply execution order.
+            if (queued_name[0] == '\0' && job.stage[0]) {
+                snprintf(queued_name, sizeof(queued_name), "%.95s", name);
+                snprintf(queued_stage, sizeof(queued_stage), "%.110s", job.stage);
+            }
         }
     }
     if (fraction < 0.0) fraction = 0.0;
@@ -197,8 +255,14 @@ static gboolean refresh_aggregate(Ui *ui)
         snprintf(stage, sizeof(stage), "%s · %s", active_name,
                  strcmp(active_stage, "Executing independent RUN") == 0
                      ? "Running native installer" : active_stage);
+    } else if (queued_name[0]) {
+        for (char *p = queued_name; *p; ++p) {
+            if (*p == '-') *p = ' ';
+            else if (p == queued_name || p[-1] == ' ') *p = g_ascii_toupper(*p);
+        }
+        snprintf(stage, sizeof(stage), "%s · %s", queued_name, queued_stage);
     } else {
-        snprintf(stage, sizeof(stage), "Waiting for the next component…");
+        snprintf(stage, sizeof(stage), "%s", preparation_activity(phase));
     }
     gtk_label_set_text(GTK_LABEL(ui->stage), stage);
     set_detail(ui, failed ? "Logs: /Temporary/InfiltratorOS" : "");
@@ -364,21 +428,33 @@ static bool install_common_theme(void)
     char *css = g_strdup_printf(
         "window { background-color:#%06x; color:#%06x; }"
         "label { color:#%06x; font-family:'MB Corpo S Text WEB'; font-weight:400; }"
-        "#installer-brand { font-family:'%s'; color:#%06x; font-size:32px; font-weight:400; }"
+        "#installer-brand { font-family:'%s'; color:#%06x; font-size:36px; font-weight:400; }"
+        "#installer-brand-accent { background-color:#%06x; min-height:2px; border-radius:1px; }"
         "#installer-card { background-color:#%06x; border:1px solid #%06x; border-radius:%upx; }"
         "#installer-title { font-family:'MB Corpo S Title WEB'; color:#%06x;"
         " font-size:22px; font-weight:700; }"
-        "#installer-stage, #installer-subtitle, #installer-detail { color:#%06x; font-size:14px; }"
-        "#installer-percent { font-family:'MB Corpo A Screen2 Cond WEB'; color:#%06x; font-size:24px; }"
-        ".installer-metric { background-color:#%06x; border-radius:%upx; padding:8px 10px; }"
+        "#installer-subtitle, #installer-detail { color:#%06x; font-size:14px; }"
+        "#installer-stage { color:#%06x; font-size:15px; }"
+        "#installer-percent { font-family:'MB Corpo A Screen2 Cond WEB'; color:#%06x; font-size:30px; }"
+        ".installer-metric { background-color:#%06x; border:1px solid #%06x; border-radius:%upx; padding:10px 12px; }"
         ".installer-metric-value { font-family:'MB Corpo S Title WEB'; color:#%06x;"
-        " font-size:19px; font-weight:700; }"
+        " font-size:24px; font-weight:700; }"
         ".installer-metric-value.has-failure { color:#%06x; }"
-        ".installer-metric-caption { color:#%06x; font-size:12px; }"
+        ".installer-metric-caption { color:#%06x; font-size:13px; }"
+        "#installer-divider { background-color:#%06x; min-height:1px; }"
+        "#installer-activity-accent { background-color:#%06x; min-width:3px; border-radius:1px; }"
+        "#installer-activity-caption { color:#%06x; font-size:11px; font-weight:700; letter-spacing:1px; }"
+        ".installer-phase { background-color:#%06x; border:1px solid #%06x; border-radius:16px; padding:5px 8px; }"
+        ".installer-phase label { font-size:12px; }"
+        ".installer-phase.phase-pending label { color:#%06x; }"
+        ".installer-phase.phase-active { border-color:#%06x; }"
+        ".installer-phase.phase-active spinner, .installer-phase.phase-complete .phase-mark { color:#%06x; }"
+        ".installer-phase.phase-failed { border-color:#%06x; }"
+        ".installer-phase.phase-failed .phase-mark { color:#%06x; }"
         "#installer-progress trough { background-color:#%06x; border:0; box-shadow:none;"
-        " border-radius:%upx; min-height:8px; }"
+        " border-radius:%upx; min-height:10px; }"
         "#installer-progress progress { background-color:#%06x; background-image:none;"
-        " border:0; box-shadow:none; border-radius:%upx; min-height:8px; }"
+        " border:0; box-shadow:none; border-radius:%upx; min-height:10px; }"
         "#installer-close { background-color:#%06x; background-image:none;"
         " border:1px solid #%06x; border-radius:%upx; min-width:80px; padding:8px 14px; }"
         "#installer-close label { color:#%06x; font-family:'MB Corpo S Title WEB';"
@@ -386,11 +462,15 @@ static bool install_common_theme(void)
         "#installer-close:hover { background-color:#%06x; }"
         "#installer-close:focus { outline:2px solid #%06x; }",
         palette->background_rgb, palette->text_rgb,
-        palette->text_rgb, typography->brand_family, palette->title_rgb,
+        palette->text_rgb, typography->brand_family, palette->title_rgb, palette->neutral_accent_rgb,
         palette->card_rgb, palette->border_rgb, metrics->panel_radius,
-        palette->heading_rgb, palette->muted_rgb, palette->title_rgb,
-        palette->operation_rgb, metrics->control_radius, palette->title_rgb,
-        palette->fault_rgb, palette->muted_rgb, palette->operation_rgb, metrics->control_radius,
+        palette->heading_rgb, palette->muted_rgb, palette->text_rgb, palette->neutral_accent_rgb,
+        palette->operation_rgb, palette->border_rgb, metrics->control_radius, palette->title_rgb,
+        palette->fault_rgb, palette->muted_rgb,
+        palette->border_rgb, palette->neutral_accent_rgb, palette->muted_rgb,
+        palette->operation_rgb, palette->border_rgb, palette->muted_rgb,
+        palette->neutral_accent_rgb, palette->neutral_accent_rgb, palette->fault_rgb, palette->fault_rgb,
+        palette->operation_rgb, metrics->control_radius,
         palette->neutral_accent_rgb, metrics->control_radius,
         palette->neutral_accent_rgb, palette->neutral_accent_rgb, metrics->control_radius,
         palette->accent_foreground_rgb, palette->accent_hover_rgb, palette->selected_summary_rgb);
@@ -444,6 +524,54 @@ static void add_metrics(Ui *ui, GtkWidget *card, unsigned int spacing)
     gtk_widget_hide(ui->metrics);
 }
 
+/* Use an ordinary GTK box with explicit content margins inside the styled
+ * frame. GtkContainer border-width on the frame itself leaves its CSS border
+ * adjacent to the child allocation on some themes. */
+static void add_activity(Ui *ui, GtkWidget *card, unsigned int spacing)
+{
+    GtkWidget *divider = gtk_separator_new(GTK_ORIENTATION_HORIZONTAL);
+    gtk_widget_set_name(divider, "installer-divider");
+    gtk_box_pack_start(GTK_BOX(card), divider, FALSE, FALSE, 2);
+
+    GtkWidget *heading = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
+    GtkWidget *accent = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
+    gtk_widget_set_name(accent, "installer-activity-accent");
+    gtk_box_pack_start(GTK_BOX(heading), accent, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(heading), text_label("installer-activity-caption", "CURRENT ACTIVITY"),
+                       TRUE, TRUE, 0);
+    gtk_box_pack_start(GTK_BOX(card), heading, FALSE, FALSE, 0);
+
+    ui->stage = text_label("installer-stage", "Preparing native installation…");
+    gtk_label_set_max_width_chars(GTK_LABEL(ui->stage), 64);
+    gtk_box_pack_start(GTK_BOX(card), ui->stage, FALSE, FALSE, 0);
+    ui->detail = text_label("installer-detail", "");
+    gtk_widget_set_no_show_all(ui->detail, TRUE);
+    gtk_box_pack_start(GTK_BOX(card), ui->detail, FALSE, FALSE, 0);
+
+    if (!ui->aggregate) return;
+    static const char *const names[CHIP_COUNT] = {"Fonts", "Icons", "Release checks", "Native builds"};
+    static const char *const ids[CHIP_COUNT] = {"phase-fonts", "phase-icons", "phase-releases", "phase-components"};
+    GtkWidget *row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, (gint)spacing);
+    gtk_widget_set_name(row, "installer-phases");
+    for (int i = 0; i < CHIP_COUNT; ++i) {
+        ui->chip_states[i] = -1;
+        GtkWidget *chip = ui->chips[i] = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 5);
+        gtk_widget_set_name(chip, ids[i]);
+        gtk_style_context_add_class(gtk_widget_get_style_context(chip), "installer-phase");
+        ui->chip_marks[i] = gtk_label_new("○");
+        gtk_style_context_add_class(gtk_widget_get_style_context(ui->chip_marks[i]), "phase-mark");
+        gtk_widget_set_no_show_all(ui->chip_marks[i], TRUE);
+        ui->chip_spinners[i] = gtk_spinner_new();
+        gtk_widget_set_size_request(ui->chip_spinners[i], 14, 14);
+        gtk_widget_set_no_show_all(ui->chip_spinners[i], TRUE);
+        gtk_box_pack_start(GTK_BOX(chip), ui->chip_marks[i], FALSE, FALSE, 0);
+        gtk_box_pack_start(GTK_BOX(chip), ui->chip_spinners[i], FALSE, FALSE, 0);
+        gtk_box_pack_start(GTK_BOX(chip), gtk_label_new(names[i]), FALSE, FALSE, 0);
+        gtk_box_pack_start(GTK_BOX(row), chip, FALSE, FALSE, 0);
+    }
+    gtk_box_pack_start(GTK_BOX(card), row, FALSE, FALSE, 0);
+}
+
 int main(int argc, char **argv)
 {
     if (argc == 3 && strcmp(argv[1], "--check-fonts") == 0)
@@ -490,11 +618,11 @@ int main(int argc, char **argv)
     const InfiltratrDesignMetrics *metrics = infiltratr_design_metrics();
     ui.window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
     gtk_window_set_title(GTK_WINDOW(ui.window), "InfiltratorOS " INFILTRATOROS_VERSION);
-    gtk_window_set_default_size(GTK_WINDOW(ui.window), 540, -1);
+    gtk_window_set_default_size(GTK_WINDOW(ui.window), 660, -1);
     gtk_window_set_resizable(GTK_WINDOW(ui.window), TRUE);
     gtk_container_set_border_width(GTK_CONTAINER(ui.window), metrics->screen_padding);
 
-    GtkWidget *box = gtk_box_new(GTK_ORIENTATION_VERTICAL, (gint)metrics->section_spacing);
+    GtkWidget *box = gtk_box_new(GTK_ORIENTATION_VERTICAL, (gint)metrics->control_spacing + 8);
     gtk_container_add(GTK_CONTAINER(ui.window), box);
 
     GtkWidget *brand_header = gtk_box_new(GTK_ORIENTATION_VERTICAL, 2);
@@ -505,10 +633,23 @@ int main(int argc, char **argv)
                        text_label("installer-subtitle", "Upgrader for Debian-based systems"),
                        FALSE, FALSE, 0);
 
-    GtkWidget *card = gtk_box_new(GTK_ORIENTATION_VERTICAL, (gint)metrics->control_spacing);
-    gtk_widget_set_name(card, "installer-card");
-    gtk_container_set_border_width(GTK_CONTAINER(card), metrics->content_padding);
-    gtk_box_pack_start(GTK_BOX(box), card, FALSE, FALSE, 0);
+    GtkWidget *brand_accent = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
+    gtk_widget_set_name(brand_accent, "installer-brand-accent");
+    gtk_widget_set_size_request(brand_accent, 44, 2);
+    gtk_widget_set_halign(brand_accent, GTK_ALIGN_START);
+    gtk_widget_set_margin_top(brand_accent, 8);
+    gtk_box_pack_start(GTK_BOX(brand_header), brand_accent, FALSE, FALSE, 0);
+
+    GtkWidget *frame = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
+    gtk_widget_set_name(frame, "installer-card");
+    gtk_box_pack_start(GTK_BOX(box), frame, FALSE, FALSE, 0);
+    GtkWidget *card = gtk_box_new(GTK_ORIENTATION_VERTICAL, (gint)metrics->control_spacing + 4);
+    const gint padding = (gint)metrics->content_padding + 8;
+    gtk_widget_set_margin_start(card, padding);
+    gtk_widget_set_margin_end(card, padding);
+    gtk_widget_set_margin_top(card, padding);
+    gtk_widget_set_margin_bottom(card, padding);
+    gtk_box_pack_start(GTK_BOX(frame), card, FALSE, FALSE, 0);
 
     GtkWidget *headline = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, (gint)metrics->control_spacing);
     gtk_box_pack_start(GTK_BOX(card), headline, FALSE, FALSE, 0);
@@ -527,11 +668,7 @@ int main(int argc, char **argv)
     gtk_box_pack_start(GTK_BOX(card), ui.bar, FALSE, FALSE, 0);
 
     add_metrics(&ui, card, metrics->compact_spacing);
-    ui.stage = text_label("installer-stage", "Preparing native installation…");
-    gtk_box_pack_start(GTK_BOX(card), ui.stage, FALSE, FALSE, 0);
-    ui.detail = text_label("installer-detail", "");
-    gtk_widget_set_no_show_all(ui.detail, TRUE);
-    gtk_box_pack_start(GTK_BOX(card), ui.detail, FALSE, FALSE, 0);
+    add_activity(&ui, card, metrics->compact_spacing);
 
     ui.close_button = gtk_button_new_with_label("Close");
     gtk_widget_set_name(ui.close_button, "installer-close");

@@ -291,6 +291,11 @@ static void dispatch(const fs::path &stage) {
     const fs::path manifest = canonical / ".selected.list.tmp";
     write_text(manifest, joined(selected));
     fs::rename(manifest, canonical / "selected.list");
+    // The manifest is now authoritative. The UI can change from release
+    // preparation to measured component progress without guessing durations.
+    const auto phase = canonical / ".phase.dispatcher";
+    write_text(phase, "components\n");
+    fs::rename(phase, canonical / "phase");
     setenv("INFILTRATOROS_INSTALL_RUNTIME", canonical.c_str(), 1);
     Strings queue;
     for (const auto &slug : selected)
