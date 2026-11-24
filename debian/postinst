@@ -135,6 +135,10 @@ fi
 if [ -z "$stage" ]; then
     stage=$(mktemp -d "$STATUS_ROOT/native-worker.XXXXXXXX")
     chmod 0755 "$stage"
+else
+    # dpkg has successfully unpacked its full, package-owned font payload.
+    # A configuration failure does not roll back unpacked package files.
+    rm -rf -- "$stage/font-rollback" "$stage/bootstrap-fonts"
 fi
 publish_summary() {
     summary_state=$1

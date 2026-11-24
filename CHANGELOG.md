@@ -1,3 +1,9 @@
+## 1.0.103 — Install interface fonts in their final location before GTK
+
+- Install or verify the five required interface faces directly in `/System/Resources/Fonts` before launching GTK. Remove temporary source copies; never use a second runtime font directory.
+- Preserve normal Debian ownership of all 23 fonts and 1,233 icons. Unpack the remaining resources after the first GUI frame, then verify and register the complete collection.
+- Journal early font changes for aborted installation recovery, preserve unrelated resources and test fresh installation, upgrade rollback and symlink rejection. Exercise the packaged early window using only the five canonical font faces.
+
 ## 1.0.102 — Show the installer before unpacking system resources
 
 - Start the real GTK interface from a separately verified, temporary preinst bootstrap using exactly its five font faces, before dpkg unpacks the full package-owned resource payload.

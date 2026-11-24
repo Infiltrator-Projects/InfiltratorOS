@@ -598,22 +598,6 @@ static gboolean acknowledge_first_frame(GtkWidget *widget, cairo_t *cr, gpointer
     return FALSE;
 }
 
-/* Isolate the sealed bootstrap faces from any older system font versions.
- * This is process-local Fontconfig state; no duplicate permanent fonts or
- * system-wide font registration is performed before the GUI appears. */
-static bool bootstrap_fonts_visible(const char *directory)
-{
-    FcConfig *config = FcConfigCreate();
-    if (!config) return false;
-    bool ready = FcConfigBuildFonts(config) && FcConfigSetCurrent(config);
-    FcConfigDestroy(config);
-    if (!ready) return false;
-    PangoFontMap *map = pango_cairo_font_map_get_default();
-    if (!PANGO_IS_FC_FONT_MAP(map)) return false;
-    pango_fc_font_map_set_config(PANGO_FC_FONT_MAP(map), FcConfigGetCurrent());
-    return required_fonts_visible(directory);
-}
-
 int main(int argc, char **argv)
 {
     if (argc == 3 && strcmp(argv[1], "--check-fonts") == 0)
@@ -634,18 +618,9 @@ int main(int argc, char **argv)
     gtk_init(&argc, &argv);
 
     /* Common owns semantic colours, and unresolved fonts are an error. */
-    bool fonts_valid;
-    gchar *bootstrap = aggregate ? g_canonicalize_filename(argv[2], NULL) : NULL;
-    gchar *directory = bootstrap ? g_build_filename(bootstrap, "..", "bootstrap-fonts", NULL) : NULL;
-    gchar *canonical = directory ? g_canonicalize_filename(directory, NULL) : NULL;
-    if (canonical && g_file_test(canonical, G_FILE_TEST_IS_DIR))
-        fonts_valid = bootstrap_fonts_visible(canonical);
-    else
-        fonts_valid = required_fonts_visible("/System/Resources/Fonts");
-    g_free(canonical);
-    g_free(directory);
-    g_free(bootstrap);
-    if (!fonts_valid || !install_common_theme()) {
+    // The early and normal windows resolve the very same canonical directory.
+    // preinst installs the required faces here before launching the early UI.
+    if (!required_fonts_visible("/System/Resources/Fonts") || !install_common_theme()) {
         fprintf(stderr, "InfiltratorOS: verified fonts or Common theme unavailable.\n");
         GtkWidget *error = gtk_message_dialog_new(NULL, GTK_DIALOG_MODAL,
             GTK_MESSAGE_ERROR, GTK_BUTTONS_CLOSE,

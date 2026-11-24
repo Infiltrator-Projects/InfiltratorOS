@@ -1,13 +1,14 @@
 #!/bin/sh
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Open the installation UI before dpkg unpacks the full system payload.
-# Only the new release's sealed UI executable, launcher and five font faces
-# are extracted here, into the same temporary run that postinst will adopt.
+# Extract the sealed UI and its five font sources, then install those faces
+# in /System/Resources/Fonts before launching GTK. No alternate font path.
 set -eu
 umask 022
 STATUS_ROOT=/Temporary/InfiltratorOS
 BOOTSTRAP_SHA256='@BOOTSTRAP_SHA256@'
 VERSION='@VERSION@'
+# @BOOTSTRAP_FONT_FUNCTIONS@
 
 unpack_bootstrap() {
     target=$1
@@ -60,6 +61,8 @@ fail_bootstrap() {
     result=$?
     trap - EXIT
     if [ "$result" -ne 0 ]; then
+        bootstrap_rollback_fonts "$stage" "" ||
+            echo 'InfiltratorOS could not fully restore the early font changes; see retained stage.' >&2
         touch "$stage/early-failed"
         rm -f -- "$pending"
         printf 'state=failed\nstage=%s\n' "$stage" > "$STATUS_ROOT/.early-summary.$$"
@@ -73,6 +76,12 @@ unpack_bootstrap "$stage" || {
     echo 'InfiltratorOS could not verify the early graphical installer.' >&2
     exit 1
 }
+# At this point all five source faces came from the checksum-verified
+# archive. Install them into their final native directory before any UI exec.
+if ! bootstrap_install_fonts "$stage" ""; then
+    echo 'InfiltratorOS could not install its required interface fonts.' >&2
+    exit 1
+fi
 printf '%s\n' "$VERSION" > "$stage/bootstrap-version"
 printf 'unpacking\n' > "$stage/phase"
 printf '%s\n' "$stage" > "$pending.tmp"

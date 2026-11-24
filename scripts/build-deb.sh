@@ -115,6 +115,11 @@ install -m 0755 "$ROOT/debian/postrm" "$PKGROOT/DEBIAN/postrm"
 for script in preinst postinst postrm; do
     sed -i "s/@VERSION@/$VERSION/g" "$PKGROOT/DEBIAN/$script"
 done
+# Share the rollback implementation between Debian's two control scripts;
+# it is not an installed OS command or a persistent resource.
+for script in preinst postrm; do
+    sed -i "/^# @BOOTSTRAP_FONT_FUNCTIONS@$/r $ROOT/packaging/bootstrap-fonts.sh" "$PKGROOT/DEBIAN/$script"
+done
 install -m 0755 "$ROOT/packaging/ensure-native-fonts.sh" \
     "$PKGROOT/System/Commands/InfiltratorOS/ensure-native-fonts"
 install -m 0755 "$ROOT/packaging/ensure-native-icons.sh" \

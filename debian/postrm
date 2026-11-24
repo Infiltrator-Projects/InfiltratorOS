@@ -3,6 +3,7 @@
 # Close the early presentation if dpkg rolls back an interrupted unpack.
 set -eu
 case "${1:-}" in abort-install|abort-upgrade) ;; *) exit 0 ;; esac
+# @BOOTSTRAP_FONT_FUNCTIONS@
 root=/Temporary/InfiltratorOS
 pending="$root/preinstall-@VERSION@.pending"
 [ -f "$pending" ] && [ ! -L "$pending" ] || exit 0
@@ -12,6 +13,8 @@ case "$stage" in
     *) exit 0 ;;
 esac
 [ "${stage%/*}" = "$root" ] && [ -d "$stage" ] && [ ! -L "$stage" ] || exit 0
+bootstrap_rollback_fonts "$stage" "" ||
+    echo 'InfiltratorOS could not fully restore the early font changes; see retained stage.' >&2
 touch "$stage/early-failed"
 rm -f -- "$pending"
 # Only update the shared summary if it still describes this aborted run.

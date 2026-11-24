@@ -261,7 +261,6 @@ jobs:
           mkdir -p "$fixture/status"
           printf 'releases\n' > "$fixture/phase"
           sudo install -d /System/Resources/Fonts
-          sudo cp -a "$RUNNER_TEMP/payload/System/Resources/Fonts/." /System/Resources/Fonts/
           cc -std=c11 -Wall -Wextra -Werror -Wpedantic -shared -fPIC \
             $(pkg-config --cflags gtk+-3.0) tests/progress-window-test.c \
             -o "$fixture/inspect.so" $(pkg-config --libs gtk+-3.0) -lm
@@ -275,11 +274,19 @@ jobs:
                /^__INFILTRATOROS_BOOTSTRAP_END__$/ { exit } within { print }' \
               "$RUNNER_TEMP/control/preinst" | base64 -d | tar -xz -C "$fixture/early"
           test "$(find "$fixture/early/bootstrap-fonts" -type f | wc -l)" -eq 5
+          sudo sh -c '. packaging/bootstrap-fonts.sh; bootstrap_install_fonts "$1" ""' sh "$fixture/early"
+          test ! -e "$fixture/early/bootstrap-fonts"
+          test "$(find /System/Resources/Fonts -maxdepth 1 -type f -name '*.ttf' | wc -l)" -eq 5
           printf 'unpacking\n' > "$fixture/early/phase"
           for theme in Adwaita Adwaita:dark; do
             xvfb-run -a env GTK_THEME="$theme" FONTCONFIG_FILE="$fixture/fonts.conf" \
               LD_PRELOAD="$fixture/inspect.so" PROGRESS_EXPECT=unpacking \
               "$fixture/early/system-monitor-progress" --aggregate "$fixture/early/status"
+          done
+          sudo cp -a "$RUNNER_TEMP/payload/System/Resources/Fonts/." /System/Resources/Fonts/
+          test "$(find /System/Resources/Fonts -maxdepth 1 -type f -name '*.ttf' | wc -l)" -eq 23
+          sudo rm -rf "$fixture/early/font-rollback"
+          for theme in Adwaita Adwaita:dark; do
             xvfb-run -a env GTK_THEME="$theme" FONTCONFIG_FILE="$fixture/fonts.conf" \
               LD_PRELOAD="$fixture/inspect.so" PROGRESS_EXPECT=preparing \
               "$progress" --aggregate "$fixture/status"
