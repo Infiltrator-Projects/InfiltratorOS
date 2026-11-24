@@ -1,3 +1,9 @@
+## 1.0.93 — Recognise the Secure Boot firmware entry
+
+- Release the corrected BOOT verifier: recognise the fixed-directory Shim entry when Secure Boot is enabled and the corresponding Shim file is present, while retaining uniqueness, active-entry and first-priority checks.
+- Preserve the existing native BOOT installation and release attestation contract; BOOT remains one mandatory orchestrated component.
+- Include Secure Boot firmware-entry regression fixtures in the package qualification suite.
+
 ## 1.0.89 (unreleased) — Qualify the real BOOT installation contract
 
 - Refuse staging-only BOOT preview assets as firmware-ready installers. Require a stable independent native source RUN, its generic Debian package and existing Common V2/native-deployment evidence.
