@@ -342,6 +342,7 @@ static void list(const std::vector<Entry> &entries, size_t count, const char *se
 struct Asset {
     std::string version, url, sha;
     size_t size = 0;
+    std::string source_revision;
 };
 static constexpr const char *MINIMUM_BOOT_RELEASE = "0.1.50";
 // A published stable release is required; release classification alone does not
@@ -354,8 +355,9 @@ static Asset release_asset(const Entry &entry, json_object *meta, bool calendar_
     const std::string tag = str(meta, "tag_name");
     if (!std::regex_match(tag, std::regex("v[0-9]+\\.[0-9]+\\.[0-9]+(?:-[A-Za-z0-9.-]+)?")))
         throw std::runtime_error("Invalid native component version");
+    std::string source;
     if (calendar_or_clock || filesystem || entry.id == "calendar") {
-        std::string source = str(meta, "target_commitish");
+        source = str(meta, "target_commitish");
         if (!std::regex_match(source, std::regex("[a-f0-9]{40}")))
             throw std::runtime_error("Provider is missing immutable source identity");
     }
@@ -410,7 +412,7 @@ static Asset release_asset(const Entry &entry, json_object *meta, bool calendar_
             url != prefix + name || !std::regex_match(sha, std::regex("sha256:[a-f0-9]{64}")) ||
             !names.insert(name).second)
             throw std::runtime_error("Untrusted native release asset");
-        if (name == run_name) result = {tag.substr(1), url, sha.substr(7), size};
+        if (name == run_name) result = {tag.substr(1), url, sha.substr(7), size, source};
     }
     if (result.url.empty()) throw std::runtime_error("Native RUN asset is missing");
     if (calendar_or_clock && (names.size() != 3 ||
@@ -592,16 +594,19 @@ static bool exports_common_filesystem_api(const fs::path &path) {
 }
 static bool provider_current(const Entry &entry, const Asset &asset) {
     const std::string fmt = std::string("$") + "{Status}\t$" + "{Version}\t$" +
-                            "{X-Infiltrator-Native-Profile}\t$" + "{X-Infiltrator-PGO}";
+                            "{X-Infiltrator-Native-Profile}\t$" + "{X-Infiltrator-PGO}\t$" +
+                            "{X-Infiltrator-Source-Revision}\t$" + "{X-Infiltrator-Resource-SHA256}";
     auto status = tabs(pkg_query(entry.package, fmt));
-    if (status.size() != 4 || status[0] != "install ok installed" ||
+    if (status.size() != 6 || status[0] != "install ok installed" ||
         status[1] != asset.version + "+native1" || status[2] != "aggressive" ||
-        status[3] != "trained-two-pass") return false;
+        status[3] != "trained-two-pass" || asset.source_revision.empty() ||
+        status[4] != asset.source_revision) return false;
     fs::path manual = fs::path("/System/Resources/Documentation") / (entry.repo + ".pdf");
     for (const auto &f : {fs::path(entry.resource), manual}) {
         if (!regular(f) || output({"/usr/bin/dpkg-query", "-S", f.string()}) !=
                             entry.package + ": " + f.string()) return false;
     }
+    if (status[5] != digest(entry.resource)) return false;
     std::ifstream pdf(manual, std::ios::binary);
     char magic[5];
     if (!pdf.read(magic, 5) || std::memcmp(magic, "%PDF-", 5) != 0) return false;
@@ -920,6 +925,22 @@ static bool install(const Entry &entry, Status &status, bool application_mode,
     download(asset, run);
     status.write("running", 35, "Executing independent RUN", entry.repo);
     if (filesystem || temporal) {
+        if (temporal) {
+            // The temporal build-only contract refuses to install prerequisites.
+            // Resolve the shared calendar/clock toolchain before invoking it.
+            Strings dependencies{"build-essential", "binutils", "pkg-config", "jq",
+                                 "ghostscript", "gettext", "libglib2.0-dev", "libicu-dev"};
+            Strings missing;
+            for (const auto &dep : dependencies)
+                if (pkg_query(dep, std::string("$") + "{Status}") != "install ok installed")
+                    missing.push_back(dep);
+            if (!missing.empty()) {
+                Strings command{"/usr/bin/apt-get", "-o", "DPkg::Lock::Timeout=-1",
+                                "install", "-y", "--no-remove", "--no-install-recommends"};
+                command.insert(command.end(), missing.begin(), missing.end());
+                required(command, status.root / (entry.slug() + "-dependencies.log"));
+            }
+        }
         // Build the provider's native DEB once, then retain it while APT waits.
         // This also covers providers outside the parallel compilation queue.
         const auto folder = directory.path / "package";
@@ -1023,7 +1044,7 @@ static void build_packages(std::vector<Job> &jobs, const fs::path &statuses,
             }
             it = active.erase(it);
         }
-        if (next < jobs.size()) {
+        if (next < jobs.size() && active.size() < max_parallel_builds) {
             const auto resources = build_resources(allowed_build_cpus());
             std::vector<BuildReservation> reservations;
             for (const auto &job : active) reservations.push_back(job.resources);
@@ -1062,12 +1083,12 @@ static bool can_build(const Entry &e) {
             return false;
     } else if (e.kind == "calendar" || e.kind == "clock") {
         packages.insert(packages.end(), {"pkg-config", "jq", "ghostscript", "gettext"});
-        if (e.kind == "calendar" && execute({"pkg-config", "--exists", "glib-2.0"}) != 0)
-            return false;
-        if ((e.id == "gregorian" || e.id == "indian" || e.id == "islamic-umalqura") &&
-            execute({"pkg-config", "--exists", "icu-i18n"}) != 0)
+        packages.insert(packages.end(), {"libglib2.0-dev", "libicu-dev"});
+        if (execute({"pkg-config", "--exists", "glib-2.0", "icu-i18n"}) != 0)
             return false;
     }
+    if (e.slug().rfind("filesystem-", 0) == 0)
+        packages.insert(packages.end(), {"cmake", "git", "pkg-config", "libssl-dev", "libsqlite3-dev"});
     if (e.id == "exfat")
         packages.insert(packages.end(), {"cmake", "git", "pkg-config", "libssl-dev",
                                          "libsqlite3-dev", "exfatprogs", "dosfstools"});
@@ -1093,10 +1114,10 @@ static int smart_queue(const std::vector<Entry> &entries) {
     std::set<std::string> selected;
     for (const auto &item : lines(read_file(stage / "selected.list"))) selected.insert(item);
     std::vector<Entry> chosen;
-    for (auto slug : infiltrator_native::build_queue)
-        if (selected.count(std::string(slug))) {
+    for (const auto &slug : selected)
+        if (infiltrator_native::queue_candidate(slug)) {
             auto it = std::find_if(entries.begin(), entries.end(),
-                                   [&](const Entry &e) { return e.slug() == std::string(slug); });
+                                   [&](const Entry &e) { return e.slug() == slug; });
             if (it == entries.end()) throw std::runtime_error("Unknown smart queue candidate");
             chosen.push_back(*it);
         }

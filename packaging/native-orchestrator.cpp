@@ -285,9 +285,8 @@ static void dispatch(const fs::path &stage) {
     fs::rename(manifest, canonical / "selected.list");
     setenv("INFILTRATOROS_INSTALL_RUNTIME", canonical.c_str(), 1);
     Strings queue;
-    for (auto slug : infiltrator_native::build_queue)
-        if (std::find(selected.begin(), selected.end(), slug) != selected.end())
-            queue.emplace_back(slug);
+    for (const auto &slug : selected)
+        if (infiltrator_native::queue_candidate(slug)) queue.push_back(slug);
     const bool smart_enabled = getenv_or("INFILTRATOROS_SMART_BUILD_PILOT",
                                    getenv_or("INFILTRATOROS_PARALLEL_FAT_PILOT", "1")) != "0";
     const bool smart = smart_enabled && queue.size() >= 2;

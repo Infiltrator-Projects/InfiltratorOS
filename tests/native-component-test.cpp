@@ -79,7 +79,13 @@ static void check_build_resources() {
     save(groups / "parent" / "worker" / "cpu.max", "max 100000\n");
     save(groups / "parent" / "memory.max", "4294967296\n");
     save(groups / "parent" / "memory.current", "1073741824\n");
-    auto sampled = build_resources(cpus, proc / "meminfo", proc / "membership", groups);
+    auto sampled = build_resources(cpus, proc / "meminfo", proc / "membership", groups, proc / "io");
+    save(proc / "io", "some avg10=30.00 avg60=10.00 avg300=5.00 total=1\n");
+    check(io_pressure_high(proc / "io"), "I/O pressure threshold is detected");
+    auto congested = build_resources(cpus, proc / "meminfo", proc / "membership", groups, proc / "io");
+    auto first = reserve_build(congested, {}, BuildKind::module, 2);
+    check(first.has_value() && !reserve_build(congested, {*first}, BuildKind::module, 1),
+          "I/O pressure serialises admissions while allowing one build to progress");
     check(sampled.cpu_budget == 4 && sampled.memory_mib == 2560,
           "parent cgroup quota and memory headroom limit host resources");
     auto files = reserve_build(sampled, {}, BuildKind::files, 1);
@@ -87,7 +93,7 @@ static void check_build_resources() {
           "the heavier Files build consumes more of the available RAM");
 
     save(groups / "parent" / "memory.current", "3758096384\n");
-    sampled = build_resources(cpus, proc / "meminfo", proc / "membership", groups);
+    sampled = build_resources(cpus, proc / "meminfo", proc / "membership", groups, proc / "absent-io");
     auto alone = reserve_build(sampled, {}, BuildKind::module, 2);
     check(alone.has_value() && !reserve_build(sampled, {*alone}, BuildKind::module, 1),
           "live memory pressure prevents another start but allows serial progress");
@@ -229,8 +235,11 @@ Boot0007 BOOT Boot Manager HD(1,GPT,1234)/File(\EFI\InfiltratorOS\BOOT\BOOTX64.E
                           "calendar-swedish-historical", "calendar-gregorian",
                           "calendar-islamic-umalqura"})
             check(infiltrator_native::queue_candidate(slug), "smart queue membership");
-        check(!infiltrator_native::queue_candidate("filesystem-ext2"),
-              "do not admit unrelated independent providers");
+        check(infiltrator_native::queue_candidate("filesystem-ext2") &&
+              infiltrator_native::queue_candidate("calendar-armenian-traditional") &&
+              !infiltrator_native::queue_candidate("boot"),
+              "all selected provider families are eligible; BOOT is not a parallel build");
+        check(infiltrator_native::max_parallel_builds == 16, "parallel build limit");
         check(established[0].slug() == "filesystem-fat12", "FAT12 identity");
         check(application("system-monitor").repo == "System-Monitor", "system monitor identity");
         check(package_install_command("/tmp/native.deb") ==
@@ -326,7 +335,8 @@ Boot0007 BOOT Boot Manager HD(1,GPT,1234)/File(\EFI\InfiltratorOS\BOOT\BOOTX64.E
         {
             auto release = sample_release(temporal[0], "1.0.5", true);
             auto asset = release_asset(temporal[0], release.ptr, true, false);
-            check(asset.size == 123 && asset.sha == std::string(64, 'a'),
+            check(asset.size == 123 && asset.sha == std::string(64, 'a') &&
+                  asset.source_revision == std::string(40, 'b'),
                   "temporal digest and size");
             json_object_object_add(release.ptr, "draft", json_object_new_boolean(1));
             rejects([&]() { (void)release_asset(temporal[0], release.ptr, true, false); },

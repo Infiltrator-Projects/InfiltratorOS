@@ -1,3 +1,9 @@
+## 1.0.97 — Expand scheduling and verify source identity
+
+- Admit selected filesystem, temporal and Files packages to the smart queue, with a hard 16-build limit and I/O pressure-aware admission.
+- Verify provider source revision and installed module SHA-256 against the selected release and package metadata.
+- Provision missing temporal build dependencies using the lock-aware package transaction before serial build-only installation.
+
 ## 1.0.96 — Supervise native installation and enforce BOOT prerequisites
 
 - Run the dispatcher outside the Debian transaction, reap each worker, and convert abnormal exits or missing terminal records into explicit failures.

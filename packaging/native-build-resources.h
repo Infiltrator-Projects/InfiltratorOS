@@ -20,6 +20,7 @@ struct BuildResources {
     std::vector<int> cpus;
     std::size_t cpu_budget;
     std::uint64_t memory_mib;
+    bool io_congested = false;
 };
 
 inline std::vector<int> allowed_build_cpus() {
@@ -32,10 +33,25 @@ inline std::vector<int> allowed_build_cpus() {
     return cpus;
 }
 
+// PSI measures elapsed time lost to I/O stalls rather than nominal disk speed.
+// Unavailable PSI leaves the existing CPU and RAM admission policy intact.
+inline bool io_pressure_high(const std::filesystem::path &path) {
+    std::ifstream input(path);
+    for (std::string line; std::getline(input, line);) {
+        if (line.rfind("some ", 0) != 0) continue;
+        const auto position = line.find("avg10=");
+        if (position == std::string::npos) return false;
+        std::istringstream value(line.substr(position + 6));
+        double percent = 0;
+        return bool(value >> percent) && percent >= 20.0;
+    }
+    return false;
+}
 inline BuildResources build_resources(
     std::vector<int> cpus, const std::filesystem::path &meminfo = "/proc/meminfo",
     const std::filesystem::path &membership = "/proc/self/cgroup",
-    const std::filesystem::path &cgroup_root = "/sys/fs/cgroup") {
+    const std::filesystem::path &cgroup_root = "/sys/fs/cgroup",
+    const std::filesystem::path &io_pressure = "/proc/pressure/io") {
     std::uint64_t capacity = 0, available = 0;
     std::ifstream memory(meminfo);
     for (std::string line; std::getline(memory, line);) {
@@ -78,7 +94,8 @@ inline BuildResources build_resources(
 
     // Leave headroom for the desktop, the installer and transient allocations.
     const auto headroom = std::clamp<std::uint64_t>(capacity / 8, 256, 2048);
-    return {std::move(cpus), cpu_budget, available > headroom ? available - headroom : 0};
+    return {std::move(cpus), cpu_budget, available > headroom ? available - headroom : 0,
+            io_pressure_high(io_pressure)};
 }
 
 enum class BuildKind { module, exfat, files };
@@ -91,6 +108,7 @@ struct BuildReservation {
 inline std::optional<BuildReservation> reserve_build(
     const BuildResources &resources, const std::vector<BuildReservation> &active,
     BuildKind kind, std::size_t pending) {
+    if (resources.io_congested && !active.empty()) return std::nullopt;
     auto free_cpus = resources.cpus;
     auto free_memory = resources.memory_mib;
     std::size_t occupied = 0;
