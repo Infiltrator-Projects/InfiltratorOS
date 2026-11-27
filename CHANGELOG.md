@@ -1,3 +1,7 @@
+## 1.0.134 — Remove obsolete dispatcher helpers
+
+- Remove the unused release-log reader and obsolete BOOT refresh environment switch left behind by independent installer dispatch. Keep strict compiler warnings enabled.
+
 ## 1.0.133 — Remove central release management
 
 - Remove the central release catalogue client, shared release preflight, cached release metadata, component version thresholds and already-installed version comparisons.

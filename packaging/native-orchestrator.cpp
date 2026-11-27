@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // InfiltratorOS owns orchestration, not independent component builds.
-// The native dispatcher validates one run, snapshots the available release
-// catalogue, and launches independently owned native installers.
+// The native dispatcher validates the local component selection and launches
+// independently owned native installers.
 #include <algorithm>
-#include <iterator>
 #include <cerrno>
 #include <cctype>
 #include <cstdio>
@@ -37,11 +36,6 @@ static std::string trim(const std::string &value) {
     if (first == std::string::npos) return "";
     auto last = value.find_last_not_of(" \t\r\n");
     return value.substr(first, last - first + 1);
-}
-static std::string read_text(const fs::path &path) {
-    std::ifstream input(path, std::ios::binary);
-    if (!input) throw std::runtime_error("Cannot read " + path.string());
-    return std::string(std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>());
 }
 static void write_text(const fs::path &path, const std::string &value) {
     std::ofstream output(path, std::ios::binary | std::ios::trunc);
@@ -87,9 +81,6 @@ static int run(const Strings &args, const fs::path &out = {},
             setenv("INFILTRATOROS_PROGRESS_MODE", "none", 1);
             unsetenv("INFILTRATOROS_FAT_PAIR");
             unsetenv("INFILTRATOROS_SMART_BUILD_QUEUE");
-            unsetenv("INFILTRATOROS_REINSTALL_BOOT");
-            if (args.size() > 4 && fs::path(args[4]).filename() == "install-boot")
-                setenv("INFILTRATOROS_REINSTALL_BOOT", "1", 1);
             if (smart_queue) setenv("INFILTRATOROS_SMART_BUILD_QUEUE", "1", 1);
         }
         std::vector<char *> argv;

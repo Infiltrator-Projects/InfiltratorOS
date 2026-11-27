@@ -68,12 +68,10 @@ int main() {
                                 "defragmenter", "filesystem-fat12", "clock-binary"};
         fs::remove(stage / "status/boot-install.status");
         write_text(boot_worker, "#!/bin/sh\nset -eu\n"
-            "test \"$INFILTRATOROS_REINSTALL_BOOT\" = 1\n"
             "printf 'state=complete\\nprogress=100\\nstage=Ready\\ndetail=\\n' > \"$(dirname \"$0\")/status/boot-install.status\"\n");
         const auto app_worker = stage / "install-system-monitor";
         write_text(app_worker, "#!/bin/sh\nset -eu\n"
             "[ \"$INFILTRATOROS_SMART_BUILD_QUEUE\" = 1 ]\n"
-            "[ -z \"${INFILTRATOROS_REINSTALL_BOOT:-}\" ]\n"
             "grep -qx state=complete \"$(dirname \"$0\")/status/boot-install.status\"\n"
             "for slug in system-monitor calculator calendar files defragmenter filesystem-fat12 clock-binary; do\n"
             " printf 'state=complete\\nprogress=100\\nstage=Ready\\ndetail=\\n' > \"$(dirname \"$0\")/status/$slug-install.status\"\n"
