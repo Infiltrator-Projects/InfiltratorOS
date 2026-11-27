@@ -4,6 +4,7 @@
 #define _DEFAULT_SOURCE 1
 #include <algorithm>
 #include <cctype>
+#include <climits>
 #include <cerrno>
 #include <chrono>
 #include <cstddef>
@@ -130,13 +131,22 @@ int execute(const Strings &args, std::string *capture = nullptr, const fs::path 
             if (dup2(pipes[1], STDOUT_FILENO) < 0) _exit(126);
             close(pipes[1]);
         } else if (!log.empty()) {
-            int fd = open(log.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
+            int fd = open(log.c_str(), O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0644);
             if (fd < 0 || dup2(fd, STDOUT_FILENO) < 0 || dup2(fd, STDERR_FILENO) < 0)
                 _exit(126);
-            close(fd);
+            if (fd > STDERR_FILENO) close(fd);
+        }
+        // The parent owns all locks and build streams. Never let a
+        // concurrent installer inherit another job's writable RUN.
+        if (syscall(SYS_close_range, 3U, UINT_MAX, 0U) != 0) {
+            constexpr char message[] = "Cannot close inherited native build descriptors\n";
+            (void)write(STDERR_FILENO, message, sizeof(message) - 1);
+            _exit(126);
         }
         if (argv.front()[0] == '/') execv(argv.front(), argv.data());
         else execvp(argv.front(), argv.data());
+        constexpr char message[] = "Cannot execute native command\n";
+        (void)write(STDERR_FILENO, message, sizeof(message) - 1);
         _exit(127);
     }
     const char *capture_error = nullptr;
@@ -515,7 +525,8 @@ static Asset release(const Entry &entry) {
     return native_asset(entry,tag,fetch(base+"/releases/expanded_assets/"+tag));
 }
 void download(const Asset &asset,const fs::path &target) {
-    FILE *file=fopen(target.c_str(),"wb+");
+    // Atomic close-on-exec prevents cross-job writable descriptor inheritance.
+    FILE *file=fopen(target.c_str(),"wb+e");
     if(!file)throw std::runtime_error("Cannot create installer");
     Transfer sink;
     sink.file=file;
@@ -809,8 +820,18 @@ static void isolate_mount_writes(const fs::path &folder) {
 int isolated_build_entry(int argc, char **argv) {
     if (argc < 4 || argv[3][0] != '/') return 1;
     isolate_mount_writes(argv[2]);
-    execv(argv[3], argv + 3);
-    return 1;
+    // Another fork may briefly hold a writable descriptor before its
+    // descriptor cleanup. Retry only that transient kernel error.
+    for (unsigned attempt = 0; ; ++attempt) {
+        execv(argv[3], argv + 3);
+        const int error = errno;
+        if (error != ETXTBSY || attempt == 5) {
+            std::cerr << "Cannot execute native installer " << argv[3]
+                      << ": " << std::strerror(error) << " (errno " << error << ")\n";
+            return error == ENOENT ? 127 : 126;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
 }
 
 struct Job {
@@ -905,8 +926,11 @@ static void build(Job &job, const fs::path &logs, const std::vector<int> &cpus) 
     arguments.push_back(job.run.string());
     const auto options = build_only_arguments(job.entry, job.folder, slots);
     arguments.insert(arguments.end(), options.begin(), options.end());
-    if (execute(arguments, nullptr, logs / (job.entry.slug() + "-build.log")) != 0)
-        throw std::runtime_error("Native build failed: " + job.entry.slug());
+    const auto logfile = logs / (job.entry.slug() + "-build.log");
+    const int result = execute(arguments, nullptr, logfile);
+    if (result != 0)
+        throw std::runtime_error("Native build failed: " + job.entry.slug() +
+                                 " (exit " + std::to_string(result) + "); see " + logfile.string());
     job.package = native_package_from(job.folder, job.entry);
     if (!job.asset.url.empty()) {
         fs::remove(job.run);

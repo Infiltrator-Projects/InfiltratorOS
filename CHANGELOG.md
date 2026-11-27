@@ -1,3 +1,9 @@
+## 1.0.137 — Correct concurrent native installer execution
+
+- Prevent writable installer descriptors leaking into concurrent subprocesses, including atomic close-on-exec downloads and explicit child descriptor cleanup.
+- Report installer execution errors and worker exit codes instead of empty build logs; retry only transient ETXTBSY.
+- Add regression coverage for child descriptor inheritance and failed-exec diagnostics.
+
 ## 1.0.136 — Simplify build and installation checks
 
 - Remove fixed resource and bundle counts, repeated staging checks, duplicate release downloads and separately uploaded source archives. Retain required bundle members, archive and executable download integrity, icon collision checks and package-manager coordination.

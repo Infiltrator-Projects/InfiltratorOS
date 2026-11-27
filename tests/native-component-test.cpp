@@ -173,6 +173,20 @@ int main(int argc, char **argv) {
             std::string capture;
             check(execute({"/bin/sh", "-c", "printf verified"}, &capture) == 0 &&
                   capture == "verified", "Subprocess capture retains output");
+            // Simulate an unrelated parallel download with a writable
+            // descriptor open when the native worker launches a child.
+            TempDir fixture(fs::temp_directory_path(), "native-fd-");
+            const auto run = fixture.path / "pending.run";
+            int fd = open(run.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0700);
+            check(fd >= 3, "Writable installer descriptor fixture");
+            const int result = execute({"/bin/sh", "-c",
+                "test ! -e /proc/self/fd/$1", "fd-check", std::to_string(fd)});
+            close(fd);
+            check(result == 0, "Native child cannot inherit another installer's writable descriptor");
+            const auto log = fixture.path / "exec.log";
+            check(execute({"/nonexistent/infiltrator-native-command"}, nullptr, log) == 127 &&
+                  read_file(log).find("Cannot execute native command") != std::string::npos,
+                  "Failed exec records a diagnostic");
             rejects([&]() {
                 std::string large;
                 (void)execute({"/usr/bin/head", "-c", "5000000", "/dev/zero"}, &large);
