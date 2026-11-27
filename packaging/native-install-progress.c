@@ -181,7 +181,7 @@ static const char *preparation_activity(NativeProgressPhase phase)
     case NATIVE_PHASE_FONTS: return "Verifying and registering system fonts…";
     case NATIVE_PHASE_ICONS: return "Verifying the native icon collection…";
     case NATIVE_PHASE_HOST: return "Configuring Plymouth and regenerating boot files…";
-    case NATIVE_PHASE_RELEASES: return "Discovering current releases and verifying integrity…";
+    case NATIVE_PHASE_RELEASES: return "Preparing selected native components…";
     case NATIVE_PHASE_COMPONENTS: return "Preparing native component installation…";
     case NATIVE_PHASE_FINALISING: return "Finalising verified installation…";
     default: return "Preparing the installation environment…";
@@ -577,7 +577,7 @@ static void add_activity(Ui *ui, GtkWidget *card, unsigned int spacing)
     gtk_box_pack_start(GTK_BOX(card), ui->detail, FALSE, FALSE, 0);
 
     if (!ui->aggregate) return;
-    static const char *const names[CHIP_COUNT] = {"Fonts", "Icons", "Release checks", "Native builds"};
+    static const char *const names[CHIP_COUNT] = {"Fonts", "Icons", "Preparation", "Native builds"};
     static const char *const ids[CHIP_COUNT] = {"phase-fonts", "phase-icons", "phase-releases", "phase-components"};
     GtkWidget *row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, (gint)spacing);
     gtk_widget_set_name(row, "installer-phases");

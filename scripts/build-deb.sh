@@ -228,11 +228,6 @@ done
 # The controlling dispatcher and release verification are native C++.
 # The embedded OS dispatcher and worker implementations are native C/C++.
 compile_cxx -std=c++17 -O2 -Wall -Wextra -Werror -Wpedantic \
-    $(pkg-config --cflags libcurl json-c) \
-    -c "$ROOT/packaging/native-release-snapshot.cpp" -o "$WORK/native-release-snapshot.o"
-c++ "$WORK/native-release-snapshot.o" -o "$RUNTIME_BUILD/prepare-native-releases" \
-    $(pkg-config --libs libcurl json-c)
-compile_cxx -std=c++17 -O2 -Wall -Wextra -Werror -Wpedantic \
     -c "$ROOT/packaging/native-orchestrator.cpp" -o "$WORK/native-orchestrator.o"
 c++ "$WORK/native-orchestrator.o" "$WORK/installer-status.o" \
     -o "$RUNTIME_BUILD/orchestrate-native-install"

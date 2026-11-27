@@ -323,20 +323,6 @@ std::string str(json_object *object, const char *name) {
         throw std::runtime_error(std::string("Invalid JSON text: ") + name);
     return json_object_get_string(value);
 }
-static bool boolean(json_object *object, const char *name) {
-    auto *value = field(object, name);
-    if (json_object_get_type(value) != json_type_boolean)
-        throw std::runtime_error(std::string("Invalid JSON boolean: ") + name);
-    return json_object_get_boolean(value);
-}
-static size_t integer(json_object *object, const char *name) {
-    auto *value = field(object, name);
-    if (json_object_get_type(value) != json_type_int ||
-        json_object_get_int64(value) <= 0 ||
-        json_object_get_int64(value) > static_cast<int64_t>(MAX_ASSET))
-        throw std::runtime_error(std::string("Invalid JSON asset size: ") + name);
-    return static_cast<size_t>(json_object_get_int64(value));
-}
 struct Transfer {
     std::string data;
     FILE *file = nullptr;
@@ -442,122 +428,129 @@ void list(const std::vector<Entry> &entries, size_t count, const char *selector,
         if (!getenv(selector) || wanted.count(by_id ? entries[i].id : entries[i].slug()))
             std::cout << entries[i].slug() << "\n";
 }
-static constexpr const char *MINIMUM_BOOT_RELEASE = "0.1.50";
-// A published stable release is required; release classification alone does not
-// establish qualification for physical UEFI boot.
-
-Asset release_asset(const Entry &entry, json_object *meta, bool calendar_or_clock,
-                           bool filesystem) {
-    if (boolean(meta, "draft") || boolean(meta, "prerelease"))
-        throw std::runtime_error("Unpublished native component release");
-    const std::string tag = str(meta, "tag_name");
+static std::string verified_redirect_tag(const std::string &prefix, long status, const std::string &target) {
+    if (status != 301 && status != 302 && status != 303 && status != 307 && status != 308)
+        return {};
+    if (target.rfind(prefix, 0) != 0) return {};
+    const auto tag = target.substr(prefix.size());
     if (!std::regex_match(tag, std::regex("v[0-9]+\\.[0-9]+\\.[0-9]+(?:-[A-Za-z0-9.-]+)?")))
-        throw std::runtime_error("Invalid native component version");
-    std::string source;
-    if (calendar_or_clock || filesystem || entry.id == "calendar") {
-        source = str(meta, "target_commitish");
-        if (!std::regex_match(source, std::regex("[a-f0-9]{40}")))
-            throw std::runtime_error("Provider is missing immutable source identity");
-    }
-    Asset result;
-    result.version = tag.substr(1);
-    if (entry.id == "boot" &&
-        execute({"/usr/bin/dpkg", "--compare-versions", result.version, "ge", MINIMUM_BOOT_RELEASE}) != 0)
-        throw std::runtime_error("BOOT native installer release is older than the accepted installation contract");
-    // Older Calendar RUNs invoke the Python scanner during a native build.
-    if (entry.id == "calendar" &&
-        execute({"/usr/bin/dpkg", "--compare-versions", result.version, "ge", "1.0.131"}) != 0)
-        throw std::runtime_error("Native Calendar requires version 1.0.131 or newer");
-    if (filesystem && entry.id == "fat12") {
-        // FAT12 releases up to 0.1.23 shipped a forbidden FUSE host and
-        // package dependencies. Refuse them BEFORE downloading or invoking
-        // a native installer so no machine can acquire those dependencies
-        // through InfiltratorOS component installation.
-        int major = 0, minor = 0, patch = 0;
-        if (sscanf(tag.c_str(), "v%d.%d.%d", &major, &minor, &patch) != 3 ||
-            (major == 0 && (minor < 1 || (minor == 1 && patch < 24))))
-            throw std::runtime_error(
-                "Refusing FAT12 release containing forbidden FUSE dependencies; "
-                "requires FAT12 0.1.24 or newer");
-    }
-    if (filesystem && entry.id == "ntfs" &&
-        (result.version == "1.0.15" || result.version == "1.0.16"))
-        throw std::runtime_error(
-            "Refusing an NTFS native RUN that installs FUSE; requires NTFS 1.0.17 or newer");
-    if (filesystem && entry.id == "exfat") {
-        int major = 0, minor = 0, patch = 0;
-        if (sscanf(tag.c_str(), "v%d.%d.%d", &major, &minor, &patch) != 3 ||
-            (major == 0 && minor == 1 && patch < 3))
-            throw std::runtime_error("Refusing known-broken exFAT native RUN");
-    }
-    const std::string run_prefix = entry.id == "defragmenter" ? entry.repo : entry.slug();
-    const std::string run_suffix = entry.id == "calendar" || entry.id == "defragmenter"
-        ? "-local-folder.run" : "-native-installer.run";
-    const std::string run_name = run_prefix + "-" + result.version + run_suffix;
-    const std::string prefix = "https://github.com/Infiltrator-Projects/" +
-                               entry.repo + "/releases/download/" + tag + "/";
-    auto *assets = field(meta, "assets");
-    if (json_object_get_type(assets) != json_type_array)
-        throw std::runtime_error("Native release has no asset array");
-    std::set<std::string> names;
-    for (size_t i = 0; i < json_object_array_length(assets); ++i) {
-        json_object *item = json_object_array_get_idx(assets, i);
-        std::string name = str(item, "name");
-        std::string url = str(item, "browser_download_url");
-        std::string sha = str(item, "digest");
-        size_t size = integer(item, "size");
-        if (!std::regex_match(name, std::regex("[A-Za-z0-9_.+-]+")) ||
-            url != prefix + name || !std::regex_match(sha, std::regex("sha256:[a-f0-9]{64}")) ||
-            !names.insert(name).second)
-            throw std::runtime_error("Untrusted native release asset");
-        if (name == run_name) result = {tag.substr(1), url, sha.substr(7), size, source};
-    }
-    if (result.url.empty()) throw std::runtime_error("Native RUN asset is missing");
-    if (calendar_or_clock) {
-        // New releases upload only the RUN and generic DEB. Immutable older
-        // releases may also carry their historical source ZIP.
-        const std::set<std::string> required_names{
-            run_name, entry.package + "_" + result.version + "_amd64.deb"};
-        auto legacy_names = required_names;
-        legacy_names.insert(entry.slug() + "-" + result.version + "-source.zip");
-        if (names != required_names && names != legacy_names)
-            throw std::runtime_error("Unqualified temporal release assets");
-    }
-    if (filesystem && !names.count(entry.package + "_" + result.version + "_amd64.deb"))
-        throw std::runtime_error("Filesystem native release is missing its generic package");
-    // BOOT must publish both its hardware-native source installer and a
-    // separately identifiable generic Debian package. A staging-only preview
-    // (for example BOOT-<version>-amd64.run) is never a native installer.
-    if (entry.id == "boot" &&
-        !names.count(entry.package + "_" + result.version + "_amd64.deb"))
-        throw std::runtime_error("BOOT release is missing its generic Debian package");
-    return result;
+        return {};
+    return tag;
 }
-Document release(const Entry &entry) {
-    const std::string directory=environment("INFILTRATOROS_RELEASE_DIR");
-    if(!directory.empty()) {
-        const fs::path root(directory);
-        const auto path=root/(entry.repo+".json");
-        if (fs::is_regular_file(path)) return parse(read_file(path));
-        Document pending=parse(read_file(root/"optional-pending.json"));
-        throw std::runtime_error(str(pending.ptr,entry.repo.c_str()));
+static std::string live_latest_tag(const std::string &repository) {
+    if (!std::regex_match(repository, std::regex("[A-Za-z][A-Za-z0-9-]+")))
+        throw std::runtime_error("Invalid release repository identity");
+    const std::string base = "https://github.com/Infiltrator-Projects/" + repository;
+    const std::string url = base + "/releases/latest";
+    const std::string prefix = base + "/releases/tag/";
+    for (int attempt = 0; attempt != 4; ++attempt) {
+        CURL *curl = curl_easy_init();
+        if (!curl) throw std::runtime_error("Cannot initialise GitHub latest-release check");
+        curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+        curl_easy_setopt(curl, CURLOPT_NOBODY, 1L);
+        curl_easy_setopt(curl, CURLOPT_USERAGENT, "InfiltratorOS-native/1");
+        curl_easy_setopt(curl, CURLOPT_TIMEOUT, 30L);
+        curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 15L);
+        curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 0L);
+        curl_easy_setopt(curl, CURLOPT_MAXREDIRS, 5L);
+        curl_easy_setopt(curl, CURLOPT_REDIR_PROTOCOLS_STR, "https");
+        curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 1L);
+        curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 2L);
+        CURLcode result = curl_easy_perform(curl);
+        long status = 0;
+        char *final_url = nullptr;
+        curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &status);
+        curl_easy_getinfo(curl, CURLINFO_REDIRECT_URL, &final_url);
+        const std::string target = final_url ? final_url : "";
+        curl_easy_cleanup(curl);
+        // The first authenticated GitHub redirect is authoritative; the
+        // final release HTML is unnecessary and may be throttled.
+        const auto tag = result == CURLE_OK ? verified_redirect_tag(prefix, status, target) : "";
+        if (!tag.empty()) return tag;
+        if (result == CURLE_OK && status >= 300 && status < 400)
+            throw std::runtime_error(repository + ": invalid latest release redirect");
+        if (status >= 400 && status < 500 && status != 408 && status != 429)
+            throw std::runtime_error(repository + ": live latest release HTTP " +
+                                     std::to_string(status));
+        if (attempt == 3)
+            throw std::runtime_error(repository + ": live latest release could not be verified (HTTP " + std::to_string(status) + ", " + curl_easy_strerror(result) + ")");
+        std::this_thread::sleep_for(std::chrono::seconds(1 << attempt));
     }
-    return parse(fetch("https://api.github.com/repos/Infiltrator-Projects/"+entry.repo+"/releases/latest"));
+    throw std::runtime_error(repository + ": live release lookup unavailable");
+}
 
+// The repository's latest stable release is the only authority. Read the
+// digest published by GitHub for its exact native installer. No shared
+// release metadata, version thresholds, or installed-version lookup.
+static Asset native_asset(const Entry &entry, const std::string &tag,
+                          const std::string &page) {
+    if (!std::regex_match(tag, std::regex("v[0-9]+\\.[0-9]+\\.[0-9]+(?:-[A-Za-z0-9.-]+)?")))
+        throw std::runtime_error("Invalid GitHub release tag");
+    const auto version = tag.substr(1);
+    const auto prefix = entry.id == "defragmenter" ? entry.repo : entry.slug();
+    const std::string suffix = entry.id == "calendar" || entry.id == "defragmenter"
+        ? "-local-folder.run" : "-native-installer.run";
+    const auto name = prefix + "-" + version + suffix;
+    const auto path = "/Infiltrator-Projects/" + entry.repo + "/releases/download/" + tag + "/" + name;
+    if (page.find("href=\"" + path + "\"") == std::string::npos &&
+        page.find("href=\"https://github.com" + path + "\"") == std::string::npos)
+        throw std::runtime_error("Native installer not published for " + entry.repo);
+    const std::regex control(R"(<clipboard-copy\b[^>]*>)");
+    const std::regex digest_value(R"re(\bvalue="sha256:([a-f0-9]{64})")re");
+    const auto label = "aria-label=\"Copy to clipboard digest for " + name + "\"";
+    std::string sha;
+    for (std::sregex_iterator it(page.begin(),page.end(),control), end; it!=end; ++it) {
+        const auto attributes=it->str();
+        if (attributes.find(label)==std::string::npos) continue;
+        std::smatch match;
+        if (!std::regex_search(attributes,match,digest_value) || !sha.empty())
+            throw std::runtime_error("Invalid or duplicate installer digest");
+        sha=match[1].str();
+    }
+    if (sha.empty()) throw std::runtime_error("GitHub has not published the native installer digest");
+    return {version,"https://github.com"+path,sha,0,{}};
+}
+// Resolve the source tag only for verifying the package that was built.
+// Annotated tags are peeled; the OS does not maintain source revisions.
+static std::string source_commit(const std::string &refs, const std::string &tag) {
+    const std::string target="refs/tags/"+tag;
+    std::istringstream stream(refs);
+    std::string hash, name, direct, peeled;
+    while (stream>>hash>>name) {
+        if (!std::regex_match(hash,std::regex("[a-f0-9]{40}")))
+            throw std::runtime_error("Invalid source tag object");
+        if (name==target && direct.empty()) direct=hash;
+        else if (name==target+"^{}" && peeled.empty()) peeled=hash;
+        else throw std::runtime_error("Unexpected or duplicate source tag reference");
+    }
+    if (direct.empty()) throw std::runtime_error("Published source tag missing");
+    return peeled.empty()?direct:peeled;
+}
+static Asset release(const Entry &entry) {
+    const auto tag=live_latest_tag(entry.repo);
+    const std::string base="https://github.com/Infiltrator-Projects/"+entry.repo;
+    auto asset=native_asset(entry,tag,fetch(base+"/releases/expanded_assets/"+tag));
+    if (entry.kind!="application" || entry.id=="calendar") {
+        const auto ref="refs/tags/"+tag;
+        asset.source_revision=source_commit(output({"/usr/bin/timeout","45s",
+            "/usr/bin/env","GIT_TERMINAL_PROMPT=0","/usr/bin/git","ls-remote",
+            base+".git",ref,ref+"^{}"}),tag);
+    }
+    return asset;
 }
 void download(const Asset &asset,const fs::path &target) {
     FILE *file=fopen(target.c_str(),"wb+");
     if(!file)throw std::runtime_error("Cannot create installer");
     Transfer sink;
     sink.file=file;
-    sink.limit=asset.size;
+    sink.limit=asset.size ? asset.size : MAX_ASSET;
     bool closed=false;
     try {
         transfer(asset.url,sink);
         const int close_status=fclose(file);
         closed=true;
         if(close_status)throw std::runtime_error("Cannot close native installer");
-        if(sink.length!=asset.size || digest(target)!=asset.sha)
+        if(!sink.length || (asset.size && sink.length!=asset.size) || digest(target)!=asset.sha)
             throw std::runtime_error("Installer digest/length mismatch");
         if(chmod(target.c_str(),0700)!=0)
             throw std::runtime_error("Cannot make installer executable");
@@ -575,41 +568,6 @@ Entry application(const std::string &slug) {
     }
     throw std::runtime_error("Unknown native application");
 }
-void discover(const std::vector<Entry> &extra, const fs::path &snapshot) {
-    if (geteuid() != 0) throw std::runtime_error("Native discovery requires root");
-    const fs::path directory = fs::canonical(snapshot);
-    if (directory.parent_path().parent_path() != ROOT ||
-        directory.parent_path().filename().string().rfind("native-worker.", 0) != 0)
-        throw std::runtime_error("Invalid additional filesystem snapshot directory");
-    Document pending=parse(read_file(directory/"optional-pending.json"));
-    Strings available,missing;
-    std::set<std::string> requested;
-    const auto manifest = directory.parent_path() / "selected.list";
-    if (fs::is_regular_file(manifest))
-        for (const auto &slug : lines(read_file(manifest))) requested.insert(slug);
-    for(const auto &e:extra) {
-        if (!requested.empty() && !requested.count(e.slug())) continue;
-        try {
-            auto file=directory/(e.repo+".json");
-            if(!fs::is_regular_file(file)) {
-                auto *reason=field(pending.ptr,e.repo.c_str());
-                if(json_object_get_type(reason)!=json_type_string)
-                    throw std::runtime_error("Invalid optional provider status");
-                throw std::runtime_error(json_object_get_string(reason));
-            }
-            Document meta=parse(read_file(file));
-            (void)release_asset(e,meta.ptr,false,true);
-            available.push_back(e.slug());
-        } catch(const std::exception &error) {
-            missing.push_back(e.repo+": "+error.what());
-        }
-    }
-    save(directory.parent_path() / "filesystems-optional.list", joined(available));
-    save(directory.parent_path() / "filesystems-pending.list", joined(missing));
-    std::cout << "Filesystem publication: " << available.size() << " installable, "
-              << missing.size() << " pending\n";
-}
-
 // Common V2 and installed provider verification
 
 bool exports_common_filesystem_api(const fs::path &path) {
@@ -905,7 +863,7 @@ static bool efi_signature_present(const fs::path &image) {
            lower.find("no signature table") == std::string::npos;
 }
 
-bool native_boot_current(const Asset &asset, bool evidence, std::string *reason) {
+bool native_boot_current(std::string *reason) {
     auto fail = [&](const char *message) {
         if (reason) *reason = message;
         return false;
@@ -943,26 +901,12 @@ bool native_boot_current(const Asset &asset, bool evidence, std::string *reason)
                 return fail("Secure Boot Shim signature cannot be established");
         }
     }
-    std::string inventory;
-    try { inventory = boot_efi_inventory(image); }
+    try { (void)boot_efi_inventory(image); }
     catch (const std::exception &error) { if (reason) *reason = error.what(); return false; }
-    if (!evidence) return true;
-    const auto attestation = ROOT / "native-verified-boot.json";
-    if (!regular(attestation)) return fail("BOOT native installation attestation is absent");
-    try {
-        Document proof = parse(read_file(attestation));
-        if (str(proof.ptr, "version") != asset.version ||
-            str(proof.ptr, "installer_sha256") != asset.sha ||
-            str(proof.ptr, "program_sha256") != digest(image) ||
-            str(proof.ptr, "efi_inventory") != inventory)
-            return fail("BOOT release attestation differs from its installed EFI image");
-    } catch (...) {
-        return fail("BOOT native installation attestation cannot be verified");
-    }
     return true;
 }
 
-// Application verification and installation attestation
+// Application verification
 
 Strings required_paths(const std::string &slug) {
     if (slug == "boot") return {};
@@ -1037,12 +981,12 @@ bool application_package_matches(const Entry &entry, const Asset &asset,
     return fields[1] == asset.version + suffix;
 }
 bool application_current(const Entry &entry, const Asset &asset,
-                                bool evidence, std::string *reason = nullptr) {
+                                std::string *reason = nullptr) {
     auto fail = [&](const std::string &detail) {
         if (reason) *reason = detail;
         return false;
     };
-    if (entry.id == "boot") return native_boot_current(asset, evidence, reason);
+    if (entry.id == "boot") return native_boot_current(reason);
     const std::string identity = pkg_query(entry.package, std::string("$") +
         "{Status}\t$" + "{Version}");
     if (!application_package_matches(entry, asset, identity))
@@ -1061,17 +1005,6 @@ bool application_current(const Entry &entry, const Asset &asset,
                                       entry.package + ": " + p)
             return fail("Expected Calendar resource is not owned by its package: " + p);
     }
-    if (evidence) {
-        fs::path file = ROOT / ("native-verified-" + entry.id + ".json");
-        if (!regular(file)) return fail("InfiltratorOS native attestation is absent");
-        try {
-            Document proof = parse(read_file(file));
-            if (str(proof.ptr, "version") != asset.version ||
-                str(proof.ptr, "installer_sha256") != asset.sha ||
-                str(proof.ptr, "program_sha256") != digest(entry.resource))
-                return fail("Native attestation does not match the installed executable");
-        } catch (...) { return fail("Native attestation cannot be verified"); }
-    }
     if (!dpkg_verified(entry.package))
         return fail("dpkg verification rejected an installed application file");
     return true;
@@ -1084,23 +1017,9 @@ void verify_install(const Entry &entry, const Asset &asset, bool application_mod
         return;
     }
     std::string verification_failure;
-    if (!application_current(entry, asset, false, &verification_failure))
+    if (!application_current(entry, asset, &verification_failure))
         throw std::runtime_error("Independent application installation contract failed: " +
                                  verification_failure);
-    json_object *proof = json_object_new_object();
-    json_object_object_add(proof, "version", json_object_new_string(asset.version.c_str()));
-    json_object_object_add(proof, "installer_sha256", json_object_new_string(asset.sha.c_str()));
-    std::string value = digest(entry.id == "boot" ? installed_boot_image() : fs::path(entry.resource));
-    json_object_object_add(proof, "program_sha256", json_object_new_string(value.c_str()));
-    if (entry.id == "boot")
-        json_object_object_add(proof, "efi_inventory",
-                               json_object_new_string(boot_efi_inventory(installed_boot_image()).c_str()));
-    std::string content = json_object_to_json_string_ext(proof, JSON_C_TO_STRING_PLAIN);
-    json_object_put(proof);
-    TempDir staging(ROOT, "verified-native-");
-    fs::path record = staging.path / "attestation";
-    save(record, content);
-    fs::rename(record, ROOT / ("native-verified-" + entry.id + ".json"));
 }
 
 // Debian package verification and recovery
@@ -1622,16 +1541,8 @@ static int run_selected_builds(const std::vector<Entry> &chosen, const fs::path 
         for (const auto &e : chosen) {
             Status status(statuses, e.slug());
             try {
-                const bool app = e.kind == "application";
-                const bool temporal = e.kind == "calendar" || e.kind == "clock";
-                status.write("queued", 2, "Smart build queued", "Awaiting native package lock");
-                Document meta = release(e);
-                Asset asset = release_asset(e, meta.ptr, temporal, !app && !temporal);
-                if (app ? application_current(e, asset, true) : provider_current(e, asset)) {
-                    status.write("complete", 100, "Already installed", "Native package verified");
-                    completed.insert(e.slug());
-                    continue;
-                }
+                status.write("running", 2, "Resolving independent installer", e.repo);
+                Asset asset = release(e);
                 prepare_build_dependencies(e, status);
                 Job job{e, asset, scratch.path / (e.slug() + ".run"), scratch.path / e.slug(), {}};
                 status.write("queued", 15, "Native build prepared", "Awaiting resource admission");
@@ -1678,8 +1589,7 @@ static int run_selected_builds(const std::vector<Entry> &chosen, const fs::path 
 int smart_queue(const std::vector<Entry> &entries) {
     if (geteuid() != 0) throw std::runtime_error("Smart queue requires root");
     fs::path stage = stage_dir();
-    if (stage == ROOT || environment("INFILTRATOROS_RELEASE_DIR").empty())
-        throw std::runtime_error("Smart queue requires a native run snapshot");
+    if (stage == ROOT) throw std::runtime_error("Smart queue requires an installation stage");
     const auto selection_order = lines(read_file(stage / "selected.list"));
     std::set<std::string> selected(selection_order.begin(), selection_order.end());
     if (selection_order.size() != selected.size()) throw std::runtime_error("Duplicate selected component");
@@ -1705,16 +1615,7 @@ static int install_boot(const Entry &entry, const fs::path &statuses) {
     setenv("TMPDIR", statuses.c_str(), 1);
     try {
         status.write("running", 5, "Checking native BOOT release", entry.repo);
-        const auto meta = release(entry);
-        const auto asset = release_asset(entry, meta.ptr, false, false);
-        // An OS batch deliberately refreshes BOOT before provider deployment.
-        // A standalone worker may still reuse a verified installation.
-        const char *refresh = std::getenv("INFILTRATOROS_REINSTALL_BOOT");
-        if (!(refresh && std::string_view(refresh) == "1") &&
-            application_current(entry, asset, true)) {
-            status.write("complete", 100, "Already installed", "Native EFI inventory verified");
-            return 0;
-        }
+        const auto asset = release(entry);
         required({"/usr/bin/apt-get", "-o", "DPkg::Lock::Timeout=-1", "check"});
         TempDir directory(statuses, "native-boot-");
         const auto run = directory.path / "native-installer.run";
@@ -1802,10 +1703,6 @@ int native_component_worker_entrypoint(int argc, char **argv) {
             }
             if (argc == 2 && std::string(argv[1]) == "--list-all") {
                 list(all, all.size(), "INFILTRATOROS_SELECTED_FILESYSTEMS", true);
-                return 0;
-            }
-            if (argc == 3 && std::string(argv[1]) == "--discover-additional") {
-                discover(extra, argv[2]);
                 return 0;
             }
             if (argc != 2) throw std::runtime_error("Usage: install-filesystem-resources SLUG");

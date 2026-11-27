@@ -24,7 +24,7 @@ Publication consumes the qualified archive/DEB/commit identity and verifies remo
 - **Additional filesystems:** the native component and progress tests cover catalogue and discovery contracts for the additional 18 providers. The full 23-provider deployment must be qualified on the target.
 - **Aggregate progress:** `tests/native-progress-count-test.c` verifies the 83-job manifest-derived total, including Calendar and BOOT, and rejection of missing or malformed manifests.
 
-The 63 central catalogue jobs (four applications, 54 temporal providers, five established filesystems) use one checksum-checked native release snapshot. Calendar's app job checks its independent release. `tests/native-component-test.cpp` checks its asset name, pinned source identity and native Debian version contract. Unqualified optional filesystem releases remain pending.
+The native worker tests direct release asset identity, matching GitHub-published SHA-256, and tagged source identity. Debian payload and Common V2 descriptor validation remain independent of release publication.
 
 ## Installed-state acceptance rules
 
@@ -65,4 +65,4 @@ The native worker regression suite compiles the exact production source with its
 
 ### Real native component integration
 
-The `Real native provider integration` workflow builds the production worker and snapshot verifier, selects the actual published OFS and Binary Clock native releases, and uses the real isolated scheduler and serial package transaction. It verifies installed package identity, Common V2 descriptor validity, and a second idempotent run. BOOT release metadata is selected only to satisfy snapshot validation; BOOT is never launched. Logs retain actual concurrent admission and installation evidence. This hosted test is not physical-hardware or whole-inventory qualification.
+The manually dispatched `Real native provider integration` workflow exercises the published OFS and Binary Clock installers directly on a disposable host. BOOT is not invoked. It is not a publication gate or whole-system qualification.

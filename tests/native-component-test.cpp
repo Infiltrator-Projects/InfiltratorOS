@@ -26,37 +26,6 @@ static void rejects(const std::function<void()> &action, const char *description
     }
     throw std::runtime_error(std::string("Native worker accepted invalid ") + description);
 }
-static void add_asset(json_object *assets, const std::string &name, const std::string &url,
-                      const std::string &hash = std::string(64, 'a')) {
-    json_object *asset = json_object_new_object();
-    json_object_object_add(asset, "name", json_object_new_string(name.c_str()));
-    json_object_object_add(asset, "browser_download_url", json_object_new_string(url.c_str()));
-    json_object_object_add(asset, "digest", json_object_new_string(("sha256:" + hash).c_str()));
-    json_object_object_add(asset, "size", json_object_new_int64(123));
-    json_object_array_add(assets, asset);
-}
-static Document sample_release(const Entry &e, const std::string &version, bool temporal,
-                               std::string run = {}) {
-    auto *data = json_object_new_object();
-    json_object_object_add(data, "draft", json_object_new_boolean(0));
-    json_object_object_add(data, "prerelease", json_object_new_boolean(0));
-    json_object_object_add(data, "tag_name", json_object_new_string(("v" + version).c_str()));
-    json_object_object_add(data, "target_commitish",
-                           json_object_new_string(std::string(40, 'b').c_str()));
-    auto *assets = json_object_new_array();
-    const auto prefix = "https://github.com/Infiltrator-Projects/" + e.repo +
-                        "/releases/download/v" + version + "/";
-    if (run.empty()) run = e.slug() + "-" + version + "-native-installer.run";
-    const std::string deb = e.package + "_" + version + "_amd64.deb";
-    add_asset(assets, run, prefix + run);
-    add_asset(assets, deb, prefix + deb);
-    if (temporal) {
-        const auto zip = e.slug() + "-" + version + "-source.zip";
-        add_asset(assets, zip, prefix + zip);
-    }
-    json_object_object_add(data, "assets", assets);
-    return Document(data);
-}
 static void check_build_resources() {
     using namespace infiltrator_native;
     std::vector<int> cpus;
@@ -332,18 +301,6 @@ Boot0007 BOOT Boot Manager HD(1,GPT,1234)/File(\EFI\InfiltratorOS\BOOT\BOOTX64.E
         check(temporal.size() == 54, "temporal cardinality");
         check(established.size() == 5, "established cardinality");
         check(additional.size() == 18, "additional cardinality");
-        const auto ntfs = *std::find_if(additional.begin(), additional.end(),
-                                       [](const Entry &e) { return e.id == "ntfs"; });
-        for (auto version : {"1.0.15", "1.0.16"}) {
-            auto release = sample_release(ntfs, version, false);
-            rejects([&]() { (void)release_asset(ntfs, release.ptr, false, true); },
-                    "NTFS native installer with a FUSE dependency");
-        }
-        for (auto version : {"1.0.14", "1.0.17"}) {
-            auto release = sample_release(ntfs, version, false);
-            check(release_asset(ntfs, release.ptr, false, true).version == version,
-                  "FUSE-free NTFS native installer");
-        }
         TempDir module_fixture(fs::temp_directory_path(), "native-module-");
         const auto source = module_fixture.path / "provider.c";
         const auto module = module_fixture.path / "provider.so";
@@ -475,31 +432,21 @@ Boot0007 BOOT Boot Manager HD(1,GPT,1234)/File(\EFI\InfiltratorOS\BOOT\BOOTX64.E
               "BOOT alone remains an independent direct installer");
 
 
-        auto boot_release = sample_release(boot, "0.1.456", false);
-        check(release_asset(boot, boot_release.ptr, false, false).url.find(
-                  "boot-0.1.456-native-installer.run") != std::string::npos,
-              "BOOT accepts the stable native-run release with verified asset identity");
-        rejects([&]() {
-            auto prerelease = sample_release(boot, "0.1.456", false);
-            json_object_object_add(prerelease.ptr, "prerelease", json_object_new_boolean(1));
-            (void)release_asset(boot, prerelease.ptr, false, false);
-        }, "BOOT prerelease installer");
-        rejects([&]() {
-            auto old_boot = sample_release(boot, "0.1.49", false);
-            (void)release_asset(boot, old_boot.ptr, false, false);
-        }, "unsupported native BOOT release");
-        rejects([&]() {
-            auto preview = sample_release(boot, "0.1.452", false, "BOOT-0.1.452-amd64.run");
-            (void)release_asset(boot, preview.ptr, false, false);
-        }, "staging-only BOOT executable");
-        rejects([&]() {
-            auto no_deb = sample_release(boot, "0.1.452", false);
-            json_object_array_del_idx(field(no_deb.ptr, "assets"), 1, 1);
-            (void)release_asset(boot, no_deb.ptr, false, false);
-        }, "BOOT release without independently published generic package");
-        json_object_object_add(boot_release.ptr, "draft", json_object_new_boolean(1));
-        rejects([&]() { (void)release_asset(boot, boot_release.ptr, false, false); },
-                "unpublished BOOT installer");
+        const std::string tag="v0.1.456", name="boot-0.1.456-native-installer.run";
+        const std::string page="<a href=\"/Infiltrator-Projects/Boot/releases/download/"+tag+"/"+name+
+            "\">RUN</a><clipboard-copy value=\"sha256:"+std::string(64,'a')+
+            "\" aria-label=\"Copy to clipboard digest for "+name+"\"></clipboard-copy>";
+        const auto direct=native_asset(boot,tag,page);
+        check(direct.sha==std::string(64,'a') && direct.version=="0.1.456" &&
+              direct.url=="https://github.com/Infiltrator-Projects/Boot/releases/download/"+tag+"/"+name,
+              "direct GitHub release asset and digest");
+        rejects([&]() { (void)native_asset(boot,tag,page+page); }, "ambiguous digest");
+        rejects([&]() { (void)native_asset(boot,"v0.1.457",page); }, "unrelated release asset");
+        rejects([&]() { (void)native_asset(boot,tag,""); }, "missing native installer");
+        check(source_commit(std::string(40,'b')+"\trefs/tags/"+tag+"\n"+
+                            std::string(40,'c')+"\trefs/tags/"+tag+"^{}\n",tag)==std::string(40,'c'),
+              "annotated tag resolves to source commit");
+        rejects([&]() { (void)source_commit("",tag); }, "missing source tag");
         check(application("defragmenter").resource == "/Programs/defragmenter",
               "defragmenter destination");
         // A missing optional Defragmenter field must never invalidate other apps.
@@ -527,88 +474,16 @@ Boot0007 BOOT Boot Manager HD(1,GPT,1234)/File(\EFI\InfiltratorOS\BOOT\BOOTX64.E
             const auto calendar = application("calendar");
             check(calendar.repo == "Calendar" && calendar.package == "calendar" &&
                   calendar.resource == "/usr/libexec/calendar-about", "Calendar applet identity");
-            auto legacy = sample_release(calendar, "1.0.130", false,
-                                         "calendar-1.0.130-local-folder.run");
-            rejects([&]() { (void)release_asset(calendar, legacy.ptr, false, false); },
-                    "Calendar release that still invokes the Python scanner");
-            auto release = sample_release(calendar, "1.0.131", false,
-                                          "calendar-1.0.131-local-folder.run");
-            auto asset = release_asset(calendar, release.ptr, false, false);
-            check(asset.version == "1.0.131" &&
-                  asset.url == "https://github.com/Infiltrator-Projects/Calendar/releases/download/"
-                               "v1.0.131/calendar-1.0.131-local-folder.run",
-                  "Calendar release installer");
+            Asset asset; asset.version="1.0.131";
             check(application_package_matches(calendar, asset,
                   "install ok installed\t1.0.131+nativepgo1"), "Calendar native Debian identity");
             for (auto version : {"1.0.131", "1.0.130+nativepgo1", "1.0.131+nativepgo1bad"})
                 check(!application_package_matches(calendar, asset,
                       std::string("install ok installed\t") + version),
                       "Reject generic, stale and malformed Calendar versions");
-            json_object_object_add(release.ptr, "target_commitish", json_object_new_string("main"));
-            rejects([&]() { (void)release_asset(calendar, release.ptr, false, false); },
-                    "unpinned Calendar release");
-            auto wrong = sample_release(calendar, "1.0.131", false);
-            rejects([&]() { (void)release_asset(calendar, wrong.ptr, false, false); },
-                    "wrong Calendar installer filename");
         }
         rejects([&]() { (void)application("unrecognised"); }, "application");
 
-        // Both the new network-only two-asset release and immutable legacy
-        // releases must be accepted; arbitrary extras and missing DEBs must not.
-        {
-            auto release = sample_release(temporal[0], "1.0.5", true);
-            auto *assets = field(release.ptr, "assets");
-            json_object_array_del_idx(assets, 2, 1);
-            check(release_asset(temporal[0], release.ptr, true, false).version == "1.0.5",
-                  "two-asset temporal release");
-            json_object_array_del_idx(assets, 1, 1);
-            rejects([&]() { (void)release_asset(temporal[0], release.ptr, true, false); },
-                    "missing temporal generic DEB");
-        }
-
-        {
-            auto release = sample_release(temporal[0], "1.0.5", true);
-            auto asset = release_asset(temporal[0], release.ptr, true, false);
-            check(asset.size == 123 && asset.sha == std::string(64, 'a') &&
-                  asset.source_revision == std::string(40, 'b'),
-                  "temporal digest and size");
-            json_object_object_add(release.ptr, "draft", json_object_new_boolean(1));
-            rejects([&]() { (void)release_asset(temporal[0], release.ptr, true, false); },
-                    "draft release");
-        }
-        {
-            auto release = sample_release(temporal[0], "1.0.5", true);
-            auto *assets = field(release.ptr, "assets");
-            json_object *run = json_object_array_get_idx(assets, 0);
-            json_object_object_add(run, "digest", json_object_new_string("sha256:INVALID"));
-            rejects([&]() { (void)release_asset(temporal[0], release.ptr, true, false); },
-                    "asset SHA-256");
-        }
-        {
-            auto release = sample_release(temporal[0], "1.0.5", true);
-            auto *assets = field(release.ptr, "assets");
-            json_object *run = json_object_array_get_idx(assets, 0);
-            json_object_object_add(run, "browser_download_url",
-                                   json_object_new_string("https://attacker.example/script.run"));
-            rejects([&]() { (void)release_asset(temporal[0], release.ptr, true, false); },
-                    "asset owner");
-        }
-        {
-            auto old_release = sample_release(established[0], "0.1.23", false);
-            rejects([&]() { (void)release_asset(established[0], old_release.ptr, false, true); },
-                    "reject legacy FAT12 release with forbidden FUSE dependencies");
-            auto release = sample_release(established[0], "0.1.24", false);
-            auto asset = release_asset(established[0], release.ptr, false, true);
-            check(asset.version == "0.1.24", "minimum permitted FAT12 release");
-        }
-        {
-            auto it = std::find_if(established.begin(), established.end(),
-                         [](const Entry &e) { return e.id == "exfat"; });
-            check(it != established.end(), "exFAT manifest identity");
-            auto release = sample_release(*it, "0.1.2", false);
-            rejects([&]() { (void)release_asset(*it, release.ptr, false, true); },
-                    "known-broken exFAT release");
-        }
         {
             setenv("INFILTRATOROS_SELECTED_FILESYSTEMS", "not-a-filesystem", 1);
             rejects([&]() { list(established, 5, "INFILTRATOROS_SELECTED_FILESYSTEMS", true); },

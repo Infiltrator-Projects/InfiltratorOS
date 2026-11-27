@@ -1,3 +1,9 @@
+## 1.0.133 — Remove central release management
+
+- Remove the central release catalogue client, shared release preflight, cached release metadata, component version thresholds and already-installed version comparisons.
+- Resolve the latest independent native installer directly from GitHub without REST quota or credentials; verify its published SHA-256 and tagged source identity where required.
+- Preserve the shared resource-aware scheduler, independent BOOT initialization, serial Debian installation and per-component validation.
+
 ## 1.0.132 — Independent release discovery
 
 - Resolve changed or missing cached release metadata directly from each component's GitHub release, without waiting for central publication. Report unavailable components individually and continue installing independent components. Existing asset digest checks remain unchanged.

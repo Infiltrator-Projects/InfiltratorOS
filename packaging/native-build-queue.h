@@ -8,7 +8,7 @@
 // The signed run catalogue supplies jobs; resource admission supplies concurrency.
 namespace infiltrator_native {
 // One registry owns the application identities used by release discovery,
-// the dispatcher and the build queue. BOOT is the initial, direct handoff after release preflight.
+// the dispatcher and the build queue. BOOT is the initial, direct handoff after component selection.
 struct ApplicationContract {
     std::string_view slug, repository, package, resource;
     bool queued;

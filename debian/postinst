@@ -59,7 +59,6 @@ unpack_native_workers() {
         test -x "$stage/install-$product" || return 1
         test -x "$stage/$product-progress" || return 1
     done
-    test -x "$stage/prepare-native-releases" || return 1
     test -x "$stage/orchestrate-native-install" || return 1
     for inventory in temporal-resources.json filesystem-resources.json filesystem-additional.json; do
         test -s "$stage/$inventory" || return 1
@@ -199,7 +198,7 @@ publish_phase icons
 /System/Commands/InfiltratorOS/ensure-native-icons
 publish_phase host
 /System/Commands/InfiltratorOS/select-theme configure
-publish_phase releases
+publish_phase components
 
 # Every run owns its own status and log directory beneath its temporary
 # worker stage. No run may remove shared /Temporary/InfiltratorOS or files
@@ -248,9 +247,7 @@ mkdir -p "$stage/status"
                 if (umask 077
                     cd "$stage"
                     tar -czf "$archive_tmp" status selected.list phase \
-                        native-release-preparation.log \
-                        optional-filesystem-discovery.log dispatcher.log \
-                        filesystems-optional.list filesystems-pending.list
+                        dispatcher.log
                 ); then
                     chmod 0600 "$archive_tmp"
                     mv -f -- "$archive_tmp" "$STATUS_ROOT/last-provision-logs.tar.gz"

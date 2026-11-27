@@ -49,11 +49,6 @@ c++ -std=c++17 -O2 -Wall -Wextra -Werror -Wpedantic -pthread \
     tests/native-component-test.cpp -o "$WORK/native-component-test" \
     $(pkg-config --libs libcurl json-c openssl) -ldl
 "$WORK/native-component-test"
-c++ -std=c++17 -O2 -Wall -Wextra -Werror -Wpedantic \
-    $(pkg-config --cflags libcurl json-c) \
-    tests/native-snapshot-test.cpp -o "$WORK/native-snapshot-test" \
-    $(pkg-config --libs libcurl json-c)
-"$WORK/native-snapshot-test"
 cc -std=c11 -O2 -Wall -Wextra -Werror -Wpedantic -c packaging/installer-status.c -o "$WORK/orchestrator-status.o"
 c++ -std=c++17 -O2 -Wall -Wextra -Werror -Wpedantic \
     tests/native-orchestrator-test.cpp "$WORK/orchestrator-status.o" -o "$WORK/native-orchestrator-test"

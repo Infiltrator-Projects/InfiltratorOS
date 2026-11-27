@@ -31,9 +31,6 @@ jobs:
             packaging/native-component-worker.cpp \
             -o "$RUNNER_TEMP/native-tools/native-component-worker" \
             $(pkg-config --libs libcurl json-c openssl) -ldl
-          c++ -std=c++17 -O2 -Wall -Wextra -Werror -Wpedantic \
-            $(pkg-config --cflags libcurl json-c) packaging/native-release-snapshot.cpp \
-            -o "$RUNNER_TEMP/native-tools/native-snapshot" $(pkg-config --libs libcurl json-c)
           cp packaging/filesystem-resources.json packaging/filesystem-additional.json \
              packaging/temporal-resources.json "$RUNNER_TEMP/native-tools/"
       - name: Install actual independent native filesystem and clock packages

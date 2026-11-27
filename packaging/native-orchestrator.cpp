@@ -229,7 +229,7 @@ static void launch(const fs::path &stage, const std::string &launcher,
     if (result != 0 && !reported_failure)
         failed_job(stage, name, "Worker exited unsuccessfully (exit " + std::to_string(result) + ")");
 }
-// BOOT owns the one clean ESP deployment. Run it after release preflight
+// BOOT owns the one clean ESP deployment. Run it after component selection
 // and before the component queue, not after any provider could stage an EFI
 // module. Ordinary hosted providers remain independently installable even
 // when BOOT fails; future firmware publication must require BOOT success.
@@ -292,54 +292,7 @@ static void dispatch(const fs::path &stage) {
     const fs::path manifest = canonical / ".selected.list.tmp";
     write_text(manifest, joined(selected));
     fs::rename(manifest, canonical / "selected.list");
-    const fs::path log = canonical / "native-release-preparation.log";
-    int code = run({(canonical / "prepare-native-releases").string(),
-                    (canonical / "release-json").string(),
-                    (canonical / "providers.list").string(),
-                    (canonical / "filesystems.list").string(),
-                    (canonical / "filesystems-all.list").string(),
-                    (canonical / "selected.list").string()}, log);
-    if (code != 0) {
-        std::cerr << read_text(log);
-        throw std::runtime_error("Native release preparation failed");
-    }
-    setenv("INFILTRATOROS_RELEASE_DIR", (canonical / "release-json").c_str(), 1);
-    const fs::path discovery = canonical / "optional-filesystem-discovery.log";
-    code = run({(canonical / "install-filesystem-resources").string(),
-                "--discover-additional", (canonical / "release-json").string()}, discovery);
-    const fs::path optional_path = canonical / "filesystems-optional.list";
-    const fs::path pending_path = canonical / "filesystems-pending.list";
-    if (code != 0) {
-        std::ofstream out(discovery, std::ios::app);
-        out << "Additional filesystem discovery failed; established drivers remain enabled.\n";
-        write_text(optional_path, "");
-        auto all = lines(output_of({(canonical / "install-filesystem-resources").string(), "--catalogue-all"}, true));
-        Strings missing;
-        for (const auto &s : all)
-            if (std::find(established.begin(), established.end(), s) == established.end() &&
-                std::find(chosen.begin(), chosen.end(), s) != chosen.end())
-                missing.push_back(s);
-        write_text(pending_path, joined(missing));
-    }
-    if (!fs::is_regular_file(optional_path) || !fs::is_regular_file(pending_path))
-        throw std::runtime_error("Missing filesystem discovery manifests");
-    Strings optional = lines(read_text(optional_path));
-    std::set<std::string> names(optional.begin(), optional.end());
-    if (optional.size() > full_fs.size() || names.size() != optional.size())
-        throw std::runtime_error("Invalid optional filesystem catalogue");
-    for (const auto &item : optional) {
-        if (item.rfind("filesystem-", 0) != 0 ||
-            std::find(established.begin(), established.end(), item) != established.end())
-            throw std::runtime_error("Invalid optional filesystem entry: " + item);
-    }
-    if (fs::file_size(pending_path)) {
-        std::cout << "Some independent filesystem modules await published releases.\n";
-        write_text(STATUS_ROOT / "filesystems-pending.list", read_text(pending_path));
-    }
-    // Missing releases are reported by their own workers. They do not
-    // prevent unrelated applications, filesystem modules or BOOT from running.
-    // The manifest is now authoritative. The UI can change from release
-    // preparation to measured component progress without guessing durations.
+    // Workers resolve their own latest published RUN; no shared release preflight.
     const auto phase = canonical / ".phase.dispatcher";
     write_text(phase, "components\n");
     fs::rename(phase, canonical / "phase");
