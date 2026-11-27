@@ -1,3 +1,7 @@
+## 1.0.143 — Install independent completed components during compilation
+
+- The serial installation lane no longer waits for every active compiler when APT will change only the completed component. Use APT's transaction plan to distinguish component-only installs from exceptional shared-dependency changes. Preserve exclusive prerequisite transactions and the already-current shortcut.
+
 ## 1.0.142 — Skip already-current components before download and compilation
 
 - Compare each repository's live release with its installed Debian version, including native and PGO build suffixes, or BOOT's own embedded SBAT release. A match completes the job immediately without fetching installer assets, downloading, compiling or installing. No central version catalogue, cached proof or additional qualification is required. Preserve the serial installation lane for changed components.

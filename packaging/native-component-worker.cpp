@@ -737,6 +737,27 @@ Strings package_install_command(const fs::path &package, bool calendar = false) 
     command.push_back(package.string());
     return command;
 }
+// A component-only APT transaction may overlap independent native builds.
+// A plan that changes any other package may affect compiler dependencies,
+// so only that exceptional transaction must wait for active compilations.
+static bool component_only_transaction(const Entry &entry, const fs::path &package) {
+    auto command = package_install_command(package, entry.id == "calendar");
+    command.insert(command.begin() + 1, {"-s", "-o", "Debug::NoLocking=true"});
+    command.insert(command.begin(), {"/usr/bin/env", "LC_ALL=C"});
+    std::string plan;
+    if (execute(command, &plan) != 0) return false;
+    for (const auto &line : lines(plan)) {
+        std::istringstream input(line);
+        std::string action, name;
+        input >> action >> name;
+        if (action != "Inst" && action != "Conf" && action != "Remv" && action != "Purg")
+            continue;
+        const auto colon = name.find(':');
+        if (name.substr(0, colon) != entry.package || action == "Remv" || action == "Purg")
+            return false;
+    }
+    return true;
+}
 fs::path native_package_from(const fs::path &folder, const Entry &entry) {
     std::vector<fs::path> packages;
     for (const auto &item : fs::directory_iterator(folder))
@@ -1051,7 +1072,8 @@ static void admitted_build(Job &job, const fs::path &statuses,
 void build_packages(std::vector<Job> &jobs, const fs::path &statuses,
                            std::map<std::string, std::string> &failures,
                            const std::function<Asset(const Entry &)> &resolve = release,
-                           const std::function<void(Job &)> &install = {}) {
+                           const std::function<void(Job &)> &install = {},
+                           const std::function<bool(const Job &)> &component_only = {}) {
     using namespace infiltrator_native;
     std::ofstream timings(statuses / "smart-build-timings.log");
     if (!timings) throw std::runtime_error("Cannot open native build timing log");
@@ -1126,15 +1148,30 @@ void build_packages(std::vector<Job> &jobs, const fs::path &statuses,
         if (!installing && next_install < ready.size()) {
             const auto job = ready[next_install++];
             auto result = std::async(std::launch::async, [&, job] {
-                // APT may change shared build dependencies. Let existing
-                // compilations finish before the transaction, while new
-                // jobs can still locate and download their installers.
-                std::unique_lock<std::shared_mutex> write(host, std::defer_lock);
+                // The serial lane is the only ordinary installation writer.
+                // A shared host lock excludes prerequisite APT transactions
+                // while permitting unrelated compilations to continue.
+                std::shared_lock<std::shared_mutex> read(host, std::defer_lock);
                 {
                     std::lock_guard<std::mutex> admission(host_admission);
-                    write.lock();
+                    read.lock();
                 }
-                install(jobs[job]);
+                if (component_only && component_only(jobs[job])) {
+                    install(jobs[job]);
+                } else {
+                    // Only a transaction affecting shared dependencies needs
+                    // exclusive host access. Never hold both locks at once.
+                    read.unlock();
+                    Status(statuses, jobs[job].entry.slug()).write("queued", 80,
+                        "Awaiting shared dependency transaction",
+                        "Other packages may change; waiting for active compilations");
+                    std::unique_lock<std::shared_mutex> write(host, std::defer_lock);
+                    {
+                        std::lock_guard<std::mutex> admission(host_admission);
+                        write.lock();
+                    }
+                    install(jobs[job]);
+                }
             });
             installing.emplace(Installation{job, std::move(result)});
         }
@@ -1339,6 +1376,8 @@ static int run_selected_builds(const std::vector<Entry> &chosen, const fs::path 
                 });
             status.write("complete", 100, "Native installation complete", "Verified installed package");
             completed.insert(job.entry.slug());
+        }, [](const Job &job) {
+            return component_only_transaction(job.entry, job.package);
         });
         for (const auto &job : jobs)
             if (job.asset.current) completed.insert(job.entry.slug());
