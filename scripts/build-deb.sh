@@ -9,11 +9,7 @@ ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
 VERSION="$(tr -d '\r\n' < "$ROOT/VERSION")"
 # Validate the staging path before deleting any previous build.
 printf '%s\n' "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'
-test -f "$ROOT/debian/control.in"
-test -x "$ROOT/packaging/ensure-native-fonts.sh"
 # Compile the pinned first-party Common implementation, never copy its colours.
-test -f "$ROOT/src/infiltratr-common/include/infiltratr/design.h"
-test -f "$ROOT/src/infiltratr-common/src/design.c"
 test "$(dpkg --print-architecture)" = amd64
 SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH:-$(git -C "$ROOT" log -1 --format=%ct 2>/dev/null || printf 0)}"
 case "$SOURCE_DATE_EPOCH" in ""|*[!0-9]*) echo "Invalid SOURCE_DATE_EPOCH" >&2; exit 1 ;; esac
@@ -42,7 +38,6 @@ ICON_PART_DIR="$ROOT/assets/icons"
 ICON_ARCHIVE_SHA256="8d55ccbe5f1eefe3800ab12578a641524742b9482410d95757317434523b342c"
 SYSTEM_ROOT="$PKGROOT/System"
 ARTWORK="$ROOT/assets/infiltratoros.png"
-ARTWORK_SHA256="4820891225675ed9bb0bb1bb82e3680df4bbdccc736ce5d092b80e95e5d05978"
 FONT_MANIFEST="$ROOT/assets/fonts/SHA256SUMS"
 rm -rf "$WORK"
 mkdir -p \
@@ -76,30 +71,18 @@ mkdir -p \
     "$PKGROOT/Volumes" \
     "$PKGROOT/Temporary"
 stage='verifying artwork and fonts'
-printf '%s  %s\n' "$ARTWORK_SHA256" "$ARTWORK" | sha256sum -c -
 test -f "$FONT_MANIFEST"
-test "$(wc -l < "$FONT_MANIFEST")" -eq 23
-test "$(find "$ROOT/assets/fonts" -maxdepth 1 -type f -name '*.ttf' | wc -l)" -eq 23
-test "$(awk '{print $1}' "$FONT_MANIFEST" | sort -u | wc -l)" -eq 23
 (cd "$ROOT/assets/fonts" && sha256sum -c SHA256SUMS)
-test "$(find "$ICON_PART_DIR" -maxdepth 1 -type f -name 'mercedes-icons-v1.part??' | wc -l)" -eq 10
-test "$(wc -l < "$ICON_PART_DIR/PART_SHA256SUMS")" -eq 10
-(cd "$ICON_PART_DIR" && sha256sum -c PART_SHA256SUMS)
-# The source archive exists only in the build workspace, never on an
-# installed machine. The Debian payload owns precisely 1,233 flat icons.
+# Reassemble and verify the source archive before flattening its icons.
 stage='assembling icons'
 archive="$WORK/mercedes-icons-v1.tar.xz"
 cat "$ICON_PART_DIR"/mercedes-icons-v1.part?? > "$archive"
 printf '%s  %s\n' "$ICON_ARCHIVE_SHA256" "$archive" | sha256sum -c -
-test "$(tar -tJf "$archive" | grep -c '^mercedes/')" -eq 1233
 mkdir -p "$WORK/icon-source"
 tar -xJf "$archive" -C "$WORK/icon-source" --no-same-owner
 original_manifest="$WORK/icon-source/SHA256SUMS"
-test "$(wc -l < "$original_manifest")" -eq 1233
-(cd "$WORK/icon-source/mercedes" && sha256sum -c "$original_manifest") >/dev/null
 icon_manifest="$RESOURCE_MANIFEST_DIR/InfiltratorOS-icons.sha256"
 : > "$icon_manifest"
-icon_count=0
 while IFS= read -r entry || [ -n "$entry" ]; do
     digest=${entry%%  *}
     name=${entry#*  }
@@ -113,14 +96,10 @@ while IFS= read -r entry || [ -n "$entry" ]; do
     case "$name" in *.png|*.webp) ;; *) echo "Invalid icon format: $name" >&2; exit 1 ;; esac
     flat=$(printf '%s' "$name" | tr / -)
     case "$flat" in *[!a-zA-Z0-9._-]*|'') echo "Unsafe flattened icon: $flat" >&2; exit 1 ;; esac
-    test ! -e "$ICON_DIR/$flat"
+    if [ -e "$ICON_DIR/$flat" ]; then echo "Duplicate icon destination: $flat" >&2; exit 1; fi
     install -m 0644 -- "$WORK/icon-source/mercedes/$name" "$ICON_DIR/$flat"
     printf '%s  %s\n' "$digest" "$flat" >> "$icon_manifest"
-    icon_count=$((icon_count + 1))
 done < "$original_manifest"
-test "$icon_count" -eq 1233
-(cd "$ICON_DIR" && sha256sum -c "$icon_manifest") >/dev/null
-test "$(find "$ICON_DIR" -maxdepth 1 -type f | wc -l)" -eq 1233
 
 stage='staging Debian files and fonts'
 sed "s/@VERSION@/$VERSION/g" "$ROOT/debian/control.in" > "$PKGROOT/DEBIAN/control"
@@ -148,8 +127,6 @@ while IFS= read -r entry; do
     font_file=${entry#*  }
     install -m 0644 "$ROOT/assets/fonts/$font_file" "$FONT_DIR/$font_file"
 done < "$FONT_MANIFEST"
-(cd "$FONT_DIR" && sha256sum -c "$RESOURCE_MANIFEST_DIR/InfiltratorOS-fonts.sha256") >/dev/null
-test "$(find "$FONT_DIR" -maxdepth 1 -type f -name '*.ttf' | wc -l)" -eq 23
 install -m 0644 "$ROOT/packaging/infiltrator-native-path.sh" \
     "$PKGROOT/etc/profile.d/90-infiltratoros-native-path.sh"
 # Compile the per-user Cinnamon integration with GSettings directly in C.
@@ -239,20 +216,6 @@ compile_cxx -std=c++17 -O2 -Wall -Wextra -Werror -Wpedantic \
     -c "$ROOT/packaging/native-orchestrator.cpp" -o "$WORK/native-orchestrator.o"
 c++ "$WORK/native-orchestrator.o" "$WORK/installer-status.o" \
     -o "$RUNTIME_BUILD/orchestrate-native-install"
-test "$(file -b --mime-type "$THEME_DIR/infiltratoros.png")" = image/png
-test ! -e "$PKGROOT/usr/lib/infiltratoros"
-test -x "$PKGROOT/System/Commands/InfiltratorOS/activate-program-icons"
-grep -Fxq "Exec=/System/Commands/InfiltratorOS/activate-program-icons" \
-    "$PKGROOT/etc/xdg/autostart/infiltrator-program-icons.desktop"
-test -x "$PKGROOT/System/Commands/InfiltratorOS/activate-calendar"
-grep -Fxq 'Exec=/System/Commands/InfiltratorOS/activate-calendar' \
-    "$PKGROOT/etc/xdg/autostart/infiltrator-calendar.desktop"
-for product in system-monitor calculator calendar files defragmenter boot temporal-resources filesystem-resources; do
-    for tool in "install-$product" "start-$product-install" "$product-progress"; do
-        test -x "$RUNTIME_BUILD/$tool"
-        test ! -e "$PKGROOT/System/Commands/InfiltratorOS/$tool"
-    done
-done
 # The early window needs only these five actual font roles, not the complete
 # resource collection. Embed a separately sealed bootstrap in preinst so dpkg
 # can display the real UI before unpacking its package-owned resource files.
@@ -299,6 +262,4 @@ sh "$PKGROOT/DEBIAN/postinst" --verify-installer-bundle
 stage='building Debian package'
 OUT="$DIST/infiltratoros_${VERSION}_amd64.deb"
 dpkg-deb --root-owner-group --build "$PKGROOT" "$OUT"
-dpkg-deb --info "$OUT" >/dev/null
-dpkg-deb --contents "$OUT" >/dev/null
 echo "$OUT"

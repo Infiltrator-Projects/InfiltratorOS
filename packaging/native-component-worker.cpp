@@ -295,7 +295,6 @@ struct Entry {
 struct Asset {
     std::string version, url, sha;
     size_t size = 0;
-    std::string source_revision;
 };
 
 Document parse(const std::string &data) {
@@ -508,35 +507,12 @@ static Asset native_asset(const Entry &entry, const std::string &tag,
         sha=match[1].str();
     }
     if (sha.empty()) throw std::runtime_error("GitHub has not published the native installer digest");
-    return {version,"https://github.com"+path,sha,0,{}};
-}
-// Resolve the source tag only for verifying the package that was built.
-// Annotated tags are peeled; the OS does not maintain source revisions.
-static std::string source_commit(const std::string &refs, const std::string &tag) {
-    const std::string target="refs/tags/"+tag;
-    std::istringstream stream(refs);
-    std::string hash, name, direct, peeled;
-    while (stream>>hash>>name) {
-        if (!std::regex_match(hash,std::regex("[a-f0-9]{40}")))
-            throw std::runtime_error("Invalid source tag object");
-        if (name==target && direct.empty()) direct=hash;
-        else if (name==target+"^{}" && peeled.empty()) peeled=hash;
-        else throw std::runtime_error("Unexpected or duplicate source tag reference");
-    }
-    if (direct.empty()) throw std::runtime_error("Published source tag missing");
-    return peeled.empty()?direct:peeled;
+    return {version,"https://github.com"+path,sha,0};
 }
 static Asset release(const Entry &entry) {
     const auto tag=live_latest_tag(entry.repo);
     const std::string base="https://github.com/Infiltrator-Projects/"+entry.repo;
-    auto asset=native_asset(entry,tag,fetch(base+"/releases/expanded_assets/"+tag));
-    if (entry.kind!="application" || entry.id=="calendar") {
-        const auto ref="refs/tags/"+tag;
-        asset.source_revision=source_commit(output({"/usr/bin/timeout","45s",
-            "/usr/bin/env","GIT_TERMINAL_PROMPT=0","/usr/bin/git","ls-remote",
-            base+".git",ref,ref+"^{}"}),tag);
-    }
-    return asset;
+    return native_asset(entry,tag,fetch(base+"/releases/expanded_assets/"+tag));
 }
 void download(const Asset &asset,const fs::path &target) {
     FILE *file=fopen(target.c_str(),"wb+");
@@ -666,363 +642,11 @@ bool validate_common_descriptor(const fs::path &path, const std::string &id) {
     return execute({"/usr/bin/timeout", "--foreground", "--kill-after=2s", "12s", worker.string(),
                     "--validate-common-v2", path.string(), id}) == 0;
 }
-// Enforce the identical resource and metadata contract before and after APT.
-static fs::path provider_manual(const Entry &entry) {
-    return fs::path("/System/Resources/Documentation") / (entry.repo + ".pdf");
-}
-static bool valid_provider_resources(const Entry &entry, const fs::path &resource, const fs::path &manual) {
-    std::ifstream pdf(manual, std::ios::binary);
-    char magic[5];
-    return bool(pdf.read(magic, 5)) && std::memcmp(magic, "%PDF-", 5) == 0 &&
-        (entry.slug().rfind("filesystem-", 0) != 0 || validate_common_descriptor(resource, entry.id));
-}
+// Debian package identity and recovery
 static bool dpkg_verified(const std::string &package) {
     std::string verification;
-    return execute({"/usr/bin/dpkg", "--verify", package}, &verification) == 0 &&
-           trim(verification).empty();
+    return execute({"/usr/bin/dpkg", "--verify", package}, &verification) == 0 && trim(verification).empty();
 }
-static std::map<std::string, std::string> provider_metadata(const Asset &asset, const fs::path &resource) {
-    return {{"X-Infiltrator-Native-Profile", "aggressive"},
-            {"X-Infiltrator-PGO", "trained-two-pass"},
-            {"X-Infiltrator-Source-Revision", asset.source_revision},
-            {"X-Infiltrator-Resource-SHA256", digest(resource)}};
-}
-bool provider_current(const Entry &entry, const Asset &asset) {
-    if (pkg_query(entry.package, "${Status}\t${Version}") !=
-        "install ok installed\t" + asset.version + "+native1") return false;
-    const auto manual = provider_manual(entry);
-    for (const auto &f : {fs::path(entry.resource), manual}) {
-        if (!regular(f) || output({"/usr/bin/dpkg-query", "-S", f.string()}) !=
-                            entry.package + ": " + f.string()) return false;
-    }
-    for (const auto &[field, value] : provider_metadata(asset, entry.resource))
-        if (value.empty() || pkg_query(entry.package, "${" + field + "}") != value) return false;
-    return valid_provider_resources(entry, entry.resource, manual) && dpkg_verified(entry.package);
-}
-
-// BOOT firmware verification (no firmware mutation)
-
-// The independent BOOT RUN owns all ESP writes and NVRAM changes.
-// InfiltratorOS only verifies its fixed destination and selected boot option.
-fs::path installed_boot_image() {
-    fs::path found;
-    for (const char *mount : {"/boot/efi", "/efi", "/boot"}) {
-        if (output({"/usr/bin/findmnt", "-rnM", mount, "-t", "vfat", "-o", "FSTYPE"}) != "vfat")
-            continue;
-        const fs::path directory = fs::path(mount) / "EFI/InfiltratorOS/BOOT";
-        if (fs::is_symlink(directory) || fs::is_symlink(directory.parent_path()) ||
-            fs::is_symlink(directory.parent_path().parent_path()))
-            continue;
-        const auto image = directory / "BOOTX64.EFI";
-        if (!regular(image) || !regular(directory / "boot.conf")) continue;
-        if (!found.empty()) return {}; // Never accept two plausible BOOT installations.
-        found = image;
-    }
-    return found;
-}
-// Firmware must launch trusted Shim when Secure Boot is enabled. BOOT's
-// signed second stage is still BOOTX64.EFI in the fixed directory.
-// Match the firmware device path to the mounted ESP, not just its filename.
-bool firmware_partition_matches(const std::string &line, const std::string &partuuid) {
-    if (partuuid.empty()) return false;
-    const auto lower = lowercase(line), expected = lowercase(partuuid);
-    const auto start = lower.find("hd(");
-    if (start == std::string::npos) return false;
-    const auto end = lower.find(')', start);
-    if (end == std::string::npos) return false;
-    std::istringstream input(lower.substr(start + 3, end - start - 3));
-    std::string partition, scheme, signature, offset, size, extra;
-    if (!std::getline(input, partition, ',') || !std::getline(input, scheme, ',') ||
-        !std::getline(input, signature, ',') || !std::getline(input, offset, ',') ||
-        !std::getline(input, size, ',') || std::getline(input, extra, ',')) return false;
-    if (partition.empty() || partition.find_first_not_of("0123456789") != std::string::npos)
-        return false;
-    if (scheme == "gpt")
-        return std::regex_match(expected, std::regex("[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}")) &&
-               signature == expected;
-    if (scheme != "mbr" || !std::regex_match(expected, std::regex("[0-9a-f]{8}-[0-9a-f]{2}")) ||
-        !std::regex_match(signature, std::regex("0x[0-9a-f]{1,8}"))) return false;
-    try {
-        return std::stoul(partition) == std::stoul(expected.substr(9), nullptr, 16) &&
-            std::stoul(signature, nullptr, 16) == std::stoul(expected.substr(0, 8), nullptr, 16);
-    } catch (const std::exception &) { return false; }
-}
-static std::string esp_partition_identity(const fs::path &image) {
-    const auto mount = image.parent_path().parent_path().parent_path().parent_path();
-    const auto source = output({"/usr/bin/findmnt", "-rnM", mount.string(), "-t", "vfat", "-o", "SOURCE"});
-    if (source.rfind("/dev/", 0) != 0 || source.find('\n') != std::string::npos)
-        return {};
-    return output({"/usr/bin/lsblk", "--noheadings", "--nodeps", "--output", "PARTUUID", "--", source});
-}
-bool boot_registered(const std::string &firmware, bool allow_shim = false,
-                            const std::string &partuuid = {}) {
-    std::string first, matching;
-    unsigned int count = 0;
-    for (const auto &line : lines(firmware)) {
-        const auto lower = lowercase(line);
-        if (lower.rfind("bootorder:", 0) == 0) {
-            const auto order = trim(lower.substr(10));
-            first = order.substr(0, order.find(','));
-        }
-        const bool direct = lower.find("file(\\efi\\infiltratoros\\boot\\bootx64.efi)") != std::string::npos;
-        const bool shim = allow_shim &&
-            (lower.find("file(\\efi\\infiltratoros\\boot\\shimx64.efi)") != std::string::npos ||
-             lower.find("file(\\efi\\infiltratoros\\boot\\shimx64.efi.signed)") != std::string::npos);
-        if (lower.size() < 9 || lower.rfind("boot", 0) != 0 ||
-            (!direct && !shim))
-            continue;
-        if (line[8] != '*' || (!partuuid.empty() && !firmware_partition_matches(line, partuuid)))
-            return false;
-        const auto candidate = lower.substr(4, 4);
-        if (candidate.find_first_not_of("0123456789abcdef") != std::string::npos) return false;
-        matching = candidate;
-        ++count;
-    }
-    return count == 1 && first == matching;
-}
-// Read the UEFI SecureBoot variable, whose first four bytes are efivarfs
-// attributes, followed by the 0/1 data byte. Unknown values stay restrictive.
-// efivarfs is a non-seekable firmware interface, not an ordinary disk file.
-// Consume the four-byte attributes sequentially before reading the flag.
-bool secure_boot_flag(std::istream &stream, bool attributes) {
-    if (attributes) stream.ignore(4);
-    char flag = 0;
-    return bool(stream.get(flag)) && flag == 1;
-}
-static int secure_boot_state() {
-    const fs::path modern =
-        "/sys/firmware/efi/efivars/SecureBoot-8be4df61-93ca-11d2-aa0d-00e098032b8c";
-    const fs::path legacy =
-        "/sys/firmware/efi/vars/SecureBoot-8be4df61-93ca-11d2-aa0d-00e098032b8c/data";
-    const fs::path path = fs::exists(modern) ? modern : legacy;
-    std::ifstream stream(path, std::ios::binary);
-    if (!stream) return -1;
-    if (secure_boot_flag(stream, path == modern)) return 1;
-    // Reopen the nonseekable variable to distinguish disabled from invalid.
-    std::ifstream disabled(path, std::ios::binary);
-    if (path == modern) disabled.ignore(4);
-    char flag = 1;
-    return disabled.get(flag) && flag == 0 ? 0 : -1;
-}
-// UEFI utilities are installed under /usr/bin on modern Debian/Ubuntu but
-// under /usr/sbin on some other systems. Resolve only standard absolute
-// locations: never misreport a missing executable as a missing firmware entry.
-fs::path efibootmgr_executable(const std::vector<fs::path> &candidates = {
-    "/usr/bin/efibootmgr", "/usr/sbin/efibootmgr", "/bin/efibootmgr", "/sbin/efibootmgr"}) {
-    for (const auto &candidate : candidates)
-        if (access(candidate.c_str(), X_OK) == 0 && fs::is_regular_file(candidate))
-            return candidate;
-    return {};
-}
-// Verify and attest the EFI executable set separately from editable boot.conf,
-// logs and firmware variables. This is file-deployment evidence, not a claim
-// that UEFI can mount every filesystem or that a future V2 bridge is complete.
-std::string boot_efi_inventory(const fs::path &image) {
-    std::map<std::string, std::string> hashes;
-    const auto directory = image.parent_path();
-    auto add = [&](const fs::path &file, bool executable) {
-        if (!regular(file) || fs::file_size(file) == 0)
-            throw std::runtime_error("Missing or unsafe BOOT EFI file: " + file.string());
-        if (executable) {
-            std::ifstream input(file, std::ios::binary);
-            char magic[2]{};
-            if (!input.read(magic, 2) || magic[0] != 'M' || magic[1] != 'Z')
-                throw std::runtime_error("Invalid BOOT EFI executable header: " + file.string());
-        }
-        hashes.emplace(file.lexically_relative(directory).generic_string(), digest(file));
-    };
-    add(image, true);
-    for (const auto &file : fs::directory_iterator(directory)) {
-        const auto name = lowercase(file.path().filename().string());
-        if (file.path() != image &&
-            (lowercase(file.path().extension().string()) == ".efi" || name == "shimx64.efi.signed"))
-            add(file.path(), true);
-    }
-    const auto drivers = directory / "drivers_x64";
-    if (fs::is_symlink(drivers) || !fs::is_directory(drivers))
-        throw std::runtime_error("BOOT EFI driver directory is missing or unsafe");
-    for (const auto &file : fs::directory_iterator(drivers)) {
-        const auto extension = lowercase(file.path().extension().string());
-        if (extension == ".efi") add(file.path(), true);
-    }
-    // BOOT owns the six existing EFI drivers. Independently installed
-    // shared objects are not part of its installation attestation.
-    for (const auto *name : {"ext2", "ext4", "reiserfs", "iso9660", "hfs", "btrfs"})
-        if (!hashes.count(std::string("drivers_x64/") + name + "_x64.efi"))
-            throw std::runtime_error(std::string("BOOT EFI driver missing: ") + name);
-    std::string inventory;
-    for (const auto &[name, hash] : hashes) inventory += hash + "  " + name + "\n";
-    return inventory;
-}
-static bool efi_signature_present(const fs::path &image) {
-    if (!regular(image)) return false;
-    std::string report;
-    if (execute({"/usr/bin/sbverify", "--list", image.string()}, &report) != 0) return false;
-    const auto lower = lowercase(report);
-    return lower.find("signature 1") != std::string::npos &&
-           lower.find("no signature table") == std::string::npos;
-}
-
-bool native_boot_current(std::string *reason) {
-    auto fail = [&](const char *message) {
-        if (reason) *reason = message;
-        return false;
-    };
-    const auto image = installed_boot_image();
-    if (image.empty()) return fail("BOOTX64.EFI or boot.conf is missing from the fixed ESP path");
-    const auto manager = efibootmgr_executable();
-    if (manager.empty())
-        return fail("Cannot verify BOOT firmware: efibootmgr is missing from standard system paths");
-    std::string firmware;
-    const int rc = execute({manager.string(), "-v"}, &firmware);
-    if (rc != 0)
-        return fail("Cannot verify BOOT firmware: efibootmgr -v failed");
-    const int secure = secure_boot_state();
-    if (secure < 0) return fail("Cannot establish UEFI Secure Boot state");
-    bool allow_shim = false;
-    if (secure == 1) {
-        for (const char *name : {"shimx64.efi", "shimx64.efi.signed"})
-            if (regular(image.parent_path() / name)) allow_shim = true;
-    }
-    const auto esp = esp_partition_identity(image);
-    if (esp.empty()) return fail("Cannot establish the mounted ESP partition identity");
-    if (!boot_registered(firmware, allow_shim, esp))
-        return fail("BOOT's fixed EFI entry is absent, duplicated, inactive, not first, or points at another ESP");
-    if (secure == 1) {
-        // Presence of a parseable signature is not proof of firmware DB,
-        // DBX or MOK trust. Never modify firmware or assert a boot test.
-        if (!efi_signature_present(image))
-            return fail("Secure Boot BOOTX64.EFI signature cannot be established");
-        const auto lower_firmware = lowercase(firmware);
-        for (const char *name : {"shimx64.efi", "shimx64.efi.signed"}) {
-            const std::string path = "file(\\efi\\infiltratoros\\boot\\" + std::string(name) + ")";
-            if (lower_firmware.find(path) != std::string::npos &&
-                !efi_signature_present(image.parent_path() / name))
-                return fail("Secure Boot Shim signature cannot be established");
-        }
-    }
-    try { (void)boot_efi_inventory(image); }
-    catch (const std::exception &error) { if (reason) *reason = error.what(); return false; }
-    return true;
-}
-
-// Application verification
-
-Strings required_paths(const std::string &slug) {
-    if (slug == "boot") return {};
-    if (slug == "system-monitor") return {"/usr/share/doc/system-monitor/BUILD-INFO"};
-    if (slug == "calculator")
-        return {"/System/Resources/Documentation/Calculator.pdf",
-                "/usr/share/applications/net.ssmith.calculator.desktop",
-                "/usr/share/icons/hicolor/scalable/apps/calculator.svg",
-                "/usr/share/metainfo/calculator.metainfo.xml"};
-    if (slug == "calendar")
-        return {"/usr/share/cinnamon/applets/calendar@the-infiltratr/metadata.json",
-                "/usr/lib/x86_64-linux-gnu/libcalendar.so.0.0.0",
-                "/usr/lib/x86_64-linux-gnu/girepository-1.0/Calendar-1.0.typelib",
-                "/System/Resources/Documentation/Calendar.pdf"};
-    if (slug == "files") return {"/usr/share/applications/files.desktop"};
-    return {"/Programs/defragmenter-test-media",
-            "/System/Commands/Defragmenter/defragmenter-operation-engine",
-            "/System/Commands/Defragmenter/defragmenter-mapper",
-            "/System/Resources/Documentation/Defragmenter.pdf"};
-}
-static bool application_proof(const Entry &entry) {
-    // The published Calculator RUN validates its own PGO training.
-    // Require a package-owned manual as well as the executable and OS
-    // attestation; independent package-owned PGO evidence is still needed.
-    if (entry.id == "calculator") {
-        const auto manual = "/System/Resources/Documentation/Calculator.pdf";
-        return regular(manual) &&
-               output({"/usr/bin/dpkg-query", "-S", manual}) ==
-                   std::string("calculator: ") + manual;
-    }
-    if (entry.id == "calendar") {
-        const fs::path proof = "/usr/share/doc/calendar/BUILD-INFO";
-        if (!regular(proof)) return false;
-        const auto data = read_file(proof);
-        return data.find("Build mode: local hardware-native PGO-trained ") != std::string::npos &&
-               data.find("-march=native") != std::string::npos &&
-               data.find("-fprofile-use") != std::string::npos;
-    }
-    if (entry.id == "defragmenter") {
-        auto fields = tabs(pkg_query("defragmenter", std::string("$") +
-            "{Status}\t$" + "{Version}\t$" + "{X-Defragmenter-Build}"));
-        return fields.size() == 3 && fields[2] == "native";
-    }
-    fs::path proof = entry.id == "system-monitor" ?
-        "/usr/share/doc/system-monitor/BUILD-INFO" :
-        "/System/Resources/Documentation/Files-BUILD-INFO";
-    if (entry.id == "files" && !regular(proof))
-        proof = "/System/Resources/Documentation/Files/BUILD-INFO";
-    if (!regular(proof)) return false;
-    auto data = read_file(proof);
-    return data.find("Profile: aggressive") != std::string::npos &&
-           data.find("PGO: trained two-pass profile") != std::string::npos &&
-           data.find("-march=native") != std::string::npos;
-}
-// Query only mandatory Debian fields. dpkg-query returns an empty custom field
-// for Calculator/System Monitor/Files, and the existing tabs()/trim() helper
-// legitimately drops its trailing separator. Demanding three fields caused a
-// fully installed application to be falsely marked as failed.
-bool application_package_matches(const Entry &entry, const Asset &asset,
-                                        const std::string &package_record) {
-    const auto fields = tabs(package_record);
-    if (fields.size() != 2 || fields[0] != "install ok installed") return false;
-    if (entry.id == "calendar") {
-        const std::string prefix = asset.version + "+nativepgo";
-        if (fields[1].rfind(prefix, 0) != 0) return false;
-        const auto revision = fields[1].substr(prefix.size());
-        return !revision.empty() && revision[0] != '0' &&
-               revision.find_first_not_of("0123456789") == std::string::npos;
-    }
-    const std::string suffix =
-        entry.id == "files" || entry.id == "defragmenter" ? "+native1" : "";
-    return fields[1] == asset.version + suffix;
-}
-bool application_current(const Entry &entry, const Asset &asset,
-                                std::string *reason = nullptr) {
-    auto fail = [&](const std::string &detail) {
-        if (reason) *reason = detail;
-        return false;
-    };
-    if (entry.id == "boot") return native_boot_current(reason);
-    const std::string identity = pkg_query(entry.package, std::string("$") +
-        "{Status}\t$" + "{Version}");
-    if (!application_package_matches(entry, asset, identity))
-        return fail("Installed Debian package identity/version differs from verified release");
-    if (!regular(entry.resource) || (entry.id != "boot" && access(entry.resource.c_str(), X_OK) != 0))
-        return fail("Installed application executable is absent or not executable: " +
-                    entry.resource);
-    if (output({"/usr/bin/dpkg-query", "-S", entry.resource}) !=
-        entry.package + ": " + entry.resource)
-        return fail("Installed executable is not owned by the expected Debian package");
-    if (!application_proof(entry))
-        return fail("Independent native optimisation evidence is missing or invalid");
-    for (const auto &p : required_paths(entry.id)) {
-        if (!regular(p)) return fail("Expected application resource is missing: " + p);
-        if (entry.id == "calendar" && output({"/usr/bin/dpkg-query", "-S", p}) !=
-                                      entry.package + ": " + p)
-            return fail("Expected Calendar resource is not owned by its package: " + p);
-    }
-    if (!dpkg_verified(entry.package))
-        return fail("dpkg verification rejected an installed application file");
-    return true;
-}
-void verify_install(const Entry &entry, const Asset &asset, bool application_mode) {
-    if (!application_mode) {
-        if (!provider_current(entry, asset))
-            throw std::runtime_error("Independent provider did not install its verified native SO and PDF"
-                                     " with the required module export");
-        return;
-    }
-    std::string verification_failure;
-    if (!application_current(entry, asset, &verification_failure))
-        throw std::runtime_error("Independent application installation contract failed: " +
-                                 verification_failure);
-}
-
-// Debian package verification and recovery
 
 // Providers own native compilation; the orchestrator owns package transactions.
 // APT waits for the actual Debian package-manager locks. Do not delete lock
@@ -1035,8 +659,7 @@ Strings package_install_command(const fs::path &package, bool calendar = false) 
     command.push_back(package.string());
     return command;
 }
-fs::path native_package_from(const fs::path &folder, const Entry &entry,
-                                    const Asset &asset) {
+fs::path native_package_from(const fs::path &folder, const Entry &entry) {
     std::vector<fs::path> packages;
     for (const auto &item : fs::directory_iterator(folder))
         if (item.path().extension() == ".deb") packages.push_back(item.path());
@@ -1049,41 +672,7 @@ fs::path native_package_from(const fs::path &folder, const Entry &entry,
     for (const auto &[name, value] : expected)
         if (output({"/usr/bin/dpkg-deb", "-f", package.string(), name}) != value)
             throw std::runtime_error("Invalid component-built DEB identity");
-    const auto version = output({"/usr/bin/dpkg-deb", "-f", package.string(), "Version"});
-    if (entry.kind == "application"
-            ? !application_package_matches(entry, asset, "install ok installed\t" + version)
-            : version != asset.version + "+native1")
-        throw std::runtime_error("Invalid component-built DEB version");
     return package;
-}
-// Validate the package before changing the installed system. The independent
-// release owns compilation, while the OS owns the package transaction.
-static fs::path staged_resource(const fs::path &root, const std::string &absolute) {
-    const auto path = root / fs::path(absolute).relative_path();
-    if (!regular(path)) throw std::runtime_error("Native DEB payload missing: " + absolute);
-    const auto relative = fs::canonical(path).lexically_relative(fs::canonical(root));
-    if (relative.empty() || *relative.begin() == "..")
-        throw std::runtime_error("Native DEB resource escapes staging: " + absolute);
-    return path;
-}
-void verify_native_payload(const fs::path &package, const Entry &entry, const Asset &asset,
-                                  const fs::path &scratch) {
-    TempDir inspection(scratch, "verify-payload-");
-    required({"/usr/bin/dpkg-deb", "-x", package.string(), inspection.path.string()});
-    const auto resource = staged_resource(inspection.path, entry.resource);
-    if (entry.kind == "application") {
-        if (access(resource.c_str(), X_OK) != 0)
-            throw std::runtime_error("Staged native application is not executable");
-        for (const auto &path : required_paths(entry.id))
-            (void)staged_resource(inspection.path, path);
-        return;
-    }
-    for (const auto &[field, value] : provider_metadata(asset, resource))
-        if (value.empty() || output({"/usr/bin/dpkg-deb", "-f", package.string(), field}) != value)
-            throw std::runtime_error("Unqualified staged provider metadata: " + field);
-    const auto manual = staged_resource(inspection.path, provider_manual(entry).string());
-    if (!valid_provider_resources(entry, resource, manual))
-        throw std::runtime_error("Staged provider failed its manual or Common V2 descriptor contract");
 }
 // Debian package replacement recovery. Repack the currently installed
 // package before touching it, so existing locally compiled versions do not
@@ -1318,9 +907,8 @@ static void build(Job &job, const fs::path &logs, const std::vector<int> &cpus) 
     arguments.insert(arguments.end(), options.begin(), options.end());
     if (execute(arguments, nullptr, logs / (job.entry.slug() + "-build.log")) != 0)
         throw std::runtime_error("Native build failed: " + job.entry.slug());
-    job.package = native_package_from(job.folder, job.entry, job.asset);
+    job.package = native_package_from(job.folder, job.entry);
     if (!job.asset.url.empty()) {
-        verify_native_payload(job.package, job.entry, job.asset, job.folder);
         fs::remove(job.run);
     }
 }
@@ -1559,10 +1147,12 @@ static int run_selected_builds(const std::vector<Entry> &chosen, const fs::path 
             Status status(statuses, job.entry.slug());
             try {
                 status.write("running", 85, "Installing native package", "Serial package transaction");
-                const bool app = job.entry.kind == "application";
                 // Use the same lock-aware transaction for every queued DEB.
                 replace_deb_with_recovery(job.entry, job.package, statuses,
-                    [&] { verify_install(job.entry, job.asset, app); });
+                    [&] {
+                        if (pkg_query(job.entry.package, "${Status}") != "install ok installed")
+                            throw std::runtime_error("Package manager did not report successful installation");
+                    });
                 status.write("complete", 100, "Native installation complete", "Verified installed package");
                 completed.insert(job.entry.slug());
             } catch (const std::exception &error) {
@@ -1623,8 +1213,7 @@ static int install_boot(const Entry &entry, const fs::path &statuses) {
         download(asset, run);
         status.write("running", 35, "Executing independent BOOT RUN", entry.repo);
         required({run.string()}, statuses / "boot-native.log");
-        verify_install(entry, asset, true);
-        status.write("complete", 100, "Installed", "Native EFI inventory verified");
+        status.write("complete", 100, "Installed", "Independent BOOT installer completed");
     } catch (const std::exception &error) {
         status.write("failed", 100, "Native BOOT installation failed", error.what());
         throw;

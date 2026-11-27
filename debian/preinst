@@ -23,8 +23,10 @@ unpack_bootstrap() {
     tar -xzf "$archive" -C "$target" --no-same-owner --no-same-permissions || return 1
     rm -f -- "$archive"
     test -x "$target/start-system-monitor-install" &&
-    test -x "$target/system-monitor-progress" &&
-    test "$(find "$target/bootstrap-fonts" -maxdepth 1 -type f -name '*.ttf' | wc -l)" -eq 5
+    test -x "$target/system-monitor-progress" || return 1
+    for font in $bootstrap_font_names; do
+        test -s "$target/bootstrap-fonts/$font" || return 1
+    done
 }
 
 # This path is read-only with respect to the host and works without privileges.

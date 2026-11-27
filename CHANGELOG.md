@@ -1,3 +1,9 @@
+## 1.0.136 — Simplify build and installation checks
+
+- Remove fixed resource and bundle counts, repeated staging checks, duplicate release downloads and separately uploaded source archives. Retain required bundle members, archive and executable download integrity, icon collision checks and package-manager coordination.
+- Delegate component-specific payload, version, source identity, optimisation, filesystem descriptor and firmware verification to independent installers. Preserve the existing parallel build-only and serial Debian transaction contracts.
+- Accept existing installation directory ownership on removal, and run legacy icon cleanup only when needed.
+
 ## 1.0.135 — Correct installer bundle verification
 
 - Account for removal of the release resolver in the embedded runtime file count. Report bundle mismatches and package assembly failure stages explicitly.

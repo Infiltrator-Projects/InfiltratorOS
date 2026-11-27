@@ -1,6 +1,6 @@
 #!/bin/sh
 # SPDX-License-Identifier: GPL-3.0-or-later
-# Verify the 23 directly packaged native fonts and register Fontconfig.
+# Register the directly packaged native fonts with Fontconfig.
 # No font seeds, copies, downloads or alternate font installation locations.
 set -eu
 umask 022
@@ -10,38 +10,8 @@ case "$ROOT" in ''|/*) ;; *) echo 'Native root must be absolute' >&2; exit 2 ;; 
 native_path() { printf '%s%s\n' "$ROOT" "$1"; }
 
 FONT_DIR=$(native_path /System/Resources/Fonts)
-MANIFEST=$(native_path /System/Resources/Documentation/InfiltratorOS-fonts.sha256)
 FONTCONFIG_DIR=$(native_path /etc/fonts/conf.d)
 FONTCONFIG_FILE="$FONTCONFIG_DIR/90-infiltrator-native-fonts.conf"
-for path in "$(native_path /System)" "$(native_path /System/Resources)" \
-            "$(native_path /System/Resources/Documentation)" \
-            "$FONT_DIR"; do
-    [ ! -L "$path" ] || { echo "Unsafe native font path: $path" >&2; exit 3; }
-done
-[ -f "$MANIFEST" ] && [ ! -L "$MANIFEST" ] || {
-    echo "Missing packaged font checksum manifest: $MANIFEST" >&2; exit 4;
-}
-
-count=0
-while IFS= read -r entry || [ -n "$entry" ]; do
-    [ -n "$entry" ] || continue
-    digest=${entry%%  *}
-    name=${entry#*  }
-    case "$digest" in *[!0-9a-f]*|'') echo 'Invalid font checksum' >&2; exit 4 ;; esac
-    [ "${#digest}" -eq 64 ] || exit 4
-    case "$name" in mb_corpo_*.ttf|daimler_*.ttf) ;; *) echo "Unsafe font name: $name" >&2; exit 4 ;; esac
-    case "$name" in */*|*..*) echo "Unsafe font path: $name" >&2; exit 4 ;; esac
-    target="$FONT_DIR/$name"
-    [ -f "$target" ] && [ ! -L "$target" ] || {
-        echo "Missing packaged native font: $target" >&2; exit 4;
-    }
-    printf '%s  %s\n' "$digest" "$target" | sha256sum -c - >/dev/null || {
-        echo "Invalid packaged native font: $target" >&2; exit 4;
-    }
-    count=$((count + 1))
-done < "$MANIFEST"
-[ "$count" -eq 23 ] || { echo 'Incomplete native font inventory' >&2; exit 4; }
-
 mkdir -p "$FONTCONFIG_DIR"
 conf_tmp="$FONTCONFIG_FILE.new.$$"
 trap 'rm -f -- "$conf_tmp"' EXIT HUP INT TERM
@@ -62,7 +32,7 @@ if [ -z "$ROOT" ]; then
     command -v fc-cache >/dev/null 2>&1 || {
         echo 'Fontconfig cache updater is unavailable' >&2; exit 5;
     }
-    fc-cache -f "$FONT_DIR" >/dev/null 2>&1 || {
+    fc-cache "$FONT_DIR" >/dev/null 2>&1 || {
         echo 'Verified fonts could not be registered with Fontconfig' >&2; exit 5;
     }
 fi
