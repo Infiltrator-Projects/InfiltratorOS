@@ -1,3 +1,9 @@
+## 1.0.109 — Complete application admission to the native parallel queue
+
+- Admit all five applications and independent modules; preserve BOOT's final no-argument handoff.
+- Use each application's released build-only argument and Debian version contract, prepare missing application prerequisites serially, and preserve Calendar's version transition.
+- Bind legacy getconf-based builders to their assigned CPU count and retain serial package transactions and the 16-build cap.
+
 ## 1.0.106 — Source licensing and installer audit finalisation
 
 - Add the verbatim GPL version 3 licence and consistent SPDX identifiers to installer sources and public helper headers.

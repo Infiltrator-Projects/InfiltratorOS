@@ -270,6 +270,26 @@ Boot0007 BOOT Boot Manager HD(1,GPT,1234)/File(\EFI\InfiltratorOS\BOOT\BOOTX64.E
               !infiltrator_native::queue_candidate("boot"),
               "all selected provider families are eligible; BOOT is not a parallel build");
         check(infiltrator_native::max_parallel_builds == 16, "parallel build limit");
+        for (const auto app : infiltrator_native::queued_applications) {
+            check(infiltrator_native::queue_candidate(app), "all five applications are queued");
+            const auto e = application(std::string(app));
+            check(!application_build_dependencies(e).empty(), "application prerequisites declared");
+            auto args = build_only_arguments(e, "/tmp/output", "2");
+            if (app == "calendar")
+                check(args == Strings({"--build-only", "--output-dir", "/tmp/output"}),
+                      "Calendar build-only contract");
+            else if (app == "calculator" || app == "system-monitor")
+                check(args == Strings({"--system-package-mode", "--jobs", "2", "--build-only", "--output", "/tmp/output"}),
+                      "explicit application CPU reservation");
+            else
+                check(args == Strings({"--system-package-mode", "--build-only", "--output", "/tmp/output"}),
+                      "application-owned build-only contract");
+        }
+        rejects([&]() { (void)build_only_arguments(application("boot"), "/tmp/output", "1"); },
+                "BOOT parallel build-only invocation");
+        auto calendar_install = package_install_command("/tmp/native.deb", true);
+        check(std::find(calendar_install.begin(), calendar_install.end(), "--allow-downgrades") != calendar_install.end(),
+              "Calendar historical version reset preserved");
         check(established[0].slug() == "filesystem-fat12", "FAT12 identity");
         check(application("system-monitor").repo == "System-Monitor", "system monitor identity");
         check(package_install_command("/tmp/native.deb") ==

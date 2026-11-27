@@ -16,8 +16,15 @@ inline constexpr std::array<std::string_view, 16> build_queue{{
     "calendar-islamic-umalqura"
 }};
 inline constexpr std::size_t max_parallel_builds = 16;
+inline constexpr std::array<std::string_view, 5> queued_applications{{
+    "system-monitor", "calculator", "calendar", "files", "defragmenter"
+}};
+inline bool queue_application(std::string_view name) {
+    for (const auto app : queued_applications) if (name == app) return true;
+    return false;
+}
 inline bool queue_candidate(std::string_view name) {
-    return name == "files" || name.substr(0, 11) == "filesystem-" ||
+    return queue_application(name) || name.substr(0, 11) == "filesystem-" ||
            name.substr(0, 9) == "calendar-" || name.substr(0, 6) == "clock-";
 }
 } // namespace infiltrator_native

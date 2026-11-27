@@ -931,9 +931,13 @@ static Strings native_installer_command(const Entry &entry, bool temporal,
 // Providers own native compilation; the orchestrator owns package transactions.
 // APT waits for the actual Debian package-manager locks. Do not delete lock
 // files or use a check-then-dpkg sequence which races external package tools.
-static Strings package_install_command(const fs::path &package) {
-    return {"/usr/bin/apt-get", "-o", "DPkg::Lock::Timeout=-1", "install",
-            "-y", "--no-remove", "--reinstall", package.string()};
+static Strings package_install_command(const fs::path &package, bool calendar = false) {
+    Strings command{"/usr/bin/apt-get", "-o", "DPkg::Lock::Timeout=-1", "install",
+                    "-y", "--no-remove", "--reinstall"};
+    // Preserve Calendar's independent historical version-reset contract.
+    if (calendar) command.push_back("--allow-downgrades");
+    command.push_back(package.string());
+    return command;
 }
 static fs::path native_package_from(const fs::path &folder, const Entry &entry,
                                     const Asset &asset) {
@@ -945,11 +949,15 @@ static fs::path native_package_from(const fs::path &folder, const Entry &entry,
     const auto package = packages.front();
     const std::map<std::string, std::string> expected{
         {"Package", entry.package},
-        {"Version", asset.version + "+native1"},
         {"Architecture", "amd64"}};
     for (const auto &[name, value] : expected)
         if (output({"/usr/bin/dpkg-deb", "-f", package.string(), name}) != value)
             throw std::runtime_error("Invalid component-built DEB identity");
+    const auto version = output({"/usr/bin/dpkg-deb", "-f", package.string(), "Version"});
+    if (entry.kind == "application"
+            ? !application_package_matches(entry, asset, "install ok installed\t" + version)
+            : version != asset.version + "+native1")
+        throw std::runtime_error("Invalid component-built DEB version");
     return package;
 }
 static bool install(const Entry &entry, Status &status, bool application_mode,
@@ -1026,6 +1034,25 @@ struct Job {
     Asset asset;
     fs::path run, folder, package;
 };
+static Strings build_only_arguments(const Entry &entry, const fs::path &folder,
+                                    const std::string &slots) {
+    if (entry.kind == "application") {
+        if (entry.id == "calendar")
+            return {"--build-only", "--output-dir", folder.string()};
+        if (!infiltrator_native::queue_application(entry.id))
+            throw std::runtime_error("Application has no parallel build contract");
+        Strings args{"--system-package-mode"};
+        if (entry.id == "system-monitor" || entry.id == "calculator")
+            args.insert(args.end(), {"--jobs", slots});
+        args.insert(args.end(), {"--build-only", "--output", folder.string()});
+        return args;
+    }
+    Strings args{"--profile", "aggressive"};
+    if (entry.kind == "calendar" || entry.kind == "clock")
+        args.insert(args.end(), {"--jobs", slots});
+    args.insert(args.end(), {"--system-package-mode", "--build-only", "--output", folder.string()});
+    return args;
+}
 static void build(Job &job, const fs::path &logs, const std::vector<int> &cpus) {
     const auto slots = std::to_string(std::max<std::size_t>(1, cpus.size()));
     Strings arguments;
@@ -1038,14 +1065,25 @@ static void build(Job &job, const fs::path &logs, const std::vector<int> &cpus) 
         arguments = {"/usr/bin/taskset", "--cpu-list", mask};
     }
     arguments.insert(arguments.end(), {"/usr/bin/env", "MAKEFLAGS=-j" + slots,
-                     "CMAKE_BUILD_PARALLEL_LEVEL=" + slots, job.run.string()});
-    // Files always trains its aggressive build. The provider RUNs take a profile.
-    if (job.entry.kind != "application")
-        arguments.insert(arguments.end(), {"--profile", "aggressive"});
-    if (job.entry.kind == "calendar" || job.entry.kind == "clock")
-        arguments.insert(arguments.end(), {"--jobs", slots});
-    arguments.insert(arguments.end(), {"--system-package-mode", "--build-only",
-                                      "--output", job.folder.string()});
+                      "CMAKE_BUILD_PARALLEL_LEVEL=" + slots});
+    // Released Calendar and Defragmenter scripts query getconf for job counts.
+    // Scope the reported count to this build's allocation, not the host.
+    // The private directory is root-owned and removed with the run.
+    if (job.entry.kind == "application" &&
+        (job.entry.id == "calendar" || job.entry.id == "defragmenter")) {
+        const auto bin = job.folder / "scheduler-bin";
+        fs::create_directory(bin);
+        const auto shim = bin / "getconf";
+        save(shim, "#!/bin/sh\nif [ \"$#\" -eq 1 ] && [ \"$1\" = _NPROCESSORS_ONLN ]; then\n"
+                   "  printf '%s\\n' " + slots + "\nelse\n  exec /usr/bin/getconf \"$@\"\nfi\n");
+        if (chmod(shim.c_str(), 0700) != 0)
+            throw std::runtime_error("Cannot set private build CPU-count helper executable");
+        arguments.push_back("PATH=" + bin.string() + ":" +
+            environment("PATH", "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"));
+    }
+    arguments.push_back(job.run.string());
+    const auto options = build_only_arguments(job.entry, job.folder, slots);
+    arguments.insert(arguments.end(), options.begin(), options.end());
     if (execute(arguments, nullptr, logs / (job.entry.slug() + "-build.log")) != 0)
         throw std::runtime_error("Native build failed: " + job.entry.slug());
     job.package = native_package_from(job.folder, job.entry, job.asset);
@@ -1113,15 +1151,50 @@ static void build_packages(std::vector<Job> &jobs, const fs::path &statuses,
         if (!active.empty()) std::this_thread::sleep_for(std::chrono::milliseconds(50));
     }
 }
+static Strings application_build_dependencies(const Entry &e) {
+    if (e.id == "system-monitor")
+        return {"build-essential", "binutils", "dpkg-dev", "cmake", "pkg-config", "libgtk-3-dev"};
+    if (e.id == "calculator")
+        return {"build-essential", "binutils", "dpkg-dev", "cmake", "debhelper", "libgtk-4-dev",
+                "pkg-config", "xvfb", "xauth", "tar", "gzip", "ca-certificates", "curl",
+                "fontconfig", "python3", "python3-reportlab"};
+    if (e.id == "calendar")
+        return {"build-essential", "binutils", "dpkg-dev", "debhelper", "desktop-file-utils",
+                "gettext", "gir1.2-glib-2.0-dev", "gjs", "libglib2.0-dev", "libgtk-3-dev",
+                "libicu-dev", "nodejs", "pkg-config", "xz-utils"};
+    if (e.id == "defragmenter")
+        return {"build-essential", "binutils", "dpkg-dev", "cmake", "python3",
+                "gir1.2-gtk-3.0", "libgtk-3-dev", "policykit-1", "ca-certificates",
+                "desktop-file-utils", "udisks2", "util-linux", "libsqlite3-dev", "libssl-dev"};
+    if (e.id == "files")
+        return {"build-essential", "binutils", "dpkg-dev", "cmake", "ninja-build", "pkg-config",
+                "xvfb", "xauth", "dbus-daemon", "libgtk-4-dev", "libarchive-dev"};
+    throw std::runtime_error("No application build dependency contract");
+}
+static Strings missing_packages(const Strings &packages) {
+    Strings missing;
+    for (const auto &pkg : packages)
+        if (pkg_query(pkg, std::string("$") + "{Status}") != "install ok installed")
+            missing.push_back(pkg);
+    return missing;
+}
 static bool can_build(const Entry &e) {
     Strings packages{"build-essential", "binutils", "dpkg-dev"};
-    // A build-only RUN cannot install its own prerequisites. Keep those jobs
-    // on their original, serial path so the component can provision them.
+    // Preflight each application before starting concurrent builds.
     if (e.kind == "application") {
-        packages.insert(packages.end(), {"cmake", "ninja-build", "pkg-config", "xvfb",
-                                         "xauth", "dbus-daemon"});
-        if (execute({"pkg-config", "--exists", "gtk4 >= 4.10", "libarchive"}) != 0)
-            return false;
+        packages = application_build_dependencies(e);
+        if (!missing_packages(packages).empty()) return false;
+        if (e.id == "files")
+            return execute({"pkg-config", "--exists", "gtk4 >= 4.10", "libarchive"}) == 0;
+        if (e.id == "system-monitor")
+            return execute({"pkg-config", "--exists", "gtk+-3.0 >= 3.22"}) == 0;
+        if (e.id == "calculator")
+            return execute({"pkg-config", "--exists", "gtk4"}) == 0 &&
+                   execute({"/usr/bin/python3", "-c", "import reportlab"}) == 0;
+        if (e.id == "calendar")
+            return execute({"/usr/bin/dpkg-checkbuilddeps", "-d",
+                "debhelper-compat (= 13), desktop-file-utils, gettext, gir1.2-glib-2.0-dev, gjs, libglib2.0-dev, libgtk-3-dev, libicu-dev, nodejs, pkg-config, xz-utils"}) == 0;
+        return true;
     } else if (e.kind == "calendar" || e.kind == "clock") {
         packages.insert(packages.end(), {"pkg-config", "jq", "ghostscript", "gettext", "git"});
         packages.insert(packages.end(), {"libglib2.0-dev", "libicu-dev"});
@@ -1199,6 +1272,18 @@ static int smart_queue(const std::vector<Entry> &entries) {
                     completed.insert(e.slug());
                     continue;
                 }
+                if (app && !can_build(e)) {
+                    auto missing = missing_packages(application_build_dependencies(e));
+                    if (!missing.empty()) {
+                        status.write("running", 8, "Preparing build prerequisites",
+                                     "Serial APT transaction before parallel compilation");
+                        Strings command{"/usr/bin/apt-get", "-o", "DPkg::Lock::Timeout=-1",
+                            "install", "-y", "--no-remove", "--no-install-recommends"};
+                        command.insert(command.end(), missing.begin(), missing.end());
+                        // Preserve the independent serial recovery path if preflight fails.
+                        (void)execute(command, nullptr, statuses / (e.slug() + "-dependencies.log"));
+                    }
+                }
                 if (!can_build(e)) {
                     serial.push_back(e);
                     status.write("queued", 10, "Serial fallback queued",
@@ -1223,7 +1308,7 @@ static int smart_queue(const std::vector<Entry> &entries) {
                 status.write("running", 85, "Installing native package", "Serial package transaction");
                 const bool app = job.entry.kind == "application";
                 // Use the same lock-aware transaction for every queued DEB.
-                required(package_install_command(job.package),
+                required(package_install_command(job.package, app && job.entry.id == "calendar"),
                          statuses / (job.entry.slug() + "-package.log"));
                 verify_install(job.entry, job.asset, app);
                 status.write("complete", 100, "Native installation complete", "Verified installed package");
@@ -1297,7 +1382,7 @@ int main(int argc, char **argv) {
         const std::string name = fs::path(argv[0]).filename().string();
         const fs::path directory = fs::path(argv[0]).parent_path();
         if (environment("INFILTRATOROS_SMART_BUILD_QUEUE") == "1") {
-            const std::string leader = name == "install-files" && argc == 1 ? "files" :
+            const std::string leader = name.rfind("install-", 0) == 0 && argc == 1 ? name.substr(8) :
                 (name == "install-filesystem-resources" || name == "install-temporal-resources") &&
                     argc == 2 ? argv[1] : "";
             if (!infiltrator_native::queue_candidate(leader))
@@ -1307,7 +1392,8 @@ int main(int argc, char **argv) {
             auto temporal = catalogue(directory / "temporal-resources.json", 54);
             entries.insert(entries.end(), additional.begin(), additional.end());
             entries.insert(entries.end(), temporal.begin(), temporal.end());
-            entries.push_back(application("files"));
+            for (const auto app : infiltrator_native::queued_applications)
+                entries.push_back(application(std::string(app)));
             return smart_queue(entries);
         }
         if (name == "install-temporal-resources") {
