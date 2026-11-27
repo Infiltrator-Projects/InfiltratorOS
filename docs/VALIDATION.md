@@ -62,3 +62,7 @@ Build isolation is exercised on a disposable privileged CI host: writes outside 
 A disposable privileged CI test installs a synthetic Debian package, replaces it, deliberately fails post-install verification, then verifies that the actual prior package version and payload were restored. No real product package is altered by this fixture.
 
 The native worker regression suite links the same separately compiled translation units as the installed binary; it no longer includes the production `.cpp` entry point. Existing resource, package, isolation, release and firmware fixtures remain mandatory.
+
+### Real native component integration
+
+The `Real native provider integration` workflow builds the production worker and snapshot verifier, selects the actual published OFS and Binary Clock native releases, and uses the real isolated scheduler and serial package transaction. It verifies installed package identity, Common V2 descriptor validity, and a second idempotent run. BOOT release metadata is selected only to satisfy snapshot validation; BOOT is never launched. Logs retain actual concurrent admission and installation evidence. This hosted test is not physical-hardware or whole-inventory qualification.

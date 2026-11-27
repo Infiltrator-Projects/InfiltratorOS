@@ -1,3 +1,8 @@
+## 1.0.123 — Live independent native component qualification
+
+- Add an independent, disposable hosted-runner integration workflow that uses the actual verified OFS and Binary Clock release installers, the production resource scheduler, Common V2 descriptor validation, Debian installation and a second idempotent verification pass.
+- Capture real timing and status evidence without executing BOOT or installing the OS integration package. Keep physical-machine qualification distinct from hosted-runner qualification.
+
 ## 1.0.122 — Single application registry and bounded status records
 
 - Define application package identities and queue eligibility once, consumed by the release verifier, dispatcher and worker.
