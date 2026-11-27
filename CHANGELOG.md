@@ -1,3 +1,7 @@
+## 1.0.140 — Correct parallel installer progress
+
+- Report compiled packages awaiting the serial Debian installation stage as queued, rather than running. Preserve their completed build progress in the aggregate display; only successfully installed components are complete. No change to installer discovery, resource scheduling or package transactions.
+
 ## 1.0.139 — Schedule complete independent build lifecycles
 
 - Remove sequential remote installer preparation. Each resource-admitted job resolves, downloads and compiles its own latest RUN before freeing its slot for the next component.

@@ -260,6 +260,9 @@ static gboolean refresh_aggregate(Ui *ui)
             }
         } else {
             ++queued;
+            // Preserve work already completed by jobs awaiting installation.
+            if (job.progress >= 0 && job.progress <= 100)
+                fraction += (double)job.progress / 100.0;
             // Only display a specific waiting task when its own worker has
             // published that state; manifest order does not imply execution order.
             if (queued_name[0] == '\0' && job.stage[0]) {

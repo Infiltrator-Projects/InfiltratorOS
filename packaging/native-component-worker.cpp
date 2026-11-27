@@ -1014,6 +1014,10 @@ void build_packages(std::vector<Job> &jobs, const fs::path &statuses,
             const auto slug = jobs[it->job].entry.slug();
             try {
                 it->result.get();
+                // A compiled package is queued for the serial installation
+                // stage, not an active build or a finished installation.
+                Status(statuses, slug).write("queued", 80, "Awaiting package installation",
+                    "Native compilation completed");
                 timings << elapsed() << "ms finished " << slug << std::endl;
             } catch (const std::exception &error) {
                 failures[slug] = error.what();
