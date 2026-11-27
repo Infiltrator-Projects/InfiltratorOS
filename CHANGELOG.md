@@ -1,3 +1,9 @@
+## 1.0.125 — Native installer descriptor and checksum corrections
+
+- Preserve checksum subprocess output with closed standard descriptors and verify filenames containing backslashes without GNU filename escaping.
+- Retry interrupted checksum child reaping; close inherited descriptors across the complete Linux descriptor table and create the notification pipe atomically with close-on-exec.
+- Extend regression coverage for closed standard descriptors, unusual filenames and reduced descriptor limits. Retain the existing release qualification gates.
+
 ## 1.0.124 — Consolidate native worker and verification contracts
 
 - Replace the 23-file worker implementation with one structured C++ source while retaining the unified scheduler, isolation and recovery.
