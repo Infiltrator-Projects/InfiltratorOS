@@ -1,6 +1,9 @@
 #!/bin/sh
 # SPDX-License-Identifier: GPL-3.0-or-later
 set -eu
+# Report the last named assembly stage on any otherwise silent shell failure.
+stage='initialising'
+trap 'rc=$?; if [ "$rc" -ne 0 ]; then printf "InfiltratorOS package build failed during %s (exit %s)\\n" "$stage" "$rc" >&2; fi' EXIT
 
 ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
 VERSION="$(tr -d '\r\n' < "$ROOT/VERSION")"
@@ -72,6 +75,7 @@ mkdir -p \
     "$PKGROOT/Users" \
     "$PKGROOT/Volumes" \
     "$PKGROOT/Temporary"
+stage='verifying artwork and fonts'
 printf '%s  %s\n' "$ARTWORK_SHA256" "$ARTWORK" | sha256sum -c -
 test -f "$FONT_MANIFEST"
 test "$(wc -l < "$FONT_MANIFEST")" -eq 23
@@ -83,6 +87,7 @@ test "$(wc -l < "$ICON_PART_DIR/PART_SHA256SUMS")" -eq 10
 (cd "$ICON_PART_DIR" && sha256sum -c PART_SHA256SUMS)
 # The source archive exists only in the build workspace, never on an
 # installed machine. The Debian payload owns precisely 1,233 flat icons.
+stage='assembling icons'
 archive="$WORK/mercedes-icons-v1.tar.xz"
 cat "$ICON_PART_DIR"/mercedes-icons-v1.part?? > "$archive"
 printf '%s  %s\n' "$ICON_ARCHIVE_SHA256" "$archive" | sha256sum -c -
@@ -117,6 +122,7 @@ test "$icon_count" -eq 1233
 (cd "$ICON_DIR" && sha256sum -c "$icon_manifest") >/dev/null
 test "$(find "$ICON_DIR" -maxdepth 1 -type f | wc -l)" -eq 1233
 
+stage='staging Debian files and fonts'
 sed "s/@VERSION@/$VERSION/g" "$ROOT/debian/control.in" > "$PKGROOT/DEBIAN/control"
 install -m 0755 "$ROOT/debian/postinst" "$PKGROOT/DEBIAN/postinst"
 install -m 0755 "$ROOT/debian/prerm" "$PKGROOT/DEBIAN/prerm"
@@ -179,6 +185,7 @@ install -D -m 0644 "$ROOT/packaging/81-infiltratoros-drivers.rules" \
 
 # Store the three static signed provider catalogues in the temporary seal,
 # not in the installed OS filesystem. All invocation paths use one C++ worker.
+stage='compiling native worker'
 compile_cxx -std=c++17 -O2 -Wall -Wextra -Werror -Wpedantic -pthread \
     $(pkg-config --cflags libcurl json-c openssl) -I"$ROOT/src/infiltratr-common/include" \
     -c "$ROOT/packaging/native-component-worker.cpp" -o "$WORK/native-component-worker.o"
@@ -189,6 +196,7 @@ for inventory in temporal-resources.json filesystem-resources.json filesystem-ad
 done
 
 # These shared objects have no product profile or version dependency.
+stage='compiling installer UI and shared objects'
 for unit in installer-process installer-status native-progress-count; do
     compile_c -std=c11 -O2 -Wall -Wextra -Werror -Wpedantic \
         -c "$ROOT/packaging/$unit.c" -o "$WORK/$unit.o"
@@ -225,7 +233,7 @@ for product in system-monitor calculator calendar files defragmenter boot tempor
         -o "$RUNTIME_BUILD/$product-progress" $(pkg-config --libs gtk+-3.0 pangoft2 fontconfig)
 done
 
-# The controlling dispatcher and release verification are native C++.
+stage='compiling dispatcher and validating staged files'
 # The embedded OS dispatcher and worker implementations are native C/C++.
 compile_cxx -std=c++17 -O2 -Wall -Wextra -Werror -Wpedantic \
     -c "$ROOT/packaging/native-orchestrator.cpp" -o "$WORK/native-orchestrator.o"
@@ -248,6 +256,7 @@ done
 # The early window needs only these five actual font roles, not the complete
 # resource collection. Embed a separately sealed bootstrap in preinst so dpkg
 # can display the real UI before unpacking its package-owned resource files.
+stage='assembling and verifying bootstrap bundle'
 BOOTSTRAP="$WORK/bootstrap"
 mkdir -p "$BOOTSTRAP/bootstrap-fonts"
 for tool in start-system-monitor-install system-monitor-progress; do
@@ -274,6 +283,7 @@ sh "$PKGROOT/DEBIAN/preinst" --verify-bootstrap-bundle
 # The package contains one maintainer-script-driven installation transaction.
 # The internal workers exist only in this integrity-checked
 # embedded bundle, NOT as permanent entries in the installed filesystem.
+stage='assembling and verifying native installer bundle'
 tar --sort=name --mtime="@$SOURCE_DATE_EPOCH" --owner=0 --group=0 \
     --numeric-owner -czf "$WORK/native-runtime.tar.gz" -C "$RUNTIME_BUILD" .
 runtime_digest=$(sha256sum "$WORK/native-runtime.tar.gz" | cut -d' ' -f1)
@@ -286,6 +296,7 @@ base64 -w 76 "$WORK/native-runtime.tar.gz" >> "$PKGROOT/DEBIAN/postinst"
 printf '%s\n' '__INFILTRATOROS_NATIVE_BUNDLE_END__' >> "$PKGROOT/DEBIAN/postinst"
 sh -n "$PKGROOT/DEBIAN/postinst"
 sh "$PKGROOT/DEBIAN/postinst" --verify-installer-bundle
+stage='building Debian package'
 OUT="$DIST/infiltratoros_${VERSION}_amd64.deb"
 dpkg-deb --root-owner-group --build "$PKGROOT" "$OUT"
 dpkg-deb --info "$OUT" >/dev/null

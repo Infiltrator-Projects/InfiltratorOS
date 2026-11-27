@@ -73,7 +73,15 @@ if [ "${1:-}" = "--verify-installer-bundle" ]; then
         echo 'Invalid embedded InfiltratorOS native installer bundle.' >&2
         exit 1
     fi
-    test "$(find "$inspect" -maxdepth 1 -type f | wc -l)" -eq 29
+    # Eight component profiles, three tools per profile, three inventories
+    # and one dispatcher. Keep the count derived from the same inventory
+    # validated by unpack_native_workers, not an obsolete release helper.
+    actual=$(find "$inspect" -maxdepth 1 -type f | wc -l)
+    expected=28
+    if [ "$actual" -ne "$expected" ]; then
+        printf 'Native installer bundle: expected %s files, found %s\n' "$expected" "$actual" >&2
+        exit 1
+    fi
     exit 0
 fi
 

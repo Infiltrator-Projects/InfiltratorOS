@@ -1,3 +1,7 @@
+## 1.0.135 — Correct installer bundle verification
+
+- Account for removal of the release resolver in the embedded runtime file count. Report bundle mismatches and package assembly failure stages explicitly.
+
 ## 1.0.134 — Remove obsolete dispatcher helpers
 
 - Remove the unused release-log reader and obsolete BOOT refresh environment switch left behind by independent installer dispatch. Keep strict compiler warnings enabled.
