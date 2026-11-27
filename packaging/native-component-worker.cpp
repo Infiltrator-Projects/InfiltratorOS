@@ -1705,7 +1705,11 @@ static int install_boot(const Entry &entry, const fs::path &statuses) {
         status.write("running", 5, "Checking native BOOT release", entry.repo);
         const auto meta = release(entry);
         const auto asset = release_asset(entry, meta.ptr, false, false);
-        if (application_current(entry, asset, true)) {
+        // An OS batch deliberately refreshes BOOT before provider deployment.
+        // A standalone worker may still reuse a verified installation.
+        const char *refresh = std::getenv("INFILTRATOROS_REINSTALL_BOOT");
+        if (!(refresh && std::string_view(refresh) == "1") &&
+            application_current(entry, asset, true)) {
             status.write("complete", 100, "Already installed", "Native EFI inventory verified");
             return 0;
         }

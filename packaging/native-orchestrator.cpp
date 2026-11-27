@@ -87,6 +87,9 @@ static int run(const Strings &args, const fs::path &out = {},
             setenv("INFILTRATOROS_PROGRESS_MODE", "none", 1);
             unsetenv("INFILTRATOROS_FAT_PAIR");
             unsetenv("INFILTRATOROS_SMART_BUILD_QUEUE");
+            unsetenv("INFILTRATOROS_REINSTALL_BOOT");
+            if (args.size() > 4 && fs::path(args[4]).filename() == "install-boot")
+                setenv("INFILTRATOROS_REINSTALL_BOOT", "1", 1);
             if (smart_queue) setenv("INFILTRATOROS_SMART_BUILD_QUEUE", "1", 1);
         }
         std::vector<char *> argv;
@@ -226,6 +229,38 @@ static void launch(const fs::path &stage, const std::string &launcher,
     if (result != 0 && !reported_failure)
         failed_job(stage, name, "Worker exited unsuccessfully (exit " + std::to_string(result) + ")");
 }
+// BOOT owns the one clean ESP deployment. Run it after release preflight
+// and before the component queue, not after any provider could stage an EFI
+// module. Ordinary hosted providers remain independently installable even
+// when BOOT fails; future firmware publication must require BOOT success.
+static void dispatch_components(const fs::path &canonical, const Strings &apps,
+                                const Strings &temporal, const Strings &chosen,
+                                const Strings &selected) {
+    launch(canonical, "boot");
+    Strings queue;
+    for (const auto &slug : selected)
+        if (infiltrator_native::queue_candidate(slug)) queue.push_back(slug);
+    const bool smart = !queue.empty();
+    auto queued = [smart](const std::string &slug) {
+        return smart && infiltrator_native::queue_candidate(slug);
+    };
+    for (const auto &s : apps)
+        if (!queued(s)) launch(canonical, s);
+    for (const auto &s : temporal)
+        if (!queued(s)) launch(canonical, "temporal-resources", s);
+    if (smart) {
+        const auto &first = queue.front();
+        if (first.rfind("filesystem-", 0) == 0)
+            launch(canonical, "filesystem-resources", first, true, queue);
+        else if (first.rfind("calendar-", 0) == 0 || first.rfind("clock-", 0) == 0)
+            launch(canonical, "temporal-resources", first, true, queue);
+        else
+            launch(canonical, first, "", true, queue);
+    }
+    for (const auto &s : chosen)
+        if (!queued(s)) launch(canonical, "filesystem-resources", s);
+}
+
 static void dispatch(const fs::path &stage) {
     const fs::path canonical = fs::canonical(stage);
     if (canonical.parent_path() != STATUS_ROOT ||
@@ -320,31 +355,7 @@ static void dispatch(const fs::path &stage) {
     write_text(phase, "components\n");
     fs::rename(phase, canonical / "phase");
     setenv("INFILTRATOROS_INSTALL_RUNTIME", canonical.c_str(), 1);
-    Strings queue;
-    for (const auto &slug : selected)
-        if (infiltrator_native::queue_candidate(slug)) queue.push_back(slug);
-    const bool smart = !queue.empty();
-    auto queued = [smart](const std::string &slug) {
-        return smart && infiltrator_native::queue_candidate(slug);
-    };
-    for (const auto &s : apps)
-        if (!queued(s)) launch(canonical, s);
-    for (const auto &s : temporal)
-        if (!queued(s)) launch(canonical, "temporal-resources", s);
-    if (smart) {
-        const auto &first = queue.front();
-        if (first.rfind("filesystem-", 0) == 0)
-            launch(canonical, "filesystem-resources", first, true, queue);
-        else if (first.rfind("calendar-", 0) == 0 || first.rfind("clock-", 0) == 0)
-            launch(canonical, "temporal-resources", first, true, queue);
-        else
-            launch(canonical, first, "", true, queue);
-    }
-    for (const auto &s : chosen)
-        if (!queued(s)) launch(canonical, "filesystem-resources", s);
-    // BOOT installs its own EFI drivers only. Filesystem job failures are
-    // recorded independently and must not suppress this component's install.
-    launch(canonical, "boot");
+    dispatch_components(canonical, apps, temporal, chosen, selected);
 }
 int main(int argc, char **argv) {
     try {

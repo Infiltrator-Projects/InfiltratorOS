@@ -1,3 +1,9 @@
+## 1.0.127 — Initialise BOOT before the component queue
+
+- Perform one clean independent BOOT deployment after release preflight and before the shared component queue, rather than clearing its directory after providers run.
+- Refresh BOOT during OS orchestration while retaining standalone verified-install reuse. Preserve BOOT-owned Secure Boot and ESP checks.
+- Keep filesystem modules hosted-only until exact BOOT firmware compatibility is qualified; exercise the real dispatch order and child environment in the supervisor regression.
+
 ## 1.0.126 — Independent OS and BOOT release contracts
 
 - Remove live external product release checks from OS publication; retain local worker, snapshot, package and integrity regression tests.
