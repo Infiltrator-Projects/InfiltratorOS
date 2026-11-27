@@ -620,10 +620,18 @@ static Strings required_paths(const std::string &slug) {
     return {"/Programs/defragmenter-test-media",
             "/System/Commands/Defragmenter/defragmenter-operation-engine",
             "/System/Commands/Defragmenter/defragmenter-mapper",
-            "/System/Commands/Defragmenter/ext4/ext-metadata-worker"};
+            "/System/Resources/Documentation/Defragmenter.pdf"};
 }
 static bool application_proof(const Entry &entry) {
-    if (entry.id == "calculator") return true;
+    // The published Calculator RUN validates its own PGO training.
+    // Require a package-owned manual as well as the executable and OS
+    // attestation; independent package-owned PGO evidence is still needed.
+    if (entry.id == "calculator") {
+        const auto manual = "/System/Resources/Documentation/Calculator.pdf";
+        return regular(manual) &&
+               output({"/usr/bin/dpkg-query", "-S", manual}) ==
+                   std::string("calculator: ") + manual;
+    }
     if (entry.id == "calendar") {
         const fs::path proof = "/usr/share/doc/calendar/BUILD-INFO";
         if (!regular(proof)) return false;
@@ -687,7 +695,40 @@ static fs::path installed_boot_image() {
 }
 // Firmware must launch trusted Shim when Secure Boot is enabled. BOOT's
 // signed second stage is still BOOTX64.EFI in the fixed directory.
-static bool boot_registered(const std::string &firmware, bool allow_shim = false) {
+// Match the firmware device path to the mounted ESP, not just its filename.
+static bool firmware_partition_matches(const std::string &line, const std::string &partuuid) {
+    if (partuuid.empty()) return false;
+    const auto lower = lowercase(line), expected = lowercase(partuuid);
+    const auto start = lower.find("hd(");
+    if (start == std::string::npos) return false;
+    const auto end = lower.find(')', start);
+    if (end == std::string::npos) return false;
+    std::istringstream input(lower.substr(start + 3, end - start - 3));
+    std::string partition, scheme, signature, offset, size, extra;
+    if (!std::getline(input, partition, ',') || !std::getline(input, scheme, ',') ||
+        !std::getline(input, signature, ',') || !std::getline(input, offset, ',') ||
+        !std::getline(input, size, ',') || std::getline(input, extra, ',')) return false;
+    if (partition.empty() || partition.find_first_not_of("0123456789") != std::string::npos)
+        return false;
+    if (scheme == "gpt")
+        return std::regex_match(expected, std::regex("[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}")) &&
+               signature == expected;
+    if (scheme != "mbr" || !std::regex_match(expected, std::regex("[0-9a-f]{8}-[0-9a-f]{2}")) ||
+        !std::regex_match(signature, std::regex("0x[0-9a-f]{1,8}"))) return false;
+    try {
+        return std::stoul(partition) == std::stoul(expected.substr(9), nullptr, 16) &&
+            std::stoul(signature, nullptr, 16) == std::stoul(expected.substr(0, 8), nullptr, 16);
+    } catch (const std::exception &) { return false; }
+}
+static std::string esp_partition_identity(const fs::path &image) {
+    const auto mount = image.parent_path().parent_path().parent_path().parent_path();
+    const auto source = output({"/usr/bin/findmnt", "-rnM", mount.string(), "-t", "vfat", "-o", "SOURCE"});
+    if (source.rfind("/dev/", 0) != 0 || source.find('\n') != std::string::npos)
+        return {};
+    return output({"/usr/bin/lsblk", "--noheadings", "--nodeps", "--output", "PARTUUID", "--", source});
+}
+static bool boot_registered(const std::string &firmware, bool allow_shim = false,
+                            const std::string &partuuid = {}) {
     std::string first, matching;
     unsigned int count = 0;
     for (const auto &line : lines(firmware)) {
@@ -703,7 +744,8 @@ static bool boot_registered(const std::string &firmware, bool allow_shim = false
         if (lower.size() < 9 || lower.rfind("boot", 0) != 0 ||
             (!direct && !shim))
             continue;
-        if (line[8] != '*') return false;
+        if (line[8] != '*' || (!partuuid.empty() && !firmware_partition_matches(line, partuuid)))
+            return false;
         const auto candidate = lower.substr(4, 4);
         if (candidate.find_first_not_of("0123456789abcdef") != std::string::npos) return false;
         matching = candidate;
@@ -816,8 +858,10 @@ static bool native_boot_current(const Asset &asset, bool evidence, std::string *
         for (const char *name : {"shimx64.efi", "shimx64.efi.signed"})
             if (regular(image.parent_path() / name)) allow_shim = true;
     }
-    if (!boot_registered(firmware, allow_shim))
-        return fail("BOOT's fixed EFI entry is absent, duplicated, inactive, or not first in BootOrder");
+    const auto esp = esp_partition_identity(image);
+    if (esp.empty()) return fail("Cannot establish the mounted ESP partition identity");
+    if (!boot_registered(firmware, allow_shim, esp))
+        return fail("BOOT's fixed EFI entry is absent, duplicated, inactive, not first, or points at another ESP");
     if (secure == 1) {
         // Presence of a parseable signature is not proof of firmware DB,
         // DBX or MOK trust. Never modify firmware or assert a boot test.
@@ -961,6 +1005,45 @@ static fs::path native_package_from(const fs::path &folder, const Entry &entry,
         throw std::runtime_error("Invalid component-built DEB version");
     return package;
 }
+// Validate the package before changing the installed system. The independent
+// release owns compilation, while the OS owns the package transaction.
+static fs::path staged_resource(const fs::path &root, const std::string &absolute) {
+    const auto path = root / fs::path(absolute).relative_path();
+    if (!regular(path)) throw std::runtime_error("Native DEB payload missing: " + absolute);
+    const auto relative = fs::canonical(path).lexically_relative(fs::canonical(root));
+    if (relative.empty() || *relative.begin() == "..")
+        throw std::runtime_error("Native DEB resource escapes staging: " + absolute);
+    return path;
+}
+static void verify_native_payload(const fs::path &package, const Entry &entry, const Asset &asset,
+                                  const fs::path &scratch) {
+    TempDir inspection(scratch, "verify-payload-");
+    required({"/usr/bin/dpkg-deb", "-x", package.string(), inspection.path.string()});
+    const auto resource = staged_resource(inspection.path, entry.resource);
+    if (entry.kind == "application") {
+        if (access(resource.c_str(), X_OK) != 0)
+            throw std::runtime_error("Staged native application is not executable");
+        for (const auto &path : required_paths(entry.id))
+            (void)staged_resource(inspection.path, path);
+        return;
+    }
+    const std::map<std::string, std::string> expected{
+        {"X-Infiltrator-Native-Profile", "aggressive"},
+        {"X-Infiltrator-PGO", "trained-two-pass"},
+        {"X-Infiltrator-Source-Revision", asset.source_revision},
+        {"X-Infiltrator-Resource-SHA256", digest(resource)}};
+    for (const auto &[field_name, value] : expected)
+        if (value.empty() || output({"/usr/bin/dpkg-deb", "-f", package.string(), field_name}) != value)
+            throw std::runtime_error("Unqualified staged provider metadata: " + field_name);
+    const auto manual = staged_resource(inspection.path,
+        "/System/Resources/Documentation/" + entry.repo + ".pdf");
+    std::ifstream pdf(manual, std::ios::binary);
+    char magic[5];
+    if (!pdf.read(magic, 5) || std::memcmp(magic, "%PDF-", 5) != 0)
+        throw std::runtime_error("Staged provider manual is not a PDF");
+    if (entry.slug().rfind("filesystem-", 0) == 0 && !exports_common_filesystem_api(resource))
+        throw std::runtime_error("Staged provider does not export the canonical Common V2 API");
+}
 static bool install(const Entry &entry, Status &status, bool application_mode,
                     bool temporal, bool filesystem) {
     Document meta = release(entry);
@@ -999,6 +1082,7 @@ static bool install(const Entry &entry, Status &status, bool application_mode,
         command.insert(command.end(), {"--build-only", "--output", folder.string()});
         required(command);
         const auto package = native_package_from(folder, entry, asset);
+        verify_native_payload(package, entry, asset, folder);
         status.write("running", 85, "Installing native package", "Waiting for Debian package manager");
         required(package_install_command(package), status.root / (entry.slug() + "-package.log"));
     } else {
@@ -1070,8 +1154,25 @@ static void build(Job &job, const fs::path &logs, const std::vector<int> &cpus) 
         }
         arguments = {"/usr/bin/taskset", "--cpu-list", mask};
     }
+    const auto private_home = job.folder / "home";
+    const auto private_tmp = job.folder / "tmp";
+    fs::create_directory(private_home);
+    fs::create_directory(private_tmp);
     arguments.insert(arguments.end(), {"/usr/bin/env", "MAKEFLAGS=-j" + slots,
-                      "CMAKE_BUILD_PARALLEL_LEVEL=" + slots});
+                      "CMAKE_BUILD_PARALLEL_LEVEL=" + slots,
+                      "DEB_BUILD_OPTIONS=parallel=" + slots,
+                      "HOME=" + private_home.string(), "TMPDIR=" + private_tmp.string(),
+                      "XDG_CACHE_HOME=" + (private_home / ".cache").string(),
+                      "XDG_CONFIG_HOME=" + (private_home / ".config").string(),
+                      "XDG_DATA_HOME=" + (private_home / ".local/share").string()});
+    if (job.entry.id == "calculator") {
+        // Common's font helper supports a private staging root. GUI training
+        // reads already provisioned system fonts without modifying them.
+        const auto font_root = job.folder / "font-root";
+        fs::create_directory(font_root);
+        arguments.push_back("INFILTRATR_NATIVE_ROOT=" + font_root.string());
+        arguments.push_back("INFILTRATR_EXTENDED_FONT_SOURCE_DIR=/System/Resources/Fonts");
+    }
     // Released Calendar and Defragmenter scripts query getconf for job counts.
     // Scope the reported count to this build's allocation, not the host.
     // The private directory is root-owned and removed with the run.
@@ -1083,6 +1184,10 @@ static void build(Job &job, const fs::path &logs, const std::vector<int> &cpus) 
                    "  printf '%s\\n' " + slots + "\nelse\n  exec /usr/bin/getconf \"$@\"\nfi\n");
         if (chmod(shim.c_str(), 0700) != 0)
             throw std::runtime_error("Cannot set private build CPU-count helper executable");
+        const auto apt_guard = bin / "apt-get";
+        save(apt_guard, "#!/bin/sh\necho 'APT is forbidden during native build-only execution' >&2\nexit 125\n");
+        if (chmod(apt_guard.c_str(), 0700) != 0)
+            throw std::runtime_error("Cannot install private package-manager guard");
         arguments.push_back("PATH=" + bin.string() + ":" +
             environment("PATH", "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"));
     }
@@ -1092,6 +1197,10 @@ static void build(Job &job, const fs::path &logs, const std::vector<int> &cpus) 
     if (execute(arguments, nullptr, logs / (job.entry.slug() + "-build.log")) != 0)
         throw std::runtime_error("Native build failed: " + job.entry.slug());
     job.package = native_package_from(job.folder, job.entry, job.asset);
+    if (!job.asset.url.empty()) {
+        verify_native_payload(job.package, job.entry, job.asset, job.folder);
+        fs::remove(job.run);
+    }
 }
 static void build_packages(std::vector<Job> &jobs, const fs::path &statuses,
                            std::map<std::string, std::string> &failures) {
@@ -1143,11 +1252,20 @@ static void build_packages(std::vector<Job> &jobs, const fs::path &statuses,
             resources.capacity_mib = std::min(resources.capacity_mib, memory_budget);
             std::vector<BuildReservation> reservations;
             for (const auto &job : active) reservations.push_back(job.resources);
-            const auto &entry = jobs[next].entry;
-            const auto kind = entry.kind == "application" ? BuildKind::files :
-                entry.id == "exfat" ? BuildKind::exfat : BuildKind::module;
-            auto reservation = reserve_build(resources, reservations, kind, jobs.size() - next);
+            std::optional<BuildReservation> reservation;
+            std::size_t candidate = next;
+            // A temporarily blocked large job must not strand capacity for
+            // another independent build. Only pending entries are reordered.
+            for (; candidate < jobs.size(); ++candidate) {
+                const auto &entry = jobs[candidate].entry;
+                const auto kind = entry.kind == "application" ? BuildKind::files :
+                    entry.id == "exfat" ? BuildKind::exfat : BuildKind::module;
+                reservation = reserve_build(resources, reservations, kind, jobs.size() - next);
+                if (reservation) break;
+            }
             if (reservation) {
+                if (candidate != next) std::swap(jobs[next], jobs[candidate]);
+                const auto &entry = jobs[next].entry;
                 blocked.reset();
                 const auto job = next++;
                 const auto count = std::to_string(active.size() + 1);
@@ -1267,10 +1385,11 @@ static int smart_queue(const std::vector<Entry> &entries) {
     fs::path statuses = stage / "status";
     if (stage == ROOT || environment("INFILTRATOROS_RELEASE_DIR").empty())
         throw std::runtime_error("Smart queue requires a native run snapshot");
-    std::set<std::string> selected;
-    for (const auto &item : lines(read_file(stage / "selected.list"))) selected.insert(item);
+    const auto selection_order = lines(read_file(stage / "selected.list"));
+    std::set<std::string> selected(selection_order.begin(), selection_order.end());
+    if (selection_order.size() != selected.size()) throw std::runtime_error("Duplicate selected component");
     std::vector<Entry> chosen;
-    for (const auto &slug : selected)
+    for (const auto &slug : selection_order)
         if (infiltrator_native::queue_candidate(slug)) {
             auto it = std::find_if(entries.begin(), entries.end(),
                                    [&](const Entry &e) { return e.slug() == slug; });
@@ -1279,8 +1398,9 @@ static int smart_queue(const std::vector<Entry> &entries) {
         }
     if (chosen.empty()) throw std::runtime_error("No selected smart build candidates");
     std::vector<std::unique_ptr<Lock>> locks;
-    for (const auto &e : chosen)
-        locks.emplace_back(std::make_unique<Lock>(ROOT / (e.slug() + ".lock")));
+    for (const auto &slug : selected)
+        if (infiltrator_native::queue_candidate(slug))
+            locks.emplace_back(std::make_unique<Lock>(ROOT / (slug + ".lock")));
     Lock global(ROOT / "native-install.lock");
     setenv("DEBIAN_FRONTEND", "noninteractive", 1);
     setenv("TMPDIR", statuses.c_str(), 1);

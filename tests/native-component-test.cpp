@@ -160,6 +160,16 @@ int main() {
 Boot0007* BOOT Boot Manager HD(1,GPT,1234)/File(\EFI\InfiltratorOS\BOOT\BOOTX64.EFI)
 )";
         check(boot_registered(firmware), "BOOT owns one active, first-priority native EFI entry");
+        const std::string uuid = "01234567-89ab-cdef-0123-456789abcdef";
+        const std::string valid_esp = "BootOrder: 0007,0005\nBoot0007* BOOT HD(1,GPT," + uuid +
+            ",0x800,0x100000)/File(\\EFI\\InfiltratorOS\\BOOT\\BOOTX64.EFI)\n";
+        check(boot_registered(valid_esp, false, uuid), "firmware entry matches mounted GPT ESP");
+        check(!boot_registered(valid_esp, false, "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"),
+              "same BOOT path on another ESP is refused");
+        check(firmware_partition_matches("HD(2,MBR,0x12345678,0x800,0x1000)", "12345678-02"),
+              "MBR partition signature and partition number match");
+        check(!firmware_partition_matches("HD(1,MBR,0x12345678,0x800,0x1000)", "12345678-02"),
+              "MBR partition number mismatch refused");
         // Secure Boot launches Shim and Shim launches the signed BOOTX64.EFI.
         // Only an explicitly permitted, single active first-priority Shim
         // entry inside BOOT's fixed directory can satisfy this contract.
@@ -352,6 +362,8 @@ Boot0007 BOOT Boot Manager HD(1,GPT,1234)/File(\EFI\InfiltratorOS\BOOT\BOOTX64.E
             check(failures.empty(), "all five application native build paths execute successfully");
             for (const auto &job : jobs) {
                 check(regular(job.package), "scheduler returns verified real Debian package");
+                rejects([&]() { verify_native_payload(job.package, job.entry, asset, job.folder); },
+                        "metadata-only application DEB missing required payload");
                 Asset stale = asset;
                 stale.version = "9.9.9";
                 rejects([&]() { (void)native_package_from(job.folder, job.entry, stale); },

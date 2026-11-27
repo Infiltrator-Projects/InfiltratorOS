@@ -1,3 +1,10 @@
+## 1.0.116 — Verify staged packages and BOOT partition identity
+
+- Verify staged provider SHA-256, source/PGO metadata, Common V2 exports, PDF and application payloads before APT.
+- Correlate BOOT firmware registration with the mounted ESP partition UUID; test GPT/MBR identity.
+- Remove the obsolete EXT-specific Defragmenter helper requirement; preserve generic engines and manual.
+- Preserve selected order and admit fitting smaller jobs; isolate build HOME, TMPDIR and Calculator font staging, and deny PATH-resolved APT during build-only execution.
+
 ## 1.0.115 — Selection-first release verification and bounded downloads
 
 - Resolve selection before release discovery, verifying only selected releases while retaining the sealed inventory authority.
