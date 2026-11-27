@@ -1,3 +1,7 @@
+## 1.0.132 — Independent release discovery
+
+- Resolve changed or missing cached release metadata directly from each component's GitHub release, without waiting for central publication. Report unavailable components individually and continue installing independent components. Existing asset digest checks remain unchanged.
+
 ## 1.0.131 — Reuse unchanged compilation units
 
 - Compile common installer objects once per package instead of once per product. Cache unchanged C/C++ compilation units across GitHub builds with standard ccache; link and assemble the versioned package normally. No installer or runtime changes.

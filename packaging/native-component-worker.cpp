@@ -535,13 +535,15 @@ Asset release_asset(const Entry &entry, json_object *meta, bool calendar_or_cloc
 }
 Document release(const Entry &entry) {
     const std::string directory=environment("INFILTRATOROS_RELEASE_DIR");
-    if(!directory.empty())
-        return parse(read_file(fs::path(directory)/(entry.repo+".json")));
-    // Standalone worker invocations still use authenticated publisher
-    // metadata. No runtime REST request or GitHub account is required.
-    Document catalogue=parse(fetch("https://raw.githubusercontent.com/Infiltrator-Projects/Infiltrator-Repository/main/catalogue/native-installers-v4.json"));
-    auto *meta=field(field(catalogue.ptr,"releases"),entry.repo.c_str());
-    return parse(json_object_to_json_string_ext(meta,JSON_C_TO_STRING_PLAIN));
+    if(!directory.empty()) {
+        const fs::path root(directory);
+        const auto path=root/(entry.repo+".json");
+        if (fs::is_regular_file(path)) return parse(read_file(path));
+        Document pending=parse(read_file(root/"optional-pending.json"));
+        throw std::runtime_error(str(pending.ptr,entry.repo.c_str()));
+    }
+    return parse(fetch("https://api.github.com/repos/Infiltrator-Projects/"+entry.repo+"/releases/latest"));
+
 }
 void download(const Asset &asset,const fs::path &target) {
     FILE *file=fopen(target.c_str(),"wb+");

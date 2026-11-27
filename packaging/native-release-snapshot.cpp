@@ -267,98 +267,71 @@ static void verify_release(const std::string &repo, json_object *release) {
     if (installers != 1)
         throw std::runtime_error(repo + ": expected exactly one native RUN installer");
 }
-// The publisher is shared by multiple product versions. An OS release
-// authorizes only its own packaged catalogue, not every newly published
-// filesystem. Reject duplicate/unsafe identities even outside that subset.
-static std::unique_ptr<Json> selected_snapshot(json_object *source,
-        const std::set<std::string> &required,
-        const std::set<std::string> &optional,
-        const std::set<std::string> &ignored = {}) {
-    auto *schema = field(source, "schema");
-    if (json_object_get_type(schema) != json_type_int || json_object_get_int(schema) != 1)
-        throw std::runtime_error("Unsupported release snapshot schema");
-    auto *releases = field(source, "releases");
-    auto *pending = field(source, "pending");
-    if (json_object_get_type(releases) != json_type_object ||
-        json_object_get_type(pending) != json_type_object)
-        throw std::runtime_error("Invalid release catalogue structure");
-    auto result = std::make_unique<Json>(json_object_new_object());
-    auto *selected_releases = json_object_new_object();
-    auto *selected_pending = json_object_new_object();
-    json_object_object_add(result->object, "schema", json_object_new_int(1));
-    json_object_object_add(result->object, "releases", selected_releases);
-    json_object_object_add(result->object, "pending", selected_pending);
-    std::set<std::string> all_seen, selected_seen;
-    auto selected = [&](const std::string &name) {
-        const auto key = lowercase(name);
-        if (!std::regex_match(name, std::regex("[A-Za-z][A-Za-z0-9-]+")) ||
-            !all_seen.insert(key).second)
-            throw std::runtime_error("Unsafe or duplicate repository in release snapshot: " + name);
-        if (required.count(key) || optional.count(key)) {
-            selected_seen.insert(key);
-            return true;
-        }
-        if (!ignored.count(key) && !std::regex_match(key, std::regex("filesystem-[a-z0-9-]+")))
-            throw std::runtime_error("Unexpected non-filesystem repository: " + name);
-        return false;
-    };
-    json_object_object_foreach(releases, repository, release) {
-        if (selected(repository)) {
-            verify_release(repository, release);
-            json_object_object_add(selected_releases, repository, json_object_get(release));
-        }
-    }
-    {
-        json_object_object_foreach(pending, repository, reason) {
-            if (selected(repository)) {
-                if (json_object_get_type(reason) != json_type_string)
-                    throw std::runtime_error("Invalid pending provider reason");
-                if (!optional.count(lowercase(repository)))
-                    throw std::runtime_error("Required native release is pending: " + std::string(repository));
-                json_object_object_add(selected_pending, repository, json_object_get(reason));
-            }
-        }
-    }
-    if (selected_seen.size() != required.size() + optional.size())
-        throw std::runtime_error("Incomplete native OS catalogue");
-    return result;
-}
+// The central catalogue is only a metadata cache. GitHub's independent
+// release is authoritative; a missing or delayed cache cannot stop a job.
 static std::unique_ptr<Json> checked_catalogue(
         const std::set<std::string> &required,
         const std::set<std::string> &optional,
-        const std::set<std::string> &ignored = {}) {
-    std::map<std::string,std::string> live_tags;
-    std::string last_error;
-    for (unsigned attempt=0; attempt<4; ++attempt) {
-        try {
-            // A unique query avoids serving a stale raw-content CDN cache
-            // after the independently scheduled publisher has committed.
-            const auto nonce=std::chrono::system_clock::now().time_since_epoch().count();
-            const std::string content=https_get(std::string(SNAPSHOT_URL)+"?refresh="+std::to_string(nonce));
-            Json raw(json_tokener_parse(content.c_str()));
-            auto root = selected_snapshot(raw.object, required, optional, ignored);
-            auto *releases = field(root->object, "releases");
-            std::vector<std::string> stale;
-            json_object_object_foreach(releases, repository, release) {
-                const std::string name(repository);
-                // Resolve each live tag only once per attempt series. The
-                // next catalogue can catch up without another REST lookup.
-                auto found=live_tags.find(name);
-                if (found==live_tags.end())
-                    found=live_tags.emplace(name,live_latest_tag(name)).first;
-                const auto cached=string_field(release,"tag_name");
-                if (cached!=found->second) stale.push_back(name+" ("+cached+" vs "+found->second+")");
-            }
-            if (stale.empty()) return root;
-            last_error="Authenticated publisher has not caught up: "+stale.front()+
-                " ("+std::to_string(stale.size())+" changed releases)";
-        } catch(const std::exception &error) {
-            last_error=error.what();
+        const fs::path &inventory) {
+    std::map<std::string,std::string> names;
+    for (const auto &app : infiltrator_native::application_contracts)
+        names.emplace(app.slug,app.repository);
+    for (const char *file : {"temporal-resources.json","filesystem-resources.json","filesystem-additional.json"}) {
+        Json entries(json_tokener_parse(read_text(inventory/file).c_str()));
+        if (json_object_get_type(entries.object)!=json_type_array)
+            throw std::runtime_error("Invalid packaged inventory");
+        for (size_t i=0;i<json_object_array_length(entries.object);++i) {
+            const auto name=string_field(json_object_array_get_idx(entries.object,i),"repository");
+            if (!std::regex_match(name,std::regex("[A-Za-z][A-Za-z0-9-]+")))
+                throw std::runtime_error("Invalid packaged repository");
+            names.emplace(lowercase(name),name);
         }
-        std::cerr<<"Native catalogue check "<<attempt+1<<"/4: "<<last_error<<'\n';
-        if(attempt<3)std::this_thread::sleep_for(std::chrono::seconds(5u*(attempt+1u)));
     }
-    throw std::runtime_error(last_error+"; no unverified or stale installer was selected");
+    std::unique_ptr<Json> cache;
+    json_object *cached_releases=nullptr;
+    try {
+        cache=std::make_unique<Json>(json_tokener_parse(https_get(SNAPSHOT_URL).c_str()));
+        cached_releases=field(cache->object,"releases");
+    } catch(const std::exception &error) {
+        std::cerr<<"Release metadata cache unavailable: "<<error.what()<<'\n';
+    }
+    auto result=std::make_unique<Json>(json_object_new_object());
+    auto *releases=json_object_new_object();
+    auto *pending=json_object_new_object();
+    json_object_object_add(result->object,"schema",json_object_new_int(1));
+    json_object_object_add(result->object,"releases",releases);
+    json_object_object_add(result->object,"pending",pending);
+    auto selected=required;
+    selected.insert(optional.begin(),optional.end());
+    for(const auto &slug:selected) {
+        const auto name=names.at(slug);
+        try {
+            const auto tag=live_latest_tag(name);
+            json_object *cached=nullptr;
+            if (cached_releases && json_object_object_get_ex(cached_releases,name.c_str(),&cached)) {
+                try {
+                    if (string_field(cached,"tag_name")==tag) {
+                        verify_release(name,cached);
+                        json_object_object_add(releases,name.c_str(),json_object_get(cached));
+                        continue;
+                    }
+                } catch(const std::exception &) {
+                    // Refresh invalid cache entries directly from GitHub.
+                }
+            }
+            const auto url="https://api.github.com/repos/Infiltrator-Projects/"+name+"/releases/tags/"+tag;
+            Json fresh(json_tokener_parse(https_get(url).c_str()));
+            verify_release(name,fresh.object);
+            if (string_field(fresh.object,"tag_name")!=tag)
+                throw std::runtime_error("GitHub returned an unexpected release tag");
+            json_object_object_add(releases,name.c_str(),json_object_get(fresh.object));
+            std::cout<<name<<": resolved "<<tag<<" directly from GitHub\n";
+        } catch(const std::exception &error) {
+            json_object_object_add(pending,name.c_str(),json_object_new_string(error.what()));
+            std::cerr<<name<<": "<<error.what()<<'\n';
+        }
+    }
+    return result;
 }
 static void prepare(const fs::path &destination, const fs::path &providers,
                     const fs::path &filesystems,const fs::path &all_filesystems,
@@ -390,7 +363,7 @@ static void prepare(const fs::path &destination, const fs::path &providers,
         optional.clear();
     }
     if(fs::exists(destination))throw std::runtime_error("Refusing snapshot overwrite");
-    auto root=checked_catalogue(required,optional,ignored);
+    auto root=checked_catalogue(required,optional,destination.parent_path());
     auto *releases=field(root->object,"releases");
     auto *pending=field(root->object,"pending");
     if (!fs::create_directory(destination))
@@ -419,7 +392,7 @@ static void prepare(const fs::path &destination, const fs::path &providers,
         throw;
     }
     std::cout << "Validated one HTTPS release snapshot for " << json_object_object_length(releases)
-              << " independent installations without GitHub REST requests\n";
+              << " independent installations\n";
 }
 int main(int argc, char **argv) {
     try {

@@ -336,19 +336,8 @@ static void dispatch(const fs::path &stage) {
         std::cout << "Some independent filesystem modules await published releases.\n";
         write_text(STATUS_ROOT / "filesystems-pending.list", read_text(pending_path));
     }
-    Strings available = established;
-    available.insert(available.end(), optional.begin(), optional.end());
-    // Fail before native builds if any requested release is unavailable.
-    Strings missing;
-    for (const auto &slug : chosen)
-        if (std::find(available.begin(), available.end(), slug) == available.end())
-            missing.push_back(slug);
-    if (!missing.empty()) {
-        for (const auto &slug : missing)
-            failed_job(canonical, slug, "Requested filesystem release not verified");
-        failed_job(canonical, "boot", "Preserved existing BOOT: filesystem discovery incomplete");
-        throw std::runtime_error("Required filesystem releases unavailable:\n" + joined(missing));
-    }
+    // Missing releases are reported by their own workers. They do not
+    // prevent unrelated applications, filesystem modules or BOOT from running.
     // The manifest is now authoritative. The UI can change from release
     // preparation to measured component progress without guessing durations.
     const auto phase = canonical / ".phase.dispatcher";
