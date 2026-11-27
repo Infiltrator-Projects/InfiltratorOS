@@ -1,3 +1,8 @@
+## 1.0.129 — Accept existing installation directory ownership
+
+- Use the existing /Temporary/InfiltratorOS directory without requiring root ownership, renaming it, or changing permissions. Remove the automatic migration introduced in 1.0.128.
+- Verify that preparation preserves the original directory inode, ownership, mode and existing status data.
+
 ## 1.0.128 — Automatic legacy installation directory migration
 
 - Replace the silent root-ownership failure in preinst and postinst with automatic migration of legacy user-owned or writable status directories; retain old diagnostics in a protected sibling directory rather than trusting legacy state as root.

@@ -16,35 +16,23 @@ recover_abandoned_supervisor "$work"
 grep -Fxq 'state=failed' "$work/last-provision.status"
 test -f "$stage/FAILED"
 grep -Fxq 'preserve logs' "$stage/dispatcher.log"
-# A pre-1.0.105 status directory must never block the next upgrade.
-parent="$work/migration"
+# Existing user-owned directories must be used in place.
+parent="$work/existing"
 mkdir -m 0755 "$parent"
 legacy="$parent/InfiltratorOS"
 mkdir -m 0775 "$legacy"
 printf 'old diagnostic\n' > "$legacy/last-provision.status"
-ln -s "$work/untouched" "$legacy/provision.lock"
-printf 'protected\n' > "$work/untouched"
 if [ "$(id -u)" = 0 ]; then
     chown 65534:65534 "$legacy"
     chmod 0755 "$legacy"
-else
-    chmod 0775 "$legacy"
 fi
+original=$(stat -c '%u:%g:%a:%i' "$legacy")
 prepare_status_root "$legacy"
-test "$(stat -c '%u:%a' "$legacy")" = "$(id -u):755"
-test ! -e "$legacy/last-provision.status"
-test ! -L "$legacy/provision.lock"
-grep -Fxq protected "$work/untouched"
-set -- "$parent"/.infiltratoros-legacy.*/status
-test "$#" -eq 1
-grep -Fxq 'old diagnostic' "$1/last-provision.status"
-test -L "$1/provision.lock"
+test "$(stat -c '%u:%g:%a:%i' "$legacy")" = "$original"
+grep -Fxq 'old diagnostic' "$legacy/last-provision.status"
+test "$(find "$parent" -mindepth 1 -maxdepth 1 | wc -l)" -eq 1
 prepare_status_root "$legacy"
-printf 'current\n' > "$legacy/last-provision.status"
-prepare_status_root "$legacy"
-grep -Fxq current "$legacy/last-provision.status"
-ln -s "$legacy" "$parent/linked"
-if prepare_status_root "$parent/linked"; then
-    echo 'Accepted symbolic link as installation directory' >&2; exit 1
-fi
-printf 'Supervisor recovery and legacy directory migration contracts passed.\n'
+test "$(stat -c '%u:%g:%a:%i' "$legacy")" = "$original"
+prepare_status_root "$parent/new"
+test -d "$parent/new"
+printf 'Supervisor recovery and existing directory contracts passed.\n'

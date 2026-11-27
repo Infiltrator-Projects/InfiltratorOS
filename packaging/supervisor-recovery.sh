@@ -1,34 +1,9 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-# Older installations allowed a user-owned status directory. Upgrade without
-# trusting user-controlled contents as root or requiring manual chmod/chown.
-# Preserve the old directory as diagnostic data, not as executable state.
+# Use the existing installation directory without ownership or mode changes.
 prepare_status_root() (
     root=$1
-    parent=${root%/*}
-    owner=$(id -u)
-    if [ -L "$parent" ] || ! mkdir -p -- "$parent" ||
-       [ "$(find "$parent" -maxdepth 0 -type d -uid "$owner" ! -perm /022 -print)" != "$parent" ]; then
-        echo "InfiltratorOS: unsafe installation parent: $parent" >&2
-        return 1
-    fi
-    if [ -L "$root" ] || { [ -e "$root" ] && [ ! -d "$root" ]; }; then
-        echo "InfiltratorOS: invalid installation directory: $root" >&2
-        return 1
-    fi
-    if [ -d "$root" ] &&
-       [ "$(find "$root" -maxdepth 0 -type d -uid "$owner" ! -perm /022 -print)" != "$root" ]; then
-        # The parent is protected. Rename without opening anything in the
-        # legacy tree, including any user-supplied locks or journal paths.
-        retained=$(mktemp -d "$parent/.infiltratoros-legacy.XXXXXXXX") || return 1
-        if ! mv -T -- "$root" "$retained/status"; then
-            rmdir -- "$retained" || :
-            echo "InfiltratorOS: unable to migrate legacy status directory: $root" >&2
-            return 1
-        fi
-        echo "InfiltratorOS: retained previous installation diagnostics at $retained/status"
-    fi
-    if ! mkdir -p -- "$root" || ! chmod 0755 "$root"; then
-        echo "InfiltratorOS: unable to create installation directory: $root" >&2
+    if [ -L "${root%/*}" ] || [ -L "$root" ] || ! mkdir -p -- "$root"; then
+        echo "InfiltratorOS: cannot use installation directory: $root" >&2
         return 1
     fi
 )
