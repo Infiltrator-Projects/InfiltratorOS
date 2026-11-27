@@ -6,6 +6,8 @@
 #ifndef INFILTRATOR_VERIFY_NATIVE_DOWNLOAD_H
 #define INFILTRATOR_VERIFY_NATIVE_DOWNLOAD_H
 
+#include <errno.h>
+
 static bool verify_native_download(const char *directory, const char *repository,
                                    const char *url, const char *download)
 {
@@ -33,8 +35,11 @@ static bool verify_native_download(const char *directory, const char *repository
     if (pid == 0) {
         close(channel[0]);
         if (dup2(channel[1], STDOUT_FILENO) < 0) _exit(127);
-        close(channel[1]);
-        execl("/usr/bin/sha256sum", "sha256sum", "--binary", "--", download, (char *)NULL);
+        /* pipe() can return STDOUT_FILENO when standard descriptors are closed.
+         * Preserve that descriptor after dup2; --zero disables filename escaping
+         * which would otherwise prefix the digest with a backslash. */
+        if (channel[1] != STDOUT_FILENO) close(channel[1]);
+        execl("/usr/bin/sha256sum", "sha256sum", "--binary", "--zero", "--", download, (char *)NULL);
         _exit(127);
     }
     close(channel[1]);
@@ -44,7 +49,9 @@ static bool verify_native_download(const char *directory, const char *repository
     if (result) fclose(result);
     else close(channel[0]);
     int code = 0;
-    if (waitpid(pid, &code, 0) != pid) return false;
+    pid_t waited;
+    do { waited = waitpid(pid, &code, 0); } while (waited < 0 && errno == EINTR);
+    if (waited != pid) return false;
     return read_ok && WIFEXITED(code) && WEXITSTATUS(code) == 0 &&
            strlen(actual) >= 65 && actual[64] == ' ' &&
            memcmp(expected, actual, 64) == 0;

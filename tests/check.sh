@@ -86,6 +86,11 @@ cc -std=c11 -O2 -Wall -Wextra -Werror -Wpedantic \
 "$WORK/native-download-test" "$WORK/native-checks" \
     "https://github.com/Infiltrator-Projects/Calculator/releases/download/v1.2.3/test-native-installer.run" \
     "$WORK/native.run"
+# GNU sha256sum escapes filenames containing backslashes unless --zero is used.
+printf '%s\n' 'known-good-native-installer' > "$WORK/native\path.run"
+"$WORK/native-download-test" "$WORK/native-checks" \
+    "https://github.com/Infiltrator-Projects/Calculator/releases/download/v1.2.3/test-native-installer.run" \
+    "$WORK/native\path.run"
 for profile in INSTALL_TEMPORAL_RESOURCES INSTALL_FILESYSTEM_RESOURCES; do
     cc -std=c11 -O2 -Wall -Wextra -Werror -Wpedantic "-D$profile" \
         tests/native-provider-slug-test.c packaging/installer-process.c \
