@@ -9,6 +9,7 @@
 #include "../packaging/native-worker/package.h"
 #include "../packaging/native-worker/verification.h"
 #include "../packaging/native-worker/build.h"
+#include "../packaging/native-worker/dependencies.h"
 #include "../packaging/native-build-resources.h"
 #include "../packaging/native-build-queue.h"
 #include <algorithm>
@@ -456,12 +457,9 @@ Boot0007 BOOT Boot Manager HD(1,GPT,1234)/File(\EFI\InfiltratorOS\BOOT\BOOTX64.E
                            "install", "-y", "--no-remove", "--reinstall", "/tmp/native.deb"}),
               "Native DEB transactions wait for APT locks and prohibit removals");
         const auto boot = application("boot");
-        check(native_installer_command(boot, false, false, "/tmp/boot.run") ==
-                  Strings{"/tmp/boot.run"},
-              "BOOT native RUN must execute with no arguments or secondary deployment mode");
-        check(native_installer_command(application("files"), false, false, "/tmp/files.run") ==
-                  Strings({"/tmp/files.run", "--system-package-mode"}),
-              "other native application options are preserved");
+        check(!infiltrator_native::queue_candidate(boot.slug()),
+              "BOOT alone remains an independent direct installer");
+
 
         auto boot_release = sample_release(boot, "0.1.456", false);
         check(release_asset(boot, boot_release.ptr, false, false).url.find(

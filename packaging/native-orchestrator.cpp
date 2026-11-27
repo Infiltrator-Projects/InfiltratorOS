@@ -151,7 +151,7 @@ static std::string output_of(const Strings &args, bool reset_selection = false) 
     return result;
 }
 static Strings catalogue(const fs::path &stage, const char *worker, const char *manifest) {
-    auto entries = lines(output_of({(stage / worker).string(), "--list"}, true));
+    auto entries = lines(output_of({(stage / worker).string(), "--catalogue"}, true));
     if (entries.empty() || std::set<std::string>(entries.begin(), entries.end()).size() != entries.size())
         throw std::runtime_error(std::string(worker) + ": catalogue incomplete");
     write_text(stage / manifest, joined(entries));
@@ -244,7 +244,7 @@ static void dispatch(const fs::path &stage) {
     Strings temporal = catalogue(canonical, "install-temporal-resources", "providers.list");
     Strings established = catalogue(canonical, "install-filesystem-resources", "filesystems.list");
 
-    auto full_fs = lines(output_of({(canonical / "install-filesystem-resources").string(), "--list-all"}, true));
+    auto full_fs = lines(output_of({(canonical / "install-filesystem-resources").string(), "--catalogue-all"}, true));
     if (full_fs.empty() || std::set<std::string>(full_fs.begin(),full_fs.end()).size()!=full_fs.size() ||
         !std::all_of(established.begin(), established.end(), [&](const auto &slug) {
             return std::find(full_fs.begin(), full_fs.end(), slug) != full_fs.end();
@@ -284,7 +284,7 @@ static void dispatch(const fs::path &stage) {
         std::ofstream out(discovery, std::ios::app);
         out << "Additional filesystem discovery failed; established drivers remain enabled.\n";
         write_text(optional_path, "");
-        auto all = lines(output_of({(canonical / "install-filesystem-resources").string(), "--list-all"}, true));
+        auto all = lines(output_of({(canonical / "install-filesystem-resources").string(), "--catalogue-all"}, true));
         Strings missing;
         for (const auto &s : all)
             if (std::find(established.begin(), established.end(), s) == established.end() &&

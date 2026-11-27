@@ -40,6 +40,8 @@ struct TempDir {
         if (!result) throw std::runtime_error("Cannot create secure native temporary directory");
         path = result;
     }
+    TempDir(const TempDir &) = delete;
+    TempDir &operator=(const TempDir &) = delete;
     // Cleanup must not throw during exception unwinding and terminate a worker.
     ~TempDir() { std::error_code error; if (!path.empty()) fs::remove_all(path, error); }
 };
@@ -54,6 +56,8 @@ struct Lock {
             throw std::runtime_error("Cannot acquire native lock");
         }
     }
+    Lock(const Lock &) = delete;
+    Lock &operator=(const Lock &) = delete;
     ~Lock() { flock(fd, LOCK_UN); close(fd); }
 };
 

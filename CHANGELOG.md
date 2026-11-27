@@ -1,3 +1,9 @@
+## 1.0.121 — One installation lifecycle and unfiltered inventory
+
+- Remove duplicate standalone compilation and installation paths: every non-BOOT job uses the same resource-admitted isolated build and verified package transaction.
+- Separate dependency preparation from scheduling, and installation coordination from package transactions; make lock and temporary-directory ownership non-copyable.
+- Enumerate the complete packaged inventory independently of environment selection, then apply selection once; exercise reduced selections in CI.
+
 ## 1.0.120 — Native worker responsibility boundaries
 
 - Split the monolithic worker into separately compiled runtime, release, filesystem descriptor, BOOT, verification, package transaction, isolation, build and dispatch units with narrow headers.

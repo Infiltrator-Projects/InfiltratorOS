@@ -12,8 +12,6 @@ struct Job {
 
 Strings build_only_arguments(const Entry &entry, const fs::path &folder, const std::string &slots);
 void build_packages(std::vector<Job> &jobs, const fs::path &statuses, std::map<std::string, std::string> &failures);
-Strings application_build_dependencies(const Entry &e);
-int smart_queue(const std::vector<Entry> &entries);
 
 } // namespace infiltrator_native::worker
 #endif

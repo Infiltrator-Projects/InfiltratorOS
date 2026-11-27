@@ -8,17 +8,6 @@
 #include <map>
 #include <optional>
 namespace infiltrator_native::worker {
-// Only the independent provider owns its RUN arguments. BOOT deliberately
-// receives none: it always builds and installs to its sole EFI destination.
-Strings native_installer_command(const Entry &entry, bool temporal,
-                                        bool filesystem, const fs::path &run) {
-    Strings command{run.string()};
-    if (temporal || filesystem)
-        command.insert(command.end(), {"--profile", "aggressive", "--system-package-mode"});
-    else if (entry.id != "defragmenter" && entry.id != "calendar" && entry.id != "boot")
-        command.push_back("--system-package-mode");
-    return command;
-}
 // Providers own native compilation; the orchestrator owns package transactions.
 // APT waits for the actual Debian package-manager locks. Do not delete lock
 // files or use a check-then-dpkg sequence which races external package tools.
@@ -163,77 +152,6 @@ void replace_deb_with_recovery(const Entry &entry, const fs::path &package,
         throw std::runtime_error(cause + "; previous package restored and verified");
     }
     discard();
-}
-static bool install(const Entry &entry, Status &status, bool application_mode,
-                    bool temporal, bool filesystem) {
-    Document meta = release(entry);
-    Asset asset = release_asset(entry, meta.ptr, temporal, filesystem);
-    if (application_mode ? application_current(entry, asset, true) : provider_current(entry, asset))
-        return true;
-    if (application_mode)
-        required({"/usr/bin/apt-get", "-o", "DPkg::Lock::Timeout=-1", "check"});
-    TempDir directory(status.root, "native-provider-");
-    fs::path run = directory.path / "native-installer.run";
-    status.write("running", 20, "Downloading verified RUN", entry.repo);
-    download(asset, run);
-    status.write("running", 35, "Executing independent RUN", entry.repo);
-    if (filesystem || temporal) {
-        if (temporal) {
-            // The temporal build-only contract refuses to install prerequisites.
-            // Resolve the shared calendar/clock toolchain before invoking it.
-            Strings dependencies{"build-essential", "binutils", "pkg-config", "jq",
-                                 "ghostscript", "gettext", "libglib2.0-dev", "libicu-dev", "git"};
-            Strings missing;
-            for (const auto &dep : dependencies)
-                if (pkg_query(dep, std::string("$") + "{Status}") != "install ok installed")
-                    missing.push_back(dep);
-            if (!missing.empty()) {
-                Strings command{"/usr/bin/apt-get", "-o", "DPkg::Lock::Timeout=-1",
-                                "install", "-y", "--no-remove", "--no-install-recommends"};
-                command.insert(command.end(), missing.begin(), missing.end());
-                required(command, status.root / (entry.slug() + "-dependencies.log"));
-            }
-        }
-        // Build the provider's native DEB once, then retain it while APT waits.
-        // This also covers providers outside the parallel compilation queue.
-        const auto folder = directory.path / "package";
-        fs::create_directory(folder);
-        auto command = native_installer_command(entry, temporal, filesystem, run);
-        command.insert(command.end(), {"--build-only", "--output", folder.string()});
-        required(command);
-        const auto package = native_package_from(folder, entry, asset);
-        verify_native_payload(package, entry, asset, folder);
-        status.write("running", 85, "Installing native package", "Waiting for Debian package manager");
-        replace_deb_with_recovery(entry, package, status.root,
-                                  [&] { verify_install(entry, asset, application_mode); });
-    } else {
-        required(native_installer_command(entry, temporal, filesystem, run));
-        verify_install(entry, asset, application_mode);
-    }
-    return false;
-}
-int individual(const Entry &entry, bool app, bool temporal, bool filesystem) {
-    if (geteuid() != 0) throw std::runtime_error("Native installation requires root");
-    fs::create_directories(ROOT);
-    const auto stage = stage_dir();
-    const auto status_dir = stage / (stage == ROOT ? "" : "status");
-    fs::create_directories(status_dir);
-    Status status(status_dir, app ? entry.id : entry.slug());
-    try {
-        Lock owner(ROOT / ((app ? entry.id : entry.slug()) + ".lock"));
-        status.write("queued", 2, "Waiting for package lock", entry.repo);
-        Lock global(ROOT / "native-install.lock");
-        setenv("DEBIAN_FRONTEND", "noninteractive", 1);
-        setenv("TMPDIR", status_dir.c_str(), 1);
-        status.write("running", 5, "Checking native release", entry.repo);
-        bool already = install(entry, status, app, temporal, filesystem);
-        status.write("complete", 100, already ? "Already installed" : "Installed",
-                     "Native package and required files verified");
-    } catch (const std::exception &e) {
-        status.write("failed", 100, "Native installation failed", e.what());
-        throw;
-    }
-    return 0;
 }
 
 } // namespace infiltrator_native::worker

@@ -47,6 +47,9 @@ jobs:
           test "$("$RUNNER_TEMP/install-temporal-resources" --list | wc -l)" -eq 54
           test "$("$RUNNER_TEMP/install-filesystem-resources" --list | wc -l)" -eq 5
           test "$("$RUNNER_TEMP/install-filesystem-resources" --list-all | wc -l)" -eq 23
+          test "$(INFILTRATOROS_SELECTED_FILESYSTEMS=ntfs "$RUNNER_TEMP/install-filesystem-resources" --catalogue | wc -l)" -eq 5
+          test "$(INFILTRATOROS_SELECTED_FILESYSTEMS=ntfs "$RUNNER_TEMP/install-filesystem-resources" --catalogue-all | wc -l)" -eq 23
+          test "$(INFILTRATOROS_SELECTED_TEMPORAL=clock-binary "$RUNNER_TEMP/install-temporal-resources" --catalogue | wc -l)" -eq 54
           c++ -std=c++17 -O2 -Wall -Wextra -Werror -Wpedantic -pthread \
             $(pkg-config --cflags libcurl json-c openssl) -Isrc/infiltratr-common/include \
             tests/native-component-test.cpp packaging/native-worker/*.cpp -o "$RUNNER_TEMP/native-component-test" \

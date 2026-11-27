@@ -29,6 +29,14 @@ int main() {
             if (chmod(worker.c_str(), 0700) != 0)
                 throw std::runtime_error("Cannot make fixture worker executable");
         };
+        script("test \"$1\" = --catalogue && printf 'filesystem-fat12\\nfilesystem-ntfs\\n'");
+        setenv("INFILTRATOROS_SELECTED_FILESYSTEMS", "ntfs", 1);
+        const auto inventory = catalogue(stage, "install-filesystem-resources", "inventory.list");
+        check(inventory == Strings({"filesystem-fat12", "filesystem-ntfs"}),
+              "enumeration must not depend on requested subset");
+        check(selection("INFILTRATOROS_SELECTED_FILESYSTEMS", inventory, true) ==
+              Strings({"filesystem-ntfs"}), "selection applied once to sealed inventory");
+        unsetenv("INFILTRATOROS_SELECTED_FILESYSTEMS");
         script("exit 9");
         launch(stage, "filesystem-resources", "filesystem-fat12");
         check(job_state(stage, "filesystem-fat12") == "failed",
