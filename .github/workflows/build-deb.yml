@@ -69,7 +69,9 @@ jobs:
           ! grep -En 'api\.github\.com|GITHUB_TOKEN' packaging/native-release-snapshot.cpp packaging/native-component-worker.cpp
           test -x "$RUNNER_TEMP/native-activate-calendar"
       - name: Exercise production process and status contracts
-        run: sh tests/check.sh
+        run: |
+          sh tests/check.sh
+          sudo sh tests/supervisor-recovery.sh
       - name: Exercise documentation folder upgrade
         run: sudo sh tests/documentation-upgrade.sh
       - name: Build and prove reproducible package bytes

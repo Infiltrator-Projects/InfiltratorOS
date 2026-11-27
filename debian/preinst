@@ -36,13 +36,11 @@ if [ "${1:-}" = --verify-bootstrap-bundle ]; then
 fi
 
 case "${1:-}" in install|upgrade) ;; *) exit 0 ;; esac
-[ ! -L /Temporary ] && [ ! -L "$STATUS_ROOT" ] || exit 1
-mkdir -p "$STATUS_ROOT"
-for directory in /Temporary "$STATUS_ROOT"; do
-    [ "$(find "$directory" -maxdepth 0 -type d -uid 0 ! -perm /022 -print)" = "$directory" ] || exit 1
-done
-chmod 0755 "$STATUS_ROOT"
-[ ! -L "$STATUS_ROOT/provision.lock" ] || exit 1
+prepare_status_root "$STATUS_ROOT" || exit 1
+if [ -L "$STATUS_ROOT/provision.lock" ]; then
+    echo 'InfiltratorOS: provisioning lock is a symbolic link.' >&2
+    exit 1
+fi
 exec 9>"$STATUS_ROOT/provision.lock"
 # Never wait on a native installer that might itself be waiting for dpkg.
 # The existing deferred postinst path handles overlapping upgrades.

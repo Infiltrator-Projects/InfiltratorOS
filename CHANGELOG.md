@@ -1,3 +1,8 @@
+## 1.0.128 — Automatic legacy installation directory migration
+
+- Replace the silent root-ownership failure in preinst and postinst with automatic migration of legacy user-owned or writable status directories; retain old diagnostics in a protected sibling directory rather than trusting legacy state as root.
+- Preserve existing valid status directories and lock handling; reject unsafe symlinks with explicit diagnostics. Exercise both ordinary and root-owned migration fixtures in CI.
+
 ## 1.0.127 — Initialise BOOT before the component queue
 
 - Perform one clean independent BOOT deployment after release preflight and before the shared component queue, rather than clearing its directory after providers run.

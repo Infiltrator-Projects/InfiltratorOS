@@ -87,13 +87,11 @@ if ! migrate_legacy_calendar_pin /etc/apt/preferences.d/infiltrator-calendar.pre
     echo 'Could not migrate the legacy Calendar APT preference.' >&2
 fi
 
-[ ! -L /Temporary ] && [ ! -L "$STATUS_ROOT" ] || exit 1
-mkdir -p "$STATUS_ROOT"
-for directory in /Temporary "$STATUS_ROOT"; do
-    [ "$(find "$directory" -maxdepth 0 -type d -uid 0 ! -perm /022 -print)" = "$directory" ] || exit 1
-done
-chmod 0755 "$STATUS_ROOT"
-[ ! -L "$STATUS_ROOT/provision.lock" ] || exit 1
+prepare_status_root "$STATUS_ROOT" || exit 1
+if [ -L "$STATUS_ROOT/provision.lock" ]; then
+    echo 'InfiltratorOS: provisioning lock is a symbolic link.' >&2
+    exit 1
+fi
 # Hold a run-wide lock across the detached monitor lifetime. A reinstall
 # during active native compilation must not spawn duplicate jobs.
 if ! command -v flock >/dev/null 2>&1; then
