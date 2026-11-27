@@ -1,3 +1,7 @@
+## 1.0.141 — Install completed components without a global build barrier
+
+- Feed completed builds directly into a single serial Debian installation lane. Release CPU reservations as builds finish, keep discovery and downloads concurrent, and mark components complete after installation. Coordinate host package transactions with active compilation using the existing shared host lock; prevent new builds from starving a waiting transaction. Remove the separate all-builds-first installation loop.
+
 ## 1.0.140 — Correct parallel installer progress
 
 - Report compiled packages awaiting the serial Debian installation stage as queued, rather than running. Preserve their completed build progress in the aggregate display; only successfully installed components are complete. No change to installer discovery, resource scheduling or package transactions.

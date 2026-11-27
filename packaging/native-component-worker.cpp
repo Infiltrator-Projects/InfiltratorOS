@@ -876,11 +876,6 @@ Strings build_only_arguments(const Entry &entry, const fs::path &folder,
     return args;
 }
 static void build(Job &job, const fs::path &logs, const std::vector<int> &cpus) {
-    // Fetch only admitted jobs, rather than retaining all RUNs before builds.
-    if (!job.asset.url.empty()) {
-        Status(logs, job.entry.slug()).write("running", 20, "Downloading native RUN", "SHA-256 release verification");
-        download(job.asset, job.run);
-    }
     Status(logs, job.entry.slug()).write("running", 35, "Compiling native component",
         std::to_string(std::max<std::size_t>(1, cpus.size())) + " CPU slots reserved");
     const auto slots = std::to_string(std::max<std::size_t>(1, cpus.size()));
@@ -963,28 +958,47 @@ void prepare_build_dependencies(const Entry &entry, Status &status);
 // changing headers or libraries underneath any active compilation.
 static void admitted_build(Job &job, const fs::path &statuses,
                            const std::vector<int> &cpus, std::shared_mutex &host,
+                           std::mutex &host_admission,
                            const std::function<Asset(const Entry &)> &resolve) {
     if (job.resolve_remote) {
         Status status(statuses, job.entry.slug());
         status.write("running", 2, "Resolving independent installer", job.entry.repo);
         job.asset = resolve(job.entry);
     }
-    std::shared_lock<std::shared_mutex> read(host);
+    if (!job.asset.url.empty()) {
+        Status(statuses, job.entry.slug()).write("running", 20, "Downloading native RUN", "SHA-256 release verification");
+        download(job.asset, job.run);
+    }
+    // Serialize admission to the host lock so an exclusive transaction
+    // cannot be starved by a succession of newly arriving builds.
+    std::shared_lock<std::shared_mutex> read(host, std::defer_lock);
+    {
+        std::lock_guard<std::mutex> admission(host_admission);
+        read.lock();
+    }
     if (!job.asset.url.empty() && !can_build(job.entry)) {
         read.unlock();
         {
-            std::unique_lock<std::shared_mutex> write(host);
+            std::unique_lock<std::shared_mutex> write(host, std::defer_lock);
+            {
+                std::lock_guard<std::mutex> admission(host_admission);
+                write.lock();
+            }
             Status status(statuses, job.entry.slug());
             prepare_build_dependencies(job.entry, status);
         }
-        read.lock();
+        {
+            std::lock_guard<std::mutex> admission(host_admission);
+            read.lock();
+        }
     }
     build(job, statuses, cpus);
 }
 
 void build_packages(std::vector<Job> &jobs, const fs::path &statuses,
                            std::map<std::string, std::string> &failures,
-                           const std::function<Asset(const Entry &)> &resolve = release) {
+                           const std::function<Asset(const Entry &)> &resolve = release,
+                           const std::function<void(Job &)> &install = {}) {
     using namespace infiltrator_native;
     std::ofstream timings(statuses / "smart-build-timings.log");
     if (!timings) throw std::runtime_error("Cannot open native build timing log");
@@ -1000,12 +1014,23 @@ void build_packages(std::vector<Job> &jobs, const fs::path &statuses,
         std::future<void> result;
     };
     std::shared_mutex host;
+    std::mutex host_admission;
     std::vector<Active> active;
+    // One serial installation lane. Indices refer to admitted jobs, which
+    // never move when the scheduler reorders the unadmitted tail.
+    struct Installation {
+        std::size_t job;
+        std::future<void> result;
+    };
+    std::optional<Installation> installing;
+    std::vector<std::size_t> ready;
+    std::size_t next_install = 0;
     std::size_t next = 0;
     std::optional<std::chrono::steady_clock::time_point> blocked;
     std::uint64_t disk_budget = 0, memory_budget = 0;
     bool have_disk_budget = false;
-    while (next < jobs.size() || !active.empty()) {
+    while (next < jobs.size() || !active.empty() || installing ||
+           next_install < ready.size()) {
         for (auto it = active.begin(); it != active.end();) {
             if (it->result.wait_for(std::chrono::milliseconds(0)) != std::future_status::ready) {
                 ++it;
@@ -1019,12 +1044,41 @@ void build_packages(std::vector<Job> &jobs, const fs::path &statuses,
                 Status(statuses, slug).write("queued", 80, "Awaiting package installation",
                     "Native compilation completed");
                 timings << elapsed() << "ms finished " << slug << std::endl;
+                if (install) ready.push_back(it->job);
             } catch (const std::exception &error) {
                 failures[slug] = error.what();
                 Status(statuses, slug).write("failed", 100, "Native build failed", error.what());
                 timings << elapsed() << "ms failed " << slug << ": " << error.what() << std::endl;
             }
             it = active.erase(it);
+        }
+        if (installing && installing->result.wait_for(std::chrono::milliseconds(0)) ==
+                          std::future_status::ready) {
+            const auto slug = jobs[installing->job].entry.slug();
+            try {
+                installing->result.get();
+                timings << elapsed() << "ms installed " << slug << std::endl;
+            } catch (const std::exception &error) {
+                failures[slug] = error.what();
+                Status(statuses, slug).write("failed", 100, "Native package installation failed", error.what());
+                timings << elapsed() << "ms install failed " << slug << ": " << error.what() << std::endl;
+            }
+            installing.reset();
+        }
+        if (!installing && next_install < ready.size()) {
+            const auto job = ready[next_install++];
+            auto result = std::async(std::launch::async, [&, job] {
+                // APT may change shared build dependencies. Let existing
+                // compilations finish before the transaction, while new
+                // jobs can still locate and download their installers.
+                std::unique_lock<std::shared_mutex> write(host, std::defer_lock);
+                {
+                    std::lock_guard<std::mutex> admission(host_admission);
+                    write.lock();
+                }
+                install(jobs[job]);
+            });
+            installing.emplace(Installation{job, std::move(result)});
         }
         if (next < jobs.size()) {
             auto resources = build_resources(allowed_build_cpus());
@@ -1064,13 +1118,13 @@ void build_packages(std::vector<Job> &jobs, const fs::path &statuses,
                         << "; memory_budget_mib=" << resources.memory_mib
                          << "; disk_budget_mib=" << resources.disk_mib << std::endl;
                 auto result = std::async(std::launch::async, [&, job, cpus = reservation->cpus] {
-                    admitted_build(jobs[job], statuses, cpus, host, resolve);
+                    admitted_build(jobs[job], statuses, cpus, host, host_admission, resolve);
                 });
                 active.push_back({job, std::move(*reservation), std::move(result)});
                 continue;
             }
         }
-        if (active.empty() && next < jobs.size()) {
+        if (active.empty() && !installing && next_install == ready.size() && next < jobs.size()) {
             const auto now = std::chrono::steady_clock::now();
             if (!blocked) blocked = now;
             Status(statuses, jobs[next].entry.slug()).write("queued", 10,
@@ -1085,7 +1139,8 @@ void build_packages(std::vector<Job> &jobs, const fs::path &statuses,
             std::this_thread::sleep_for(std::chrono::seconds(1));
         } else {
             blocked.reset();
-            if (!active.empty()) std::this_thread::sleep_for(std::chrono::milliseconds(50));
+            if (!active.empty() || installing || next_install < ready.size())
+                std::this_thread::sleep_for(std::chrono::milliseconds(50));
         }
     }
 }
@@ -1216,25 +1271,17 @@ static int run_selected_builds(const std::vector<Entry> &chosen, const fs::path 
                 status.write("failed", 100, "Native preparation failed", error.what());
             }
         }
-        build_packages(jobs, statuses, failures);
-        for (auto &job : jobs) {
-            if (failures.count(job.entry.slug())) continue;
+        build_packages(jobs, statuses, failures, release, [&](Job &job) {
             Status status(statuses, job.entry.slug());
-            try {
-                status.write("running", 85, "Installing native package", "Serial package transaction");
-                // Use the same lock-aware transaction for every queued DEB.
-                replace_deb_with_recovery(job.entry, job.package, statuses,
-                    [&] {
-                        if (pkg_query(job.entry.package, "${Status}") != "install ok installed")
-                            throw std::runtime_error("Package manager did not report successful installation");
-                    });
-                status.write("complete", 100, "Native installation complete", "Verified installed package");
-                completed.insert(job.entry.slug());
-            } catch (const std::exception &error) {
-                failures[job.entry.slug()] = error.what();
-                status.write("failed", 100, "Native package installation failed", error.what());
-            }
-        }
+            status.write("running", 85, "Installing native package", "Serial package transaction");
+            replace_deb_with_recovery(job.entry, job.package, statuses,
+                [&] {
+                    if (pkg_query(job.entry.package, "${Status}") != "install ok installed")
+                        throw std::runtime_error("Package manager did not report successful installation");
+                });
+            status.write("complete", 100, "Native installation complete", "Verified installed package");
+            completed.insert(job.entry.slug());
+        });
         if (!failures.empty()) {
             std::ostringstream summary;
             summary << failures.size() << " independent native job(s) failed";
