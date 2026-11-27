@@ -41,8 +41,13 @@ int main() {
         launch(stage, "filesystem-resources", "filesystem-fat12");
         check(job_state(stage, "filesystem-fat12") == "failed",
               "A worker exiting before its terminal status must fail");
-        check(failed_filesystem_prerequisite(stage, {"filesystem-fat12"}) == "filesystem-fat12",
-              "A failed filesystem must block BOOT");
+        const auto boot_worker = stage / "install-boot";
+        write_text(boot_worker, "#!/bin/sh\nprintf 'state=complete\\nprogress=100\\nstage=Ready\\ndetail=\\n' > \"$(dirname \"$0\")/status/boot-install.status\"\n");
+        if (chmod(boot_worker.c_str(), 0700) != 0)
+            throw std::runtime_error("Cannot make BOOT fixture worker executable");
+        launch(stage, "boot");
+        check(job_state(stage, "boot") == "complete" && job_state(stage, "filesystem-fat12") == "failed",
+              "BOOT completes independently of failed filesystem worker");
         script("kill -KILL $$");
         launch(stage, "filesystem-resources", "filesystem-ntfs");
         check(job_state(stage, "filesystem-ntfs") == "failed",
@@ -51,10 +56,8 @@ int main() {
         launch(stage, "filesystem-resources", "filesystem-fat12");
         check(job_state(stage, "filesystem-fat12") == "complete",
               "A successful worker must retain its verified outcome");
-        check(failed_filesystem_prerequisite(stage, {"filesystem-fat12"}).empty(),
-              "Successful selected filesystem permits BOOT");
-        check(failed_filesystem_prerequisite(stage, {"filesystem-fat12", "filesystem-ntfs"}) == "filesystem-ntfs",
-              "All selected prerequisites must complete");
+        check(job_state(stage, "filesystem-ntfs") == "failed",
+              "Other component statuses are independent");
         script("exit 2");
         launch(stage, "filesystem-resources", "filesystem-fat12", true,
                {"filesystem-fat12", "filesystem-ntfs"});
@@ -74,15 +77,14 @@ int main() {
         launch(stage, "system-monitor", "", true, app_batch);
         for (const auto &slug : app_batch)
             check(job_state(stage, slug) == "complete", "application-led queue member supervised");
-        check(failed_filesystem_prerequisite(stage, {"filesystem-fat12"}).empty(),
-              "application-led queue preserves BOOT prerequisite gate");
+
         write_text(stage / "status/filesystem-fat12-install.status",
                    "state=complete\nprogress=0\nstage=Fake\ndetail=\n");
-        check(failed_filesystem_prerequisite(stage, {"filesystem-fat12"}) == "filesystem-fat12",
-              "BOOT refuses contradictory complete status");
+        check(job_state(stage, "filesystem-fat12") != "complete",
+              "Supervisor rejects contradictory complete status");
         write_text(stage / "status/filesystem-fat12-install.status", "state=complete\n");
-        check(failed_filesystem_prerequisite(stage, {"filesystem-fat12"}) == "filesystem-fat12",
-              "BOOT refuses truncated complete status");
+        check(job_state(stage, "filesystem-fat12") != "complete",
+              "Supervisor rejects truncated complete status");
         fs::remove_all(stage);
         std::cout << "Native worker supervision contracts passed\n";
         return 0;

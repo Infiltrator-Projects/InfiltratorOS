@@ -225,6 +225,10 @@ int main(int argc, char **argv) {
             const auto initial = boot_efi_inventory(image);
             save(fixture.path / "boot.conf", "user-edited configuration");
             check(initial == boot_efi_inventory(image), "mutable BOOT configuration excluded");
+            save(drivers / "ext4.so", "independently installed module");
+            check(initial == boot_efi_inventory(image), "independent filesystem modules excluded");
+            fs::remove(drivers / "ext4.so");
+            check(initial == boot_efi_inventory(image), "module removal does not invalidate BOOT");
             save(drivers / "btrfs_x64.efi", "MZchanged");
             check(initial != boot_efi_inventory(image), "EFI driver mutation changes attestation");
             fs::remove(drivers / "btrfs_x64.efi");

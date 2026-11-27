@@ -883,10 +883,10 @@ std::string boot_efi_inventory(const fs::path &image) {
         throw std::runtime_error("BOOT EFI driver directory is missing or unsafe");
     for (const auto &file : fs::directory_iterator(drivers)) {
         const auto extension = lowercase(file.path().extension().string());
-        if (extension == ".efi" || extension == ".so") add(file.path(), extension == ".efi");
+        if (extension == ".efi") add(file.path(), true);
     }
-    // The present BOOT native RUN builds and requests all six EFI drivers.
-    // This contract must be revised in tandem with BOOT's future V2 transition.
+    // BOOT owns the six existing EFI drivers. Independently installed
+    // shared objects are not part of its installation attestation.
     for (const auto *name : {"ext2", "ext4", "reiserfs", "iso9660", "hfs", "btrfs"})
         if (!hashes.count(std::string("drivers_x64/") + name + "_x64.efi"))
             throw std::runtime_error(std::string("BOOT EFI driver missing: ") + name);

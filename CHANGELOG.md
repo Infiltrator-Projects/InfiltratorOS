@@ -1,3 +1,9 @@
+## 1.0.126 — Independent OS and BOOT release contracts
+
+- Remove live external product release checks from OS publication; retain local worker, snapshot, package and integrity regression tests.
+- Keep cross-repository native installation stress tests available for manual dispatch only.
+- Remove the filesystem-worker success gate on BOOT installation and exclude independently installed shared objects from BOOT EFI attestation. The selected-release preflight still validates requested installers before dispatch.
+
 ## 1.0.125 — Native installer descriptor and checksum corrections
 
 - Preserve checksum subprocess output with closed standard descriptors and verify filenames containing backslashes without GNU filename escaping.

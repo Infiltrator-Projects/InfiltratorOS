@@ -1,16 +1,5 @@
 name: Real native provider integration
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'packaging/native-build-*.h'
-      - 'packaging/native-component-worker.cpp'
-      - 'packaging/native-release-snapshot.cpp'
-      - 'packaging/*resources.json'
-      - 'packaging/filesystem-additional.json'
-      - 'src/infiltratr-common'
-      - 'tests/native-live-integration.sh'
-      - '.github/workflows/native-integration.yml'
   workflow_dispatch:
 permissions:
   contents: read

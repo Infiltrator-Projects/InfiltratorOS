@@ -116,7 +116,9 @@ grep -Fq 'provision.lock' debian/postinst
 grep -Fq 'flock -n 9' debian/postinst
 # The supervisor must reap workers before the run-wide lock can be released.
 grep -Fq 'Worker exited without a terminal status' packaging/native-orchestrator.cpp
-grep -Fq 'Preserved existing BOOT: filesystem prerequisite failed' packaging/native-orchestrator.cpp
+! grep -Fq 'failed_filesystem_prerequisite' packaging/native-orchestrator.cpp
+! grep -Fq 'boot_release=$(gh api' .github/workflows/build-deb.yml
+! grep -Fq 'live-release-check' .github/workflows/build-deb.yml
 grep -Fq 'The dispatcher has reaped every worker' debian/postinst
 ! grep -Fq 'publish_summary timeout' debian/postinst
 grep -Fq 'else if (strcmp(status.state, "complete") != 0)' packaging/native-progress-count.c
