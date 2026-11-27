@@ -1,3 +1,9 @@
+## 1.0.118 — Protect host mounts during native builds
+
+- Execute actual build-only RUNs inside a private mount namespace with read-only host mounts and writable private scratch/temp paths. Drop mount capability before starting the RUN and refuse an unrestricted fallback.
+- Validate the first authenticated GitHub release redirect directly instead of fetching unnecessary release HTML; retain exact repository/tag checks and test rejected redirects.
+- Exercise root mount isolation and private temporary files on disposable CI hosts.
+
 ## 1.0.117 — Canonical Common V2 descriptor validation
 
 - Pin released Libraries 1.19.89; the shared design implementation is unchanged.

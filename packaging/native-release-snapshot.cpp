@@ -144,6 +144,15 @@ static std::string https_get(const std::string &url) {
 /* Public release redirects establish the current stable tag without using
  * the GitHub REST quota. Digests and commit identities are supplied only by
  * the centrally authenticated publisher. Never invent either from a tag. */
+static std::string verified_redirect_tag(const std::string &prefix, long status, const std::string &target) {
+    if (status != 301 && status != 302 && status != 303 && status != 307 && status != 308)
+        return {};
+    if (target.rfind(prefix, 0) != 0) return {};
+    const auto tag = target.substr(prefix.size());
+    if (!std::regex_match(tag, std::regex("v[0-9]+\\.[0-9]+\\.[0-9]+(?:-[A-Za-z0-9.-]+)?")))
+        return {};
+    return tag;
+}
 static std::string live_latest_tag(const std::string &repository) {
     if (!std::regex_match(repository, std::regex("[A-Za-z][A-Za-z0-9-]+")))
         throw std::runtime_error("Invalid release repository identity");
@@ -158,7 +167,7 @@ static std::string live_latest_tag(const std::string &repository) {
         curl_easy_setopt(curl, CURLOPT_USERAGENT, "InfiltratorOS-native/1");
         curl_easy_setopt(curl, CURLOPT_TIMEOUT, 30L);
         curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 15L);
-        curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
+        curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 0L);
         curl_easy_setopt(curl, CURLOPT_MAXREDIRS, 5L);
         curl_easy_setopt(curl, CURLOPT_REDIR_PROTOCOLS_STR, "https");
         curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 1L);
@@ -167,20 +176,20 @@ static std::string live_latest_tag(const std::string &repository) {
         long status = 0;
         char *final_url = nullptr;
         curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &status);
-        curl_easy_getinfo(curl, CURLINFO_EFFECTIVE_URL, &final_url);
+        curl_easy_getinfo(curl, CURLINFO_REDIRECT_URL, &final_url);
         const std::string target = final_url ? final_url : "";
         curl_easy_cleanup(curl);
-        if (result == CURLE_OK && status == 200 && target.rfind(prefix, 0) == 0) {
-            const std::string tag = target.substr(prefix.size());
-            if (std::regex_match(tag, std::regex("v[0-9]+\\.[0-9]+\\.[0-9]+(?:-[A-Za-z0-9.-]+)?")))
-                return tag;
+        // The first authenticated GitHub redirect is authoritative; the
+        // final release HTML is unnecessary and may be throttled.
+        const auto tag = result == CURLE_OK ? verified_redirect_tag(prefix, status, target) : "";
+        if (!tag.empty()) return tag;
+        if (result == CURLE_OK && status >= 300 && status < 400)
             throw std::runtime_error(repository + ": invalid latest release redirect");
-        }
         if (status >= 400 && status < 500 && status != 408 && status != 429)
             throw std::runtime_error(repository + ": live latest release HTTP " +
                                      std::to_string(status));
         if (attempt == 3)
-            throw std::runtime_error(repository + ": live latest release could not be verified");
+            throw std::runtime_error(repository + ": live latest release could not be verified (HTTP " + std::to_string(status) + ", " + curl_easy_strerror(result) + ")");
         std::this_thread::sleep_for(std::chrono::seconds(1 << attempt));
     }
     throw std::runtime_error(repository + ": live release lookup unavailable");

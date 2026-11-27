@@ -56,3 +56,5 @@ Native BOOT integration tests validate release asset identity, the exact no-argu
 Filesystem claims additionally require independent media read/write/format/defragmentation and crash recovery, identity and ABI tests, relevant kernel/driver qualification, and real BOOT/UEFI and early-root testing where advertised. Record host distribution, CPU, kernel, file/module hashes, exact release, run logs and observed results; do not turn a simulated or CI pass into a physical-hardware completion claim.
 
 Audit regressions exercise bounded subprocess capture and reaping, canonical font rollback and abandoned supervisor status recovery. The release gate does not simulate every dpkg interruption window or prove Secure Boot trust on physical firmware.
+
+Build isolation is exercised on a disposable privileged CI host: writes outside the selected build folder must fail, and private `/tmp` files must not appear in the host namespace. This protects trusted build-only installers against accidental shared-host mutation; it is not an adversarial root-code sandbox. The runtime requires Linux mount namespace and recursive mount-attribute support.

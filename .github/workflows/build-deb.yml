@@ -52,6 +52,7 @@ jobs:
             tests/native-component-test.cpp -o "$RUNNER_TEMP/native-component-test" \
             $(pkg-config --libs libcurl json-c openssl) -ldl
           "$RUNNER_TEMP/native-component-test"
+          sudo sh tests/native-build-isolation.sh "$RUNNER_TEMP/native-component-worker" "$RUNNER_TEMP"
           test -x "$RUNNER_TEMP/native-orchestrate"
           test -x "$RUNNER_TEMP/native-snapshot"
           # Fail closed if GitHub no longer serves a verifiable stable

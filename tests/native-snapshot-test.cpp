@@ -32,6 +32,11 @@ static std::unique_ptr<Json> fixture() {
     return result;
 }
 int main() {
+    const std::string prefix = "https://github.com/Infiltrator-Projects/Boot/releases/tag/";
+    check(verified_redirect_tag(prefix, 302, prefix + "v1.2.3") == "v1.2.3");
+    check(verified_redirect_tag(prefix, 200, prefix + "v1.2.3").empty());
+    check(verified_redirect_tag(prefix, 302, prefix + "v1.2.3?other").empty());
+    check(verified_redirect_tag(prefix, 302, "https://example.invalid/v1.2.3").empty());
     const std::set<std::string> required{"boot"}, optional{"filesystem-fat12"};
     auto raw = fixture();
     auto selected = selected_snapshot(raw->object, required, optional);
