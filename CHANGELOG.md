@@ -1,3 +1,7 @@
+## 1.0.130 — Direct automatic package publication
+
+- Build the Debian package once and automatically publish it from main. Remove separate regression, GUI, simulated-upgrade and duplicate-build jobs from the release path. Existing test sources remain available for explicit execution.
+
 ## 1.0.129 — Accept existing installation directory ownership
 
 - Use the existing /Temporary/InfiltratorOS directory without requiring root ownership, renaming it, or changing permissions. Remove the automatic migration introduced in 1.0.128.

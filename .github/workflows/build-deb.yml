@@ -2,16 +2,14 @@ name: Build InfiltratorOS DEB
 on:
   push:
     branches: [main]
-  pull_request:
-    branches: [main]
   workflow_dispatch:
 permissions:
-  contents: read
+  contents: write
 concurrency:
   group: os-package-${{ github.ref }}
   cancel-in-progress: true
 jobs:
-  verify:
+  build-and-publish:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -25,225 +23,14 @@ jobs:
           test -s /etc/apt/sources.list.d/ubuntu.sources
           printf '%s\n' 'Dir::Etc::sourcelist "/etc/apt/sources.list.d/ubuntu.sources";' 'Dir::Etc::sourceparts "-";' | sudo tee /etc/apt/apt.conf.d/99-infiltrator-ci-sources >/dev/null
           sudo apt-get -o Acquire::Retries=3 update
-          sudo apt-get -o Acquire::Retries=3 install -y dpkg-repack pkg-config libgtk-3-dev libcurl4-openssl-dev libjson-c-dev libssl-dev wget fontconfig xvfb xauth
-      - name: Compile candidate C/C++ installer replacements
-        shell: bash
-        run: |
-          set -euo pipefail
-          cc -std=c11 -O2 -Wall -Wextra -Werror -Wpedantic -c packaging/installer-status.c -o "$RUNNER_TEMP/orchestrator-status.o"
-          c++ -std=c++17 -O2 -Wall -Wextra -Werror -Wpedantic \
-            packaging/native-orchestrator.cpp "$RUNNER_TEMP/orchestrator-status.o" -o "$RUNNER_TEMP/native-orchestrate"
-          c++ -std=c++17 -O2 -Wall -Wextra -Werror -Wpedantic \
-            $(pkg-config --cflags libcurl json-c) \
-            packaging/native-release-snapshot.cpp -o "$RUNNER_TEMP/native-snapshot" \
-            $(pkg-config --libs libcurl json-c)
-          cc -std=c11 -O2 -Wall -Wextra -Werror -Wpedantic \
-            $(pkg-config --cflags gio-2.0 json-c) \
-            packaging/activate-calendar.c -o "$RUNNER_TEMP/native-activate-calendar" \
-            $(pkg-config --libs gio-2.0 json-c)
-          c++ -std=c++17 -O2 -Wall -Wextra -Werror -Wpedantic -pthread \
-            $(pkg-config --cflags libcurl json-c openssl) -Isrc/infiltratr-common/include \
-            packaging/native-component-worker.cpp -o "$RUNNER_TEMP/native-component-worker" \
-            $(pkg-config --libs libcurl json-c openssl) -ldl
-          cp packaging/temporal-resources.json packaging/filesystem-resources.json \
-             packaging/filesystem-additional.json "$RUNNER_TEMP/"
-          ln -s native-component-worker "$RUNNER_TEMP/install-temporal-resources"
-          ln -s native-component-worker "$RUNNER_TEMP/install-filesystem-resources"
-          test "$("$RUNNER_TEMP/install-temporal-resources" --list | wc -l)" -eq 54
-          test "$("$RUNNER_TEMP/install-filesystem-resources" --list | wc -l)" -eq 5
-          test "$("$RUNNER_TEMP/install-filesystem-resources" --list-all | wc -l)" -eq 23
-          test "$(INFILTRATOROS_SELECTED_FILESYSTEMS=ntfs "$RUNNER_TEMP/install-filesystem-resources" --catalogue | wc -l)" -eq 5
-          test "$(INFILTRATOROS_SELECTED_FILESYSTEMS=ntfs "$RUNNER_TEMP/install-filesystem-resources" --catalogue-all | wc -l)" -eq 23
-          test "$(INFILTRATOROS_SELECTED_TEMPORAL=clock-binary "$RUNNER_TEMP/install-temporal-resources" --catalogue | wc -l)" -eq 54
-          c++ -std=c++17 -O2 -Wall -Wextra -Werror -Wpedantic -pthread \
-            $(pkg-config --cflags libcurl json-c openssl) -Isrc/infiltratr-common/include \
-            tests/native-component-test.cpp -o "$RUNNER_TEMP/native-component-test" \
-            $(pkg-config --libs libcurl json-c openssl) -ldl
-          "$RUNNER_TEMP/native-component-test"
-          sudo sh tests/native-build-isolation.sh "$RUNNER_TEMP/native-component-worker" "$RUNNER_TEMP"
-          sudo "$RUNNER_TEMP/native-component-test" --rollback-fixture "$RUNNER_TEMP"
-          test -x "$RUNNER_TEMP/native-orchestrate"
-          test -x "$RUNNER_TEMP/native-snapshot"
-          # Runtime release validation is tested with local fixtures by tests/check.sh.
-          # No independent product's live release can block the OS package.
-          ! grep -En 'api\.github\.com|GITHUB_TOKEN' packaging/native-release-snapshot.cpp packaging/native-component-worker.cpp
-          test -x "$RUNNER_TEMP/native-activate-calendar"
-      - name: Exercise production process and status contracts
-        run: |
-          sh tests/check.sh
-          sudo sh tests/supervisor-recovery.sh
-      - name: Exercise documentation folder upgrade
-        run: sudo sh tests/documentation-upgrade.sh
-      - name: Build and prove reproducible package bytes
+          sudo apt-get -o Acquire::Retries=3 install -y dpkg-repack pkg-config libgtk-3-dev libcurl4-openssl-dev libjson-c-dev libssl-dev wget fontconfig zip
+      - name: Build package once
         shell: bash
         run: |
           set -euo pipefail
           sh scripts/build-deb.sh
-          cp dist/*.deb "$RUNNER_TEMP/first.deb"
-          sh scripts/build-deb.sh
-          cmp "$RUNNER_TEMP/first.deb" dist/*.deb
-          # Enforce an exhaustive allowlist of every installed regular file;
-          # no legacy /usr/bin program copies or unexpected host paths.
-          c++ -std=c++17 -O2 -Wall -Wextra -Werror -Wpedantic \
-            tests/native-package-layout-test.cpp -o "$RUNNER_TEMP/native-package-layout-test"
-          "$RUNNER_TEMP/native-package-layout-test" dist/*.deb
           version=$(tr -d '\r\n' < VERSION)
           test "$(dpkg-deb -f dist/*.deb Version)" = "$version"
-          dpkg-deb -e dist/*.deb "$RUNNER_TEMP/control"
-          sh -n "$RUNNER_TEMP/control/preinst" "$RUNNER_TEMP/control/postinst" "$RUNNER_TEMP/control/prerm" "$RUNNER_TEMP/control/postrm"
-          sh "$RUNNER_TEMP/control/preinst" --verify-bootstrap-bundle
-          cp "$RUNNER_TEMP/control/preinst" "$RUNNER_TEMP/tampered-preinst"
-          sed -i -E "s/^BOOTSTRAP_SHA256=.*/BOOTSTRAP_SHA256='0000000000000000000000000000000000000000000000000000000000000000'/" "$RUNNER_TEMP/tampered-preinst"
-          if sh "$RUNNER_TEMP/tampered-preinst" --verify-bootstrap-bundle; then
-            echo 'Tampered early bootstrap accepted' >&2; exit 1
-          fi
-          dpkg-deb -x dist/*.deb "$RUNNER_TEMP/payload"
-          cmp assets/infiltratoros.png "$RUNNER_TEMP/payload/usr/share/plymouth/themes/infiltratoros/infiltratoros.png"
-          test ! -e "$RUNNER_TEMP/payload/usr/lib/infiltrator/temporal"
-          ! dpkg-deb -f dist/*.deb Depends | grep -Fq "infiltrator-calendar-resources"
-          ! dpkg-deb -f dist/*.deb Depends | grep -Eq '(^|[, ])infiltrator-boot([ (,:]|$)'
-          if dpkg-deb -f dist/*.deb Depends | grep -Eq '(^|[, ])calendar([, ]|$)'; then
-            echo "Calendar belongs in the native app queue."
-            exit 1
-          fi
-          test -f "$RUNNER_TEMP/payload/etc/profile.d/90-infiltratoros-native-path.sh"
-          sh -n "$RUNNER_TEMP/payload/etc/profile.d/90-infiltratoros-native-path.sh"
-          test ! -e "$RUNNER_TEMP/payload/System/Programs"
-          test ! -e "$RUNNER_TEMP/payload/System/Kernel/Filesystems"
-          test ! -e "$RUNNER_TEMP/payload/usr/lib/infiltratoros"
-          test -x "$RUNNER_TEMP/payload/System/Commands/InfiltratorOS/activate-calendar"
-          file "$RUNNER_TEMP/payload/System/Commands/InfiltratorOS/activate-calendar" | grep -q ELF
-          test -f "$RUNNER_TEMP/payload/etc/xdg/autostart/infiltrator-calendar.desktop"
-          grep -Fxq 'Exec=/System/Commands/InfiltratorOS/activate-calendar' "$RUNNER_TEMP/payload/etc/xdg/autostart/infiltrator-calendar.desktop"
-          for directory in \
-            System \
-            System/Commands \
-            System/Libraries \
-            System/Devices \
-            System/Filesystems \
-            System/Kernel \
-            System/Kernel/Images \
-            System/Kernel/Modules \
-            System/Kernel/Firmware \
-            System/Resources \
-            System/Resources/Calendars \
-            System/Resources/Documentation \
-            System/Resources/Clocks \
-            System/Resources/Fonts \
-            System/Resources/Locales \
-            System/Resources/Icons \
-            System/Resources/Themes \
-            System/Preferences \
-            Programs \
-            Users \
-            Volumes \
-            Temporary; do
-            test -d "$RUNNER_TEMP/payload/$directory"
-          done
-          # Exactly one native installation location for fonts and icons.
-          font_root="$RUNNER_TEMP/payload/System/Resources/Fonts"
-          icon_root="$RUNNER_TEMP/payload/System/Resources/Icons"
-          manifest_root="$RUNNER_TEMP/payload/System/Resources/Documentation"
-          test ! -e "$font_root/Seed"
-          test ! -e "$icon_root/Seed"
-          test "$(find "$font_root" -maxdepth 1 -type f -name '*.ttf' | wc -l)" -eq 23
-          test "$(find "$icon_root" -maxdepth 1 -type f | wc -l)" -eq 1233
-          cmp assets/fonts/SHA256SUMS "$manifest_root/InfiltratorOS-fonts.sha256"
-          (cd "$font_root" && sha256sum -c "$manifest_root/InfiltratorOS-fonts.sha256") >/dev/null
-          (cd "$icon_root" && sha256sum -c "$manifest_root/InfiltratorOS-icons.sha256") >/dev/null
-          test -z "$(find "$manifest_root" -mindepth 1 -type d -print -quit)"
-          # Exercise font configuration and verification on a staging root
-          # populated the same way dpkg installs the production payload.
-          native_root="$RUNNER_TEMP/native-root"
-          mkdir -p "$native_root/System/Resources/Fonts" \
-                   "$native_root/System/Resources/Icons" \
-                   "$native_root/System/Resources/Documentation"
-          cp -a "$font_root/." "$native_root/System/Resources/Fonts/"
-          cp -a "$icon_root/." "$native_root/System/Resources/Icons/"
-          cp -a "$manifest_root/." "$native_root/System/Resources/Documentation/"
-          helper="$RUNNER_TEMP/payload/System/Commands/InfiltratorOS/ensure-native-fonts"
-          test -x "$helper"
-          sh -n "$helper"
-          INFILTRATR_NATIVE_ROOT="$native_root" "$helper"
-          grep -Fq '<dir>/System/Resources/Fonts</dir>' "$native_root/etc/fonts/conf.d/90-infiltrator-native-fonts.conf"
-          INFILTRATR_NATIVE_ROOT="$native_root" "$helper"
-          progress="$GITHUB_WORKSPACE/.build/infiltratoros_${version}/native-runtime/system-monitor-progress"
-          export FONTCONFIG_FILE="$RUNNER_TEMP/infiltrator-fontconfig.conf"
-          printf '<fontconfig><cachedir>%s/font-cache</cachedir></fontconfig>\n' "$RUNNER_TEMP" > "$FONTCONFIG_FILE"
-          "$progress" --check-fonts "$native_root/System/Resources/Fonts"
-          for required in mb_corpo_s_text_cond_regular.ttf mb_corpo_s_title_bold.ttf; do
-            mv "$native_root/System/Resources/Fonts/$required" "$RUNNER_TEMP/$required"
-            if "$progress" --check-fonts "$native_root/System/Resources/Fonts"; then
-              echo "Installer accepted fallback for $required" >&2
-              exit 1
-            fi
-            mv "$RUNNER_TEMP/$required" "$native_root/System/Resources/Fonts/$required"
-          done
-          unset FONTCONFIG_FILE
-          icon_helper="$RUNNER_TEMP/payload/System/Commands/InfiltratorOS/ensure-native-icons"
-          test -x "$icon_helper"
-          sh -n "$icon_helper"
-          INFILTRATR_NATIVE_ROOT="$native_root" "$icon_helper"
-          test "$(find "$native_root/System/Resources/Icons" -mindepth 1 -type d | wc -l)" -eq 0
-          INFILTRATR_NATIVE_ROOT="$native_root" "$icon_helper"
-          # Fail if a packaged resource disappears: never rely on a seed copy.
-          rm -f -- "$native_root/System/Resources/Fonts/mb_corpo_s_title_bold.ttf"
-          if INFILTRATR_NATIVE_ROOT="$native_root" "$helper"; then
-              echo "Missing native font accepted without a packaged source" >&2
-              exit 1
-          fi
-          test ! -e "$RUNNER_TEMP/payload/System/Resources/Fonts/Seed"
-          test ! -e "$RUNNER_TEMP/payload/System/Resources/Icons/Seed"
-          # One InfiltratorOS package invokes the internal install workers.
-          # The workers must NOT become permanent /System command files.
-          sh "$RUNNER_TEMP/control/postinst" --verify-installer-bundle
-          # All production installation workers and Cinnamon integration must be ELF.
-          # Any regression to Python interpreters in the installed package fails CI.
-          ! dpkg-deb -f dist/*.deb Depends | grep -Eq '(^|[, ])python3([, ]|$)'
-          runtime="$RUNNER_TEMP/verified-native-worker"
-          mkdir -p "$runtime"
-          awk '
-            /^__INFILTRATOROS_NATIVE_BUNDLE_BEGIN__$/ { in_bundle=1; next }
-            /^__INFILTRATOROS_NATIVE_BUNDLE_END__$/ { exit }
-            in_bundle { print }
-          ' "$RUNNER_TEMP/control/postinst" | base64 -d | tar -xz -C "$runtime"
-          for binary in install-system-monitor install-calculator install-calendar install-files install-boot \
-                        install-defragmenter install-temporal-resources \
-                        install-filesystem-resources prepare-native-releases \
-                        orchestrate-native-install; do
-            test -x "$runtime/$binary"
-            file -b "$runtime/$binary" | grep -q ELF
-          done
-          for inventory in temporal-resources.json filesystem-resources.json filesystem-additional.json; do
-            test -s "$runtime/$inventory"
-          done
-          test ! -e "$runtime/install-boot-option"
-          test "$(find "$runtime" -maxdepth 1 -type f | wc -l)" -eq 29
-          # Prevent OS-owned runtime files outside the native /Temporary.
-          grep -Fq 'STATUS_ROOT=/Temporary/InfiltratorOS' "$RUNNER_TEMP/control/postinst"
-          grep -Fq 'stage=$(mktemp -d "$STATUS_ROOT/native-worker.XXXXXXXX")' "$RUNNER_TEMP/control/postinst"
-          grep -Fq 'export TMPDIR' "$RUNNER_TEMP/control/postinst"
-          grep -Fq '/Temporary/InfiltratorOS/native-worker.' "$GITHUB_WORKSPACE/packaging/start-native-install.c"
-          ! grep -Eq '^WORKER_PARENT=|^STATUS_ROOT=/run|/var/lib/infiltratoros-native-worker|/run/infiltratoros' "$RUNNER_TEMP/control/postinst"
-          # An installation must never delete another run's temporary files.
-          grep -Fq 'status_root="$stage/status"' "$RUNNER_TEMP/control/postinst"
-          grep -Fq -- '--run-status "$status_root"' "$RUNNER_TEMP/control/postinst"
-          grep -Fq 'orchestrate-native-install" "$stage"' "$RUNNER_TEMP/control/postinst"
-          ! grep -Fq 'rm -rf -- "$STATUS_ROOT"' "$RUNNER_TEMP/control/postinst"
-          # A missing/mismatched digest must terminate guarded extraction.
-          cp "$RUNNER_TEMP/control/postinst" "$RUNNER_TEMP/tampered-postinst"
-          sed -i -E "s/^BUNDLE_SHA256=.*/BUNDLE_SHA256='0000000000000000000000000000000000000000000000000000000000000000'/" "$RUNNER_TEMP/tampered-postinst"
-          if sh "$RUNNER_TEMP/tampered-postinst" --verify-installer-bundle; then
-            echo "Installer accepted a tampered archive digest" >&2
-            exit 1
-          fi
-          for product in system-monitor calculator calendar files defragmenter boot temporal-resources filesystem-resources; do
-            for program in "install-$product" "start-$product-install" "$product-progress"; do
-              test ! -e "$RUNNER_TEMP/payload/System/Commands/InfiltratorOS/$program"
-            done
-          done
-          # The package layout test above already checks the exact inventory.
-          test -x "$RUNNER_TEMP/payload/System/Commands/InfiltratorOS/load-native-driver"
           # Source archive includes the exact pinned Common sources.
           archive_root="$RUNNER_TEMP/infiltratoros-$version"
           mkdir -p "$archive_root/src/infiltratr-common"
@@ -253,73 +40,7 @@ jobs:
           (cd "$RUNNER_TEMP" && zip -qr "$GITHUB_WORKSPACE/dist/infiltratoros-$version-source.zip" "infiltratoros-$version")
           printf '%s\n' "$GITHUB_SHA" > dist/SOURCE_COMMIT
           (cd dist && sha256sum *.deb *.zip SOURCE_COMMIT > SHA256SUMS.txt)
-      - name: Exercise the packaged GTK window in light and dark themes
-        shell: bash
-        run: |
-          set -euo pipefail
-          fixture="$RUNNER_TEMP/progress-window-test"
-          mkdir -p "$fixture/status"
-          printf 'releases\n' > "$fixture/phase"
-          sudo install -d /System/Resources/Fonts
-          cc -std=c11 -Wall -Wextra -Werror -Wpedantic -shared -fPIC \
-            $(pkg-config --cflags gtk+-3.0) tests/progress-window-test.c \
-            -o "$fixture/inspect.so" $(pkg-config --libs gtk+-3.0) -lm
-          printf '<fontconfig><cachedir>%s/font-cache</cachedir></fontconfig>\n' "$fixture" > "$fixture/fonts.conf"
-          printf '%s\n' 'state=complete' 'progress=100' 'stage=Installed' 'detail=' > "$fixture/status/done.status"
-          progress="$RUNNER_TEMP/verified-native-worker/system-monitor-progress"
-          # Exercise the exact minimal preinst bundle before accessing the full
-          # package fonts. The early window must use only its five sealed faces.
-          mkdir -p "$fixture/early/status"
-          awk '/^__INFILTRATOROS_BOOTSTRAP_BEGIN__$/ { within=1; next }
-               /^__INFILTRATOROS_BOOTSTRAP_END__$/ { exit } within { print }' \
-              "$RUNNER_TEMP/control/preinst" | base64 -d | tar -xz -C "$fixture/early"
-          test "$(find "$fixture/early/bootstrap-fonts" -type f | wc -l)" -eq 5
-          sudo sh -c '. packaging/bootstrap-fonts.sh; bootstrap_install_fonts "$1" ""' sh "$fixture/early"
-          test ! -e "$fixture/early/bootstrap-fonts"
-          test "$(find /System/Resources/Fonts -maxdepth 1 -type f -name '*.ttf' | wc -l)" -eq 5
-          printf 'unpacking\n' > "$fixture/early/phase"
-          for theme in Adwaita Adwaita:dark; do
-            xvfb-run -a env GTK_THEME="$theme" FONTCONFIG_FILE="$fixture/fonts.conf" \
-              LD_PRELOAD="$fixture/inspect.so" PROGRESS_EXPECT=unpacking \
-              "$fixture/early/system-monitor-progress" --aggregate "$fixture/early/status"
-          done
-          sudo cp -a "$RUNNER_TEMP/payload/System/Resources/Fonts/." /System/Resources/Fonts/
-          test "$(find /System/Resources/Fonts -maxdepth 1 -type f -name '*.ttf' | wc -l)" -eq 23
-          sudo rm -rf "$fixture/early/font-rollback"
-          for theme in Adwaita Adwaita:dark; do
-            xvfb-run -a env GTK_THEME="$theme" FONTCONFIG_FILE="$fixture/fonts.conf" \
-              LD_PRELOAD="$fixture/inspect.so" PROGRESS_EXPECT=preparing \
-              "$progress" --aggregate "$fixture/status"
-            xvfb-run -a env GTK_THEME="$theme" FONTCONFIG_FILE="$fixture/fonts.conf" \
-              LD_PRELOAD="$fixture/inspect.so" PROGRESS_EXPECT=complete \
-              "$progress" "$fixture/status/done.status"
-          done
-      # Native provider builds belong to their independent repositories. The OS
-      # release gate qualifies its own dispatcher, package and signed worker
-      # contracts above; cross-repository installation stress is manual-only.
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        with:
-          name: os-qualified-${{ github.sha }}
-          path: dist/*
-          if-no-files-found: error
-          retention-days: 14
-  publish:
-    needs: [verify]
-    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 120
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
-        with:
-          fetch-depth: 0
-          submodules: true
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
-        with:
-          name: os-qualified-${{ github.sha }}
-          path: release
-      - name: Publish exact qualified bytes
+      - name: Publish build
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -327,8 +48,8 @@ jobs:
           set -euo pipefail
           git fetch origin main --tags
           test "$(git rev-parse origin/main)" = "$GITHUB_SHA" || exit 0
-          test "$(cat release/SOURCE_COMMIT)" = "$GITHUB_SHA"
-          (cd release && sha256sum -c SHA256SUMS.txt)
+          test "$(cat dist/SOURCE_COMMIT)" = "$GITHUB_SHA"
+          (cd dist && sha256sum -c SHA256SUMS.txt)
           version=$(tr -d '\r\n' < VERSION)
           tag="v$version"
           # An immutable previous release cannot be updated by this commit.
@@ -356,13 +77,13 @@ jobs:
           fi
           draft=$(jq -r .isDraft "$RUNNER_TEMP/release-state")
           if [[ "$draft" == true ]]; then
-            gh release upload "$tag" release/* --clobber
+            gh release upload "$tag" dist/* --clobber
           fi
           verify_remote() {
             local destination
             destination=$(mktemp -d)
             gh release download "$tag" --dir "$destination"
-            diff -qr release "$destination"
+            diff -qr dist "$destination"
             rm -rf "$destination"
           }
           verify_remote

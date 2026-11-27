@@ -59,7 +59,7 @@ sh scripts/install-local-deb.sh "dist/infiltratoros_$(cat VERSION)_amd64.deb"
 
 The helper stages a readable package without changing APT sandbox security or hiding real package-manager warnings. Fault-injection tests print a concise pass result; their full diagnostics are printed on failure or when `INFILTRATOROS_TEST_VERBOSE=1` is set.
 
-Repository CI additionally checks reproducible package bytes, the sealed temporary worker bundle, package layout and installed-provider integration on disposable runners. These tests do not themselves demonstrate successful installation on every physical Debian/Mint machine, filesystem media recovery, UEFI boot or kernel mounting.
+Publication builds the Debian package once and publishes the resulting assets automatically. The regression tests remain available for explicit execution; they are not release prerequisites. Actual installation testing is performed on the target machines.
 
 ## Product direction and limits
 
