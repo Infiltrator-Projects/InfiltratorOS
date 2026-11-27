@@ -38,7 +38,7 @@ jobs:
             $(pkg-config --libs gio-2.0 json-c)
           c++ -std=c++17 -O2 -Wall -Wextra -Werror -Wpedantic -pthread \
             $(pkg-config --cflags libcurl json-c openssl) -Isrc/infiltratr-common/include \
-            packaging/native-component-worker.cpp -o "$RUNNER_TEMP/native-component-worker" \
+            packaging/native-component-worker.cpp packaging/native-worker/*.cpp -o "$RUNNER_TEMP/native-component-worker" \
             $(pkg-config --libs libcurl json-c openssl) -ldl
           cp packaging/temporal-resources.json packaging/filesystem-resources.json \
              packaging/filesystem-additional.json "$RUNNER_TEMP/"
@@ -49,7 +49,7 @@ jobs:
           test "$("$RUNNER_TEMP/install-filesystem-resources" --list-all | wc -l)" -eq 23
           c++ -std=c++17 -O2 -Wall -Wextra -Werror -Wpedantic -pthread \
             $(pkg-config --cflags libcurl json-c openssl) -Isrc/infiltratr-common/include \
-            tests/native-component-test.cpp -o "$RUNNER_TEMP/native-component-test" \
+            tests/native-component-test.cpp packaging/native-worker/*.cpp -o "$RUNNER_TEMP/native-component-test" \
             $(pkg-config --libs libcurl json-c openssl) -ldl
           "$RUNNER_TEMP/native-component-test"
           sudo sh tests/native-build-isolation.sh "$RUNNER_TEMP/native-component-worker" "$RUNNER_TEMP"
@@ -71,7 +71,7 @@ jobs:
           "$RUNNER_TEMP/install-temporal-resources" --list > "$RUNNER_TEMP/live-release-check/providers.list"
           "$RUNNER_TEMP/install-filesystem-resources" --list > "$RUNNER_TEMP/live-release-check/filesystems.list"
           "$RUNNER_TEMP/install-filesystem-resources" --list-all > "$RUNNER_TEMP/live-release-check/filesystems-all.list"
-          ! grep -En 'api\.github\.com|GITHUB_TOKEN' packaging/native-release-snapshot.cpp packaging/native-component-worker.cpp
+          ! grep -En 'api\.github\.com|GITHUB_TOKEN' packaging/native-release-snapshot.cpp packaging/native-component-worker.cpp packaging/native-worker/*.cpp
           sudo "$RUNNER_TEMP/native-snapshot" "$RUNNER_TEMP/live-release-check/verified" "$RUNNER_TEMP/live-release-check/providers.list" "$RUNNER_TEMP/live-release-check/filesystems.list" "$RUNNER_TEMP/live-release-check/filesystems-all.list"
           test "$(find "$RUNNER_TEMP/live-release-check/verified" -maxdepth 1 -name '*.sha256' | wc -l)" -ge 65
           test -s "$RUNNER_TEMP/live-release-check/verified/Boot.json"

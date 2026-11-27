@@ -1,3 +1,9 @@
+## 1.0.120 — Native worker responsibility boundaries
+
+- Split the monolithic worker into separately compiled runtime, release, filesystem descriptor, BOOT, verification, package transaction, isolation, build and dispatch units with narrow headers.
+- Keep the installed command entry point minimal and link the same modules in production and regression tests.
+- Preserve independent component contracts, status semantics and release qualification.
+
 ## 1.0.119 — Recover failed Debian package replacements
 
 - Repack and verify the existing installed package before replacement; restore it on failed APT or installed-state verification, retaining recovery bytes on failed restoration.

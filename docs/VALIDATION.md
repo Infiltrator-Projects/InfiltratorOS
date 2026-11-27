@@ -60,3 +60,5 @@ Audit regressions exercise bounded subprocess capture and reaping, canonical fon
 Build isolation is exercised on a disposable privileged CI host: writes outside the selected build folder must fail, and private `/tmp` files must not appear in the host namespace. This protects trusted build-only installers against accidental shared-host mutation; it is not an adversarial root-code sandbox. The runtime requires Linux mount namespace and recursive mount-attribute support.
 
 A disposable privileged CI test installs a synthetic Debian package, replaces it, deliberately fails post-install verification, then verifies that the actual prior package version and payload were restored. No real product package is altered by this fixture.
+
+The native worker regression suite links the same separately compiled translation units as the installed binary; it no longer includes the production `.cpp` entry point. Existing resource, package, isolation, release and firmware fixtures remain mandatory.

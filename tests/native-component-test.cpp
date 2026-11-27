@@ -1,10 +1,24 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Exercise the production native C++ installation worker without downloading
 // or invoking independent component builds. All tests are non-destructive.
-#define main native_component_worker_entrypoint
-#include "../packaging/native-component-worker.cpp"
-#undef main
+#include "../packaging/native-worker/dispatch.h"
+#include "../packaging/native-worker/runtime.h"
+#include "../packaging/native-worker/release.h"
+#include "../packaging/native-worker/filesystem.h"
+#include "../packaging/native-worker/boot.h"
+#include "../packaging/native-worker/package.h"
+#include "../packaging/native-worker/verification.h"
+#include "../packaging/native-worker/build.h"
+#include "../packaging/native-build-resources.h"
+#include "../packaging/native-build-queue.h"
+#include <algorithm>
 #include <functional>
+#include <fstream>
+#include <iostream>
+#include <sstream>
+#include <string_view>
+
+using namespace infiltrator_native::worker;
 
 static void check(bool condition, const char *message) {
     if (!condition) throw std::runtime_error(std::string("Native worker contract: ") + message);
