@@ -3,6 +3,8 @@
 #define INFILTRATOROS_NATIVE_BUILD_RESOURCES_H
 
 #include <algorithm>
+#include <cerrno>
+#include <climits>
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
@@ -24,13 +26,30 @@ struct BuildResources {
 };
 
 inline std::vector<int> allowed_build_cpus() {
-    cpu_set_t allowed;
-    CPU_ZERO(&allowed);
-    if (sched_getaffinity(0, sizeof allowed, &allowed) != 0) return {};
-    std::vector<int> cpus;
-    for (int cpu = 0; cpu < CPU_SETSIZE; ++cpu)
-        if (CPU_ISSET(cpu, &allowed)) cpus.push_back(cpu);
-    return cpus;
+    // Linux can expose CPU identifiers beyond the fixed cpu_set_t size.
+    // Grow the mask when the kernel reports it is too small.
+    for (int count = CPU_SETSIZE;;) {
+        const auto bytes = CPU_ALLOC_SIZE(count);
+        cpu_set_t *allowed = CPU_ALLOC(count);
+        if (!allowed) return {};
+        CPU_ZERO_S(bytes, allowed);
+        const int result = sched_getaffinity(0, bytes, allowed);
+        const int error = errno;
+        std::vector<int> cpus;
+        if (result == 0) {
+            try {
+                for (int cpu = 0; cpu < count; ++cpu)
+                    if (CPU_ISSET_S(cpu, bytes, allowed)) cpus.push_back(cpu);
+            } catch (...) {
+                CPU_FREE(allowed);
+                throw;
+            }
+        }
+        CPU_FREE(allowed);
+        if (result == 0) return cpus;
+        if (error != EINVAL || count > INT_MAX / 2) return {};
+        count *= 2;
+    }
 }
 
 // PSI measures elapsed time lost to I/O stalls rather than nominal disk speed.

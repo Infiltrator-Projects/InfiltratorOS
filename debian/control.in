@@ -46,5 +46,5 @@ Description: InfiltratorOS branding and native application integration
  provider artifacts. System-package mode installs each CPU-native SO and its
  illustrated PDF; it does not automatically build or stage kernel modules.
  .
- All five applications and independent provider source builds are eligible; up to 16 run concurrently within CPU,
+ All five applications and independent provider source builds are eligible; concurrency is determined by CPU,
  memory and storage limits. Package transactions are serialised.

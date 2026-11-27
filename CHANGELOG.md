@@ -1,3 +1,9 @@
+## 1.0.112 — Resource-determined build concurrency
+
+- Remove the fixed 16-build ceiling; admission is bounded by pending jobs, CPU affinity and quotas, memory reservations and storage I/O pressure.
+- Dynamically size the Linux CPU-affinity mask for high-core-count hosts.
+- Test 64 simultaneous reservations, a 24-job RAM limit, quota and I/O constraints, and release of resources after completion. Keep serial package installation and the existing BOOT dependency gate.
+
 ## 1.0.111 — Unified queue execution qualification
 
 - Prepare declared build dependencies for selected applications and independent modules before parallel compilation, instead of unnecessarily deferring missing provider prerequisites to serial builds.

@@ -51,23 +51,36 @@ static Document sample_release(const Entry &e, const std::string &version, bool 
 static void check_build_resources() {
     using namespace infiltrator_native;
     std::vector<int> cpus;
-    for (int cpu = 0; cpu < 16; ++cpu) cpus.push_back(cpu * 2);
-    const BuildResources roomy{cpus, cpus.size(), 24 * 1024};
+    // Admission is limited by resources and pending work, not by the old
+    // 16-job pilot. Include high-capacity machines and sparse CPU masks.
+    for (int cpu = 0; cpu < 64; ++cpu) cpus.push_back(cpu * 2);
+    const BuildResources roomy{cpus, cpus.size(), 128 * 1024};
     std::vector<BuildReservation> active;
     std::set<int> assigned;
-    for (std::size_t i = 0; i < build_queue.size(); ++i) {
-        const auto kind = build_queue[i] == "files" ? BuildKind::files :
-            build_queue[i] == "filesystem-exfat" ? BuildKind::exfat : BuildKind::module;
-        auto job = reserve_build(roomy, active, kind, build_queue.size() - i);
-        check(job.has_value(), "a machine with room can admit the full 16-repo queue");
+    for (std::size_t i = 0; i < cpus.size(); ++i) {
+        const auto kind = i == 1 ? BuildKind::files :
+            i == 2 ? BuildKind::exfat : BuildKind::module;
+        auto job = reserve_build(roomy, active, kind, cpus.size() - i);
+        check(job.has_value(), "resource-rich machine can admit 64 simultaneous jobs");
         check(job->cpus.size() == 1 && assigned.insert(job->cpus.front()).second,
               "concurrent jobs get distinct CPUs from the allowed affinity mask");
         active.push_back(*job);
     }
+    check(active.size() == 64, "no artificial 16-build cap");
     check(!reserve_build(roomy, active, BuildKind::module, 1), "CPU slots are not oversubscribed");
     active.pop_back();
     check(reserve_build(roomy, active, BuildKind::module, 1).has_value(),
           "a finished build frees its CPU and memory reservation");
+    const BuildResources ram_limited{cpus, cpus.size(), 24 * 768};
+    active.clear();
+    for (int i = 0; i < 24; ++i) {
+        auto job = reserve_build(ram_limited, active, BuildKind::module, 64 - i);
+        check(job.has_value(), "RAM permits 24 jobs despite former ceiling");
+        active.push_back(*job);
+    }
+    check(!reserve_build(ram_limited, active, BuildKind::module, 1),
+          "RAM limits further admissions even when CPU capacity remains");
+    check(!allowed_build_cpus().empty(), "actual Linux CPU affinity is discoverable");
 
     TempDir fixture(fs::temp_directory_path(), "native-resources-");
     const auto proc = fixture.path;
@@ -257,7 +270,6 @@ Boot0007 BOOT Boot Manager HD(1,GPT,1234)/File(\EFI\InfiltratorOS\BOOT\BOOTX64.E
         compile_provider("extern void infiltrator_filesystem_api_v2(void);\n"
                          "void run(void) { infiltrator_filesystem_api_v2(); }\n");
         check(!exports_common_filesystem_api(module), "undefined filesystem import refused");
-        check(infiltrator_native::build_queue.size() == 16, "smart queue cardinality");
         for (auto slug : {"filesystem-fat12", "filesystem-fat16", "filesystem-fat32",
                           "filesystem-exfat", "filesystem-ofs", "filesystem-ntfs",
                           "filesystem-ffs", "filesystem-hfs", "files", "clock-chinese-ke",
@@ -269,7 +281,6 @@ Boot0007 BOOT Boot Manager HD(1,GPT,1234)/File(\EFI\InfiltratorOS\BOOT\BOOTX64.E
               infiltrator_native::queue_candidate("calendar-armenian-traditional") &&
               !infiltrator_native::queue_candidate("boot"),
               "all selected provider families are eligible; BOOT is not a parallel build");
-        check(infiltrator_native::max_parallel_builds == 16, "parallel build limit");
         for (const auto app : infiltrator_native::queued_applications) {
             check(infiltrator_native::queue_candidate(app), "all five applications are queued");
             const auto e = application(std::string(app));

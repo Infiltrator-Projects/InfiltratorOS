@@ -1123,7 +1123,7 @@ static void build_packages(std::vector<Job> &jobs, const fs::path &statuses,
             }
             it = active.erase(it);
         }
-        if (next < jobs.size() && active.size() < max_parallel_builds) {
+        if (next < jobs.size()) {
             const auto resources = build_resources(allowed_build_cpus());
             std::vector<BuildReservation> reservations;
             for (const auto &job : active) reservations.push_back(job.resources);
