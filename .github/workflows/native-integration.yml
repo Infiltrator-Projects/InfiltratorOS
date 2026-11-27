@@ -3,7 +3,6 @@ on:
   push:
     branches: [main]
     paths:
-      - 'packaging/native-worker/**'
       - 'packaging/native-build-*.h'
       - 'packaging/native-component-worker.cpp'
       - 'packaging/native-release-snapshot.cpp'
@@ -29,7 +28,9 @@ jobs:
       - name: Prepare the disposable hosted build machine
         run: |
           test "$RUNNER_ENVIRONMENT" = github-hosted
-          sudo apt-get update
+          test -s /etc/apt/sources.list.d/ubuntu.sources
+          printf '%s\n' 'Dir::Etc::sourcelist "/etc/apt/sources.list.d/ubuntu.sources";' 'Dir::Etc::sourceparts "-";' | sudo tee /etc/apt/apt.conf.d/99-infiltrator-ci-sources >/dev/null
+          sudo apt-get -o Acquire::Retries=3 update
           sudo apt-get install -y dpkg-repack pkg-config libcurl4-openssl-dev libjson-c-dev libssl-dev
       - name: Compile the production worker and snapshot verifier
         shell: bash
@@ -38,7 +39,7 @@ jobs:
           mkdir -p "$RUNNER_TEMP/native-tools" "$RUNNER_TEMP/native-integration-logs"
           c++ -std=c++17 -O2 -Wall -Wextra -Werror -Wpedantic -pthread \
             $(pkg-config --cflags libcurl json-c openssl) -Isrc/infiltratr-common/include \
-            packaging/native-component-worker.cpp packaging/native-worker/*.cpp \
+            packaging/native-component-worker.cpp \
             -o "$RUNNER_TEMP/native-tools/native-component-worker" \
             $(pkg-config --libs libcurl json-c openssl) -ldl
           c++ -std=c++17 -O2 -Wall -Wextra -Werror -Wpedantic \

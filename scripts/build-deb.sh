@@ -169,7 +169,7 @@ install -D -m 0644 "$ROOT/packaging/81-infiltratoros-drivers.rules" \
 # not in the installed OS filesystem. All invocation paths use one C++ worker.
 c++ -std=c++17 -O2 -Wall -Wextra -Werror -Wpedantic -pthread \
     $(pkg-config --cflags libcurl json-c openssl) -I"$ROOT/src/infiltratr-common/include" \
-    "$ROOT/packaging/native-component-worker.cpp" "$ROOT"/packaging/native-worker/*.cpp \
+    "$ROOT/packaging/native-component-worker.cpp" \
     -o "$WORK/native-component-worker" \
     $(pkg-config --libs libcurl json-c openssl) -ldl
 for inventory in temporal-resources.json filesystem-resources.json filesystem-additional.json; do

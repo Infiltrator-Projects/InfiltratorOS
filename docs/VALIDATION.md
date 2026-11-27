@@ -61,7 +61,7 @@ Build isolation is exercised on a disposable privileged CI host: writes outside 
 
 A disposable privileged CI test installs a synthetic Debian package, replaces it, deliberately fails post-install verification, then verifies that the actual prior package version and payload were restored. No real product package is altered by this fixture.
 
-The native worker regression suite links the same separately compiled translation units as the installed binary; it no longer includes the production `.cpp` entry point. Existing resource, package, isolation, release and firmware fixtures remain mandatory.
+The native worker regression suite compiles the exact production source with its entry point disabled, avoiding a duplicate public test API. Existing resource, package, isolation, release and firmware fixtures remain mandatory.
 
 ### Real native component integration
 

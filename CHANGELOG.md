@@ -1,3 +1,9 @@
+## 1.0.124 — Consolidate native worker and verification contracts
+
+- Replace the 23-file worker implementation with one structured C++ source while retaining the unified scheduler, isolation and recovery.
+- Share staged and installed provider metadata, manual and descriptor checks, and Debian file verification.
+- Restrict hosted CI package sources to signed Ubuntu feeds without relaxing release freshness checks.
+
 ## 1.0.123 — Live independent native component qualification
 
 - Add an independent, disposable hosted-runner integration workflow that uses the actual verified OFS and Binary Clock release installers, the production resource scheduler, Common V2 descriptor validation, Debian installation and a second idempotent verification pass.

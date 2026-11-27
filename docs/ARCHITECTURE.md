@@ -63,6 +63,6 @@ Before an existing native Debian package is replaced, the installer creates and 
 
 ### Native worker boundaries
 
-The installed worker has a thin entry point. Separate C++ translation units under `packaging/native-worker/` own runtime process/filesystem helpers, release identity and transfer, Common V2 validation, EFI verification, installed-application verification, Debian transactions and recovery, build isolation, build scheduling, and CLI dispatch. Only explicit interfaces cross those boundaries. Component build and filesystem semantics remain in the independent repositories; no provider code is embedded in the worker. Production and tests link the same implementation objects rather than including implementation files.
 
-The installer coordinator (`install.cpp`) owns lifecycle and locks; `dependencies.cpp` owns the prerequisite policy, while `build.cpp` owns only admission and compilation. Standalone component commands and a one-job OS selection use the same isolated scheduler and package recovery as a multi-job run. BOOT remains the sole direct RUN handoff. Full sealed catalogue enumeration is independent of any selection environment; the dispatcher applies selection once.
+
+The native worker is one structured C++ source file, `packaging/native-component-worker.cpp`, with ordered sections for release verification, Common V2 validation, firmware checks, package transactions, resource admission, dependency preparation and installation dispatch. Standalone and batch installation use the same lifecycle. BOOT alone performs a direct independent RUN handoff. Staged and installed provider verification share the same metadata and resource contracts. No filesystem implementation is embedded in the worker.

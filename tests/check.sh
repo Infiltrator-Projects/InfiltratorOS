@@ -7,8 +7,8 @@ ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
 cd "$ROOT"
 # Component-owned build prerequisites may include Python (e.g. PDF generation).
 # The OS dispatcher itself must not invoke Python.
-! grep -Fq '"/usr/bin/python3"' packaging/native-component-worker.cpp packaging/native-worker/*.cpp
-! grep -Fq 'execute({"python3"' packaging/native-component-worker.cpp packaging/native-worker/*.cpp
+! grep -Fq '"/usr/bin/python3"' packaging/native-component-worker.cpp
+! grep -Fq 'execute({"python3"' packaging/native-component-worker.cpp
 sh -n packaging/ensure-native-icons.sh packaging/ensure-native-fonts.sh debian/postinst
 grep -Fq 'fc-cache -f "$FONT_DIR"' packaging/ensure-native-fonts.sh
 ! grep -Fq 'fc-cache -f "$FONT_DIR" >/dev/null 2>&1 || true' packaging/ensure-native-fonts.sh
@@ -46,7 +46,7 @@ run_fault_test() {
 }
 c++ -std=c++17 -O2 -Wall -Wextra -Werror -Wpedantic -pthread \
     $(pkg-config --cflags libcurl json-c openssl) -Isrc/infiltratr-common/include \
-    tests/native-component-test.cpp packaging/native-worker/*.cpp -o "$WORK/native-component-test" \
+    tests/native-component-test.cpp -o "$WORK/native-component-test" \
     $(pkg-config --libs libcurl json-c openssl) -ldl
 "$WORK/native-component-test"
 c++ -std=c++17 -O2 -Wall -Wextra -Werror -Wpedantic \
