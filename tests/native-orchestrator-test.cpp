@@ -68,6 +68,13 @@ int main() {
             check(job_state(stage, slug) == "complete", "application-led queue member supervised");
         check(failed_filesystem_prerequisite(stage, {"filesystem-fat12"}).empty(),
               "application-led queue preserves BOOT prerequisite gate");
+        write_text(stage / "status/filesystem-fat12-install.status",
+                   "state=complete\nprogress=0\nstage=Fake\ndetail=\n");
+        check(failed_filesystem_prerequisite(stage, {"filesystem-fat12"}) == "filesystem-fat12",
+              "BOOT refuses contradictory complete status");
+        write_text(stage / "status/filesystem-fat12-install.status", "state=complete\n");
+        check(failed_filesystem_prerequisite(stage, {"filesystem-fat12"}) == "filesystem-fat12",
+              "BOOT refuses truncated complete status");
         fs::remove_all(stage);
         std::cout << "Native worker supervision contracts passed\n";
         return 0;

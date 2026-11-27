@@ -55,6 +55,14 @@ bool installer_status_read(const char *path, InstallerStatus *output)
     if (ferror(file)) valid = false;
     if (fclose(file) != 0) valid = false;
     if (!valid || seen != 15U || !candidate.state[0]) return false;
+    // A terminal record must have a terminal percentage. Unknown states
+    // are never successful prerequisites, even when its first line looks valid.
+    const bool terminal = strcmp(candidate.state, "complete") == 0 ||
+                          strcmp(candidate.state, "failed") == 0 ||
+                          strcmp(candidate.state, "timeout") == 0;
+    if (terminal && candidate.progress != 100) return false;
+    if (!terminal && strcmp(candidate.state, "running") != 0 &&
+        strcmp(candidate.state, "queued") != 0) return false;
     *output = candidate;
     return true;
 }

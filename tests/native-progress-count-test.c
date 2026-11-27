@@ -65,6 +65,7 @@ int main(void)
     CHECK(strcmp(jobs.slugs[0], "system-monitor") == 0);
     CHECK(strcmp(jobs.slugs[2], "calendar") == 0);
     CHECK(strcmp(jobs.slugs[81], "filesystem-test-22") == 0);
+    native_progress_free_jobs(&jobs);
     file = fopen(manifest, "a");
     CHECK(file != NULL);
     CHECK(fputs("boot\n", file) >= 0);
@@ -98,6 +99,7 @@ int main(void)
         CHECK(unlink(path) == 0);
     }
 
+    native_progress_free_jobs(&jobs);
     file = fopen(manifest, "w");
     CHECK(file != NULL);
     CHECK(fputs("calendar\nfilesystem-ofs\n", file) >= 0);
@@ -131,8 +133,13 @@ int main(void)
     file = fopen(manifest, "w");
     CHECK(file != NULL);
     CHECK(fclose(file) == 0);
-    CHECK(native_progress_total_jobs(status) == 0);
-    CHECK(strcmp(native_progress_run_status(status), "complete") == 0);
+    CHECK(native_progress_total_jobs(status) == -1);
+    CHECK(strcmp(native_progress_run_status(status), "running") == 0);
+    file = fopen(manifest, "w");
+    CHECK(file != NULL);
+    for (int n = 0; n < 160; ++n) CHECK(fprintf(file, "filesystem-future-%d\n", n) > 0);
+    CHECK(fclose(file) == 0);
+    CHECK(native_progress_total_jobs(status) == 160);
 
     CHECK(unlink(manifest) == 0);
     CHECK(rmdir(status) == 0);

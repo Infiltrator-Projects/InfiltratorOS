@@ -1,3 +1,10 @@
+## 1.0.114 — Dynamic progress and terminal-state integrity
+
+- Allocate progress inventory dynamically; reject empty manifests, malformed statuses and nonterminal completion percentages.
+- Use the same full status parser for the BOOT prerequisite and supervisor checks.
+- Refuse package removal while active or deferred provisioning owns its lock, without blocking inside dpkg.
+- Exercise 160-job manifests and malformed BOOT prerequisite status records.
+
 ## 1.0.113 — Resource admission hardening
 
 - Measure interval CPU utilisation and allocate spare cores to remaining builds.

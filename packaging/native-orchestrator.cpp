@@ -21,6 +21,7 @@
 #include <unistd.h>
 #include <vector>
 #include "native-build-queue.h"
+#include "installer-status.h"
 
 namespace fs = std::filesystem;
 using Strings = std::vector<std::string>;
@@ -189,11 +190,10 @@ static Strings selection(const char *variable, const Strings &available, bool st
 // until waitpid returns. A process exit is authoritative; an orphaned status
 // file is not. The smart leader owns every member of its shared build batch.
 static std::string job_state(const fs::path &stage, const std::string &slug) {
-    std::ifstream input(stage / "status" / (slug + "-install.status"));
-    std::string line;
-    if (std::getline(input, line) && line.rfind("state=", 0) == 0)
-        return line.substr(6);
-    return {};
+    InstallerStatus status{};
+    const auto path = stage / "status" / (slug + "-install.status");
+    if (!installer_status_read(path.c_str(), &status)) return {};
+    return status.state;
 }
 static void failed_job(const fs::path &stage, const std::string &slug,
                        const std::string &reason) {

@@ -30,6 +30,8 @@ int main(void)
     CHECK(descriptor >= 0);
     close(descriptor);
     RECORD("state=complete\nprogress=100\nstage=Ready\ndetail=Done\n", true, 100);
+    RECORD("state=complete\nprogress=0\nstage=Ready\ndetail=Done\n", false, 0);
+    RECORD("state=unknown\nprogress=100\nstage=Ready\ndetail=Done\n", false, 0);
     RECORD("state=running\r\nprogress=-1\r\nstage=\r\ndetail=\r\nfuture=value\r\n", true, -1);
     RECORD("state=queued\nprogress=0\nstage=Waiting\ndetail=Pending\n", true, 0);
     RECORD("state=complete\nprogress=100\nstage=Ready\n", false, 0);

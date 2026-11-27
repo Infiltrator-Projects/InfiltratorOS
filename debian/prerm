@@ -3,6 +3,19 @@
 set -eu
 
 if [ "$1" = "remove" ] || [ "$1" = "deconfigure" ]; then
+    root=/Temporary/InfiltratorOS
+    if [ -d "$root" ]; then
+        [ ! -L /Temporary ] && [ ! -L "$root" ] || exit 1
+        [ "$(find "$root" -maxdepth 0 -type d -uid 0 ! -perm /022 -print)" = "$root" ] || exit 1
+        [ ! -L "$root/provision.lock" ] && [ ! -L "$root/provision-pending.lock" ] || exit 1
+        exec 9>"$root/provision.lock"
+        exec 8>"$root/provision-pending.lock"
+        # Never wait for a worker that may be waiting for our dpkg lock.
+        if ! flock -n 9 || ! flock -n 8; then
+            echo 'InfiltratorOS provisioning is active or deferred; refusing removal during an installation.' >&2
+            exit 1
+        fi
+    fi
     /System/Commands/InfiltratorOS/select-theme "$1"
 fi
 

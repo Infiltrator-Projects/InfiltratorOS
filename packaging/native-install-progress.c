@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #define _GNU_SOURCE
+#include <limits.h>
 #include <gtk/gtk.h>
 #include <sys/file.h>
 #include <fcntl.h>
@@ -112,7 +113,7 @@ static int finished_run_outcome(const char *status_path, int *total)
     if (valid && fgets(count, sizeof(count), file) && strncmp(count, "total=", 6) == 0) {
         char *end = NULL;
         const long value = strtol(count + 6, &end, 10);
-        if (value > 0 && value <= NATIVE_PROGRESS_MAX_JOBS &&
+        if (value > 0 && value <= INT_MAX &&
             end != NULL && strcmp(end, "\n") == 0) *total = (int)value;
     }
     (void)fclose(file);
@@ -267,6 +268,7 @@ static gboolean refresh_aggregate(Ui *ui)
             }
         }
     }
+    native_progress_free_jobs(&jobs);
     if (fraction < 0.0) fraction = 0.0;
     if (fraction > total_jobs) fraction = total_jobs;
     set_progress(ui, fraction / (double)total_jobs);

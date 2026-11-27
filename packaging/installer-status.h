@@ -11,5 +11,11 @@ typedef struct {
 } InstallerStatus;
 
 /* A partial, malformed or truncated record leaves output unchanged. */
+#ifdef __cplusplus
+extern "C" {
+#endif
 bool installer_status_read(const char *path, InstallerStatus *output);
+#ifdef __cplusplus
+}
+#endif
 #endif

@@ -210,8 +210,9 @@ c++ -std=c++17 -O2 -Wall -Wextra -Werror -Wpedantic \
     "$ROOT/packaging/native-release-snapshot.cpp" \
     -o "$RUNTIME_BUILD/prepare-native-releases" \
     $(pkg-config --libs libcurl json-c)
+cc -std=c11 -O2 -Wall -Wextra -Werror -Wpedantic -c "$ROOT/packaging/installer-status.c" -o "$WORK/orchestrator-status.o"
 c++ -std=c++17 -O2 -Wall -Wextra -Werror -Wpedantic \
-    "$ROOT/packaging/native-orchestrator.cpp" \
+    "$ROOT/packaging/native-orchestrator.cpp" "$WORK/orchestrator-status.o" \
     -o "$RUNTIME_BUILD/orchestrate-native-install"
 test "$(file -b --mime-type "$THEME_DIR/infiltratoros.png")" = image/png
 test ! -e "$PKGROOT/usr/lib/infiltratoros"

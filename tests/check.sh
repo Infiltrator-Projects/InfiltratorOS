@@ -54,8 +54,9 @@ c++ -std=c++17 -O2 -Wall -Wextra -Werror -Wpedantic \
     tests/native-snapshot-test.cpp -o "$WORK/native-snapshot-test" \
     $(pkg-config --libs libcurl json-c)
 "$WORK/native-snapshot-test"
+cc -std=c11 -O2 -Wall -Wextra -Werror -Wpedantic -c packaging/installer-status.c -o "$WORK/orchestrator-status.o"
 c++ -std=c++17 -O2 -Wall -Wextra -Werror -Wpedantic \
-    tests/native-orchestrator-test.cpp -o "$WORK/native-orchestrator-test"
+    tests/native-orchestrator-test.cpp "$WORK/orchestrator-status.o" -o "$WORK/native-orchestrator-test"
 run_fault_test 'Native worker supervision and failure recovery' "$WORK/native-orchestrator-test"
 
 for test in native-release-contract select-theme-command; do
