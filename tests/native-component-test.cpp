@@ -18,6 +18,7 @@
 #include <iostream>
 #include <sstream>
 #include <string_view>
+#include <sys/wait.h>
 
 using namespace infiltrator_native::worker;
 
@@ -190,6 +191,22 @@ int main(int argc, char **argv) {
         return native_component_worker_entrypoint(argc, argv);
     try {
         check_build_resources();
+        for (const auto &contract : infiltrator_native::application_contracts) {
+            const auto entry = application(std::string(contract.slug));
+            check(entry.slug() == contract.slug && entry.repo == contract.repository &&
+                  entry.package == contract.package && entry.resource == contract.resource &&
+                  infiltrator_native::queue_candidate(entry.slug()) == contract.queued,
+                  "one application registry drives package and queue identities");
+        }
+        {
+            TempDir temp(fs::temp_directory_path(), "native-status-bounds-");
+            Status status(temp.path, "test");
+            status.write("failed", 100, std::string(500, 's'), std::string(5000, 'd'));
+            const auto record = read_file(status.path);
+            check(record.find("stage=" + std::string(252, 's') + "...\n") != std::string::npos &&
+                  record.find("detail=" + std::string(1020, 'd') + "...\n") != std::string::npos,
+                  "oversized status diagnostics remain valid and bounded");
+        }
         {
             std::string capture;
             check(execute({"/bin/sh", "-c", "printf verified"}, &capture) == 0 &&

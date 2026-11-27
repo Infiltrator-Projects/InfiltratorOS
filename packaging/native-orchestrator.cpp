@@ -252,8 +252,10 @@ static void dispatch(const fs::path &stage) {
         throw std::runtime_error("Incomplete full filesystem catalogue");
     write_text(canonical/"filesystems-all.list",joined(full_fs));
     // Select from the sealed package inventory before checking publication.
-    Strings apps = selection("INFILTRATOROS_SELECTED_APPLICATIONS",
-                             {"system-monitor", "calculator", "calendar", "files", "defragmenter"});
+    Strings application_inventory;
+    for (const auto slug : infiltrator_native::queued_applications)
+        application_inventory.emplace_back(slug);
+    Strings apps = selection("INFILTRATOROS_SELECTED_APPLICATIONS", application_inventory);
     temporal = selection("INFILTRATOROS_SELECTED_TEMPORAL", temporal);
     Strings chosen = selection("INFILTRATOROS_SELECTED_FILESYSTEMS", full_fs, true);
     Strings selected = apps;

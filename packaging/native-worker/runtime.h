@@ -68,8 +68,17 @@ struct Status {
         : root(folder), path(folder / (slug + "-install.status")) {}
     void write(std::string state, int progress, std::string label, std::string detail) {
         fs::create_directories(root);
-        for (char &ch : label) if (ch == '\n' || ch == '\r') ch = ' ';
-        for (char &ch : detail) if (ch == '\n' || ch == '\r') ch = ' ';
+        // Match the parser's field bounds so a long diagnostic cannot
+        // invalidate an otherwise authoritative terminal record.
+        auto sanitize = [](std::string &value, std::size_t maximum) {
+            for (char &ch : value) if (ch == '\n' || ch == '\r' || ch == '\0') ch = ' ';
+            if (value.size() > maximum) {
+                value.resize(maximum - 3);
+                value += "...";
+            }
+        };
+        sanitize(label, 255);
+        sanitize(detail, 1023);
         TempDir tmp(root, "status-");
         auto file = tmp.path / "status";
         save(file, "state=" + state + "\nprogress=" + std::to_string(progress) +

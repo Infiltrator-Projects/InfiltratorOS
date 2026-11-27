@@ -2,6 +2,7 @@
 // Independent native release snapshot validator for InfiltratorOS.
 // Runtime implementation: C++17, libcurl TLS and json-c. No Python interpreter.
 #include <algorithm>
+#include "native-build-queue.h"
 #include <cctype>
 #include <iterator>
 #include <map>
@@ -211,13 +212,10 @@ static std::set<std::string> expected_repos(const fs::path &providers,
             !items.insert(slug).second)
             throw std::runtime_error("Duplicate or invalid filesystem identity: " + slug);
     }
-    items.insert("system-monitor");
-    items.insert("calculator");
-    items.insert("files");
-    items.insert("defragmenter");
-    items.insert("boot");
-    items.insert("calendar");
-    if (items.size() != temporal.size() + fsentries.size() + 6)
+    for (const auto &app : infiltrator_native::application_contracts)
+        if (!items.emplace(app.slug).second)
+            throw std::runtime_error("Duplicate application identity");
+    if (items.size() != temporal.size() + fsentries.size() + infiltrator_native::application_contracts.size())
         throw std::runtime_error("Unexpected catalogue cardinality");
     return items;
 }

@@ -1,3 +1,9 @@
+## 1.0.122 — Single application registry and bounded status records
+
+- Define application package identities and queue eligibility once, consumed by the release verifier, dispatcher and worker.
+- Bound written status diagnostics to parser capacities, and initialise and clean up curl explicitly.
+- Correct test include dependencies exposed by separate compilation; add registry and status-bound regressions.
+
 ## 1.0.121 — One installation lifecycle and unfiltered inventory
 
 - Remove duplicate standalone compilation and installation paths: every non-BOOT job uses the same resource-admitted isolated build and verified package transaction.

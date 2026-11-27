@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #define _DEFAULT_SOURCE 1
 #include "release.h"
+#include "../native-build-queue.h"
 #include <cstdio>
 #include <chrono>
 #include <curl/curl.h>
@@ -277,25 +278,12 @@ void download(const Asset &asset,const fs::path &target) {
     }
 }
 Entry application(const std::string &slug) {
-    Entry e;
-    e.id = slug;
-    e.kind = "application";
-    if (slug == "system-monitor") {
-        e.repo = "System-Monitor"; e.package = "system-monitor"; e.resource = "/Programs/system-monitor";
-    } else if (slug == "calculator") {
-        e.repo = "Calculator"; e.package = "calculator"; e.resource = "/Programs/calculator";
-    } else if (slug == "calendar") {
-        e.repo = "Calendar"; e.package = "calendar"; e.resource = "/usr/libexec/calendar-about";
-    } else if (slug == "files") {
-        e.repo = "Files"; e.package = "files"; e.resource = "/Programs/files";
-    } else if (slug == "defragmenter") {
-        e.repo = "Defragmenter"; e.package = "defragmenter"; e.resource = "/Programs/defragmenter";
-    } else if (slug == "boot") {
-        e.repo = "Boot"; e.package = "infiltrator-boot";
-        e.resource = "/boot/efi/EFI/InfiltratorOS/BOOT/BOOTX64.EFI";
-    } else throw std::runtime_error("Unknown native application");
-    e.name = e.repo;
-    return e;
+    for (const auto &contract : infiltrator_native::application_contracts) {
+        if (contract.slug != slug) continue;
+        return {slug, std::string(contract.repository), std::string(contract.repository),
+                std::string(contract.package), std::string(contract.resource), "application"};
+    }
+    throw std::runtime_error("Unknown native application");
 }
 void discover(const std::vector<Entry> &extra, const fs::path &snapshot) {
     if (geteuid() != 0) throw std::runtime_error("Native discovery requires root");

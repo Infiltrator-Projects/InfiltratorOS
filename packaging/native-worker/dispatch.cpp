@@ -16,7 +16,10 @@ int native_component_worker_entrypoint(int argc, char **argv) {
             return isolated_build_entry(argc, argv);
         if (argc == 4 && std::string_view(argv[1]) == "--validate-common-v2")
             return validate_common_child(argv[2], argv[3]);
-        curl_global_init(CURL_GLOBAL_DEFAULT);
+        if (curl_global_init(CURL_GLOBAL_DEFAULT) != CURLE_OK)
+            throw std::runtime_error("Cannot initialise native release networking");
+        struct CurlLifetime { ~CurlLifetime() { curl_global_cleanup(); } } networking;
+        (void)networking;
         const std::string name = fs::path(argv[0]).filename().string();
         const fs::path directory = fs::path(argv[0]).parent_path();
         if (environment("INFILTRATOROS_SMART_BUILD_QUEUE") == "1") {
