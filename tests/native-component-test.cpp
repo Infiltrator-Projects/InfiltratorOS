@@ -196,119 +196,6 @@ int main(int argc, char **argv) {
             check(waitpid(-1, &status, WNOHANG) == -1 && errno == ECHILD,
                   "Oversized capture left an unreaped child");
         }
-        {
-            TempDir fixture(fs::temp_directory_path(), "native-efi-inventory-");
-            const auto image = fixture.path / "BOOTX64.EFI";
-            const auto drivers = fixture.path / "drivers_x64";
-            fs::create_directory(drivers);
-            save(image, "MZboot");
-            save(fixture.path / "shimx64.efi", "MZshim");
-            for (const auto *name : {"ext2", "ext4", "reiserfs", "iso9660", "hfs", "btrfs"})
-                save(drivers / (std::string(name) + "_x64.efi"), "MZdriver");
-            const auto initial = boot_efi_inventory(image);
-            save(fixture.path / "boot.conf", "user-edited configuration");
-            check(initial == boot_efi_inventory(image), "mutable BOOT configuration excluded");
-            save(drivers / "ext4.so", "independently installed module");
-            check(initial == boot_efi_inventory(image), "independent filesystem modules excluded");
-            fs::remove(drivers / "ext4.so");
-            check(initial == boot_efi_inventory(image), "module removal does not invalidate BOOT");
-            save(drivers / "btrfs_x64.efi", "MZchanged");
-            check(initial != boot_efi_inventory(image), "EFI driver mutation changes attestation");
-            fs::remove(drivers / "btrfs_x64.efi");
-            rejects([&]() { (void)boot_efi_inventory(image); }, "missing required EFI driver");
-        }
-        const std::string firmware = R"(BootOrder: 0007,0005,0003
-Boot0007* BOOT Boot Manager HD(1,GPT,1234)/File(\EFI\InfiltratorOS\BOOT\BOOTX64.EFI)
-)";
-        check(boot_registered(firmware), "BOOT owns one active, first-priority native EFI entry");
-        const std::string uuid = "01234567-89ab-cdef-0123-456789abcdef";
-        const std::string valid_esp = "BootOrder: 0007,0005\nBoot0007* BOOT HD(1,GPT," + uuid +
-            ",0x800,0x100000)/File(\\EFI\\InfiltratorOS\\BOOT\\BOOTX64.EFI)\n";
-        check(boot_registered(valid_esp, false, uuid), "firmware entry matches mounted GPT ESP");
-        check(!boot_registered(valid_esp, false, "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"),
-              "same BOOT path on another ESP is refused");
-        check(firmware_partition_matches("HD(2,MBR,0x12345678,0x800,0x1000)", "12345678-02"),
-              "MBR partition signature and partition number match");
-        check(!firmware_partition_matches("HD(1,MBR,0x12345678,0x800,0x1000)", "12345678-02"),
-              "MBR partition number mismatch refused");
-        // Secure Boot launches Shim and Shim launches the signed BOOTX64.EFI.
-        // Only an explicitly permitted, single active first-priority Shim
-        // entry inside BOOT's fixed directory can satisfy this contract.
-        // Model efivarfs with a stream buffer that deliberately provides no
-        // seek operations. A seek-based implementation fails this regression.
-        struct NonSeekableVariable : std::streambuf {
-            char bytes[5] = {7, 0, 0, 0, 1};
-            explicit NonSeekableVariable(char flag, int size = 5) {
-                bytes[4] = flag;
-                setg(bytes, bytes, bytes + size);
-            }
-        };
-        NonSeekableVariable enabled_var(1), disabled_var(0), truncated_var(1, 4);
-        std::istream enabled_stream(&enabled_var), disabled_stream(&disabled_var),
-                     truncated_stream(&truncated_var);
-        check(secure_boot_flag(enabled_stream, true), "Non-seekable SecureBoot variable enabled");
-        check(!secure_boot_flag(disabled_stream, true), "Non-seekable SecureBoot variable disabled");
-        check(!secure_boot_flag(truncated_stream, true), "Truncated SecureBoot variable rejected");
-        std::istringstream legacy_enabled(std::string(1, '\1'));
-        check(secure_boot_flag(legacy_enabled, false), "Legacy SecureBoot data enabled");
-        const std::string shim_firmware = R"(BootCurrent: 0007
-Timeout: 0 seconds
-BootOrder: 0007,0004,0002,0000,0001,0005
-Boot0004* Ubuntu HD(1,GPT,1234)/File(\EFI\ubuntu\shimx64.efi)
-Boot0007* BOOT Boot Manager HD(1,GPT,1234)/File(\EFI\InfiltratorOS\BOOT\shimx64.efi) File(.BOOTX64.EFI)
-)";
-        check(boot_registered(shim_firmware, true),
-              "one first-priority BOOT Shim EFI entry accepted for Secure Boot");
-        check(!boot_registered(shim_firmware),
-              "Shim firmware entry without approved Secure Boot path rejected");
-        check(!boot_registered(shim_firmware + shim_firmware.substr(shim_firmware.find("Boot0007")), true),
-              "duplicate Shim entries rejected");
-        const std::string signed_shim_firmware = R"(BootOrder: 0007,0005
-Boot0007* BOOT Boot Manager HD(1,GPT,1234)/File(\EFI\InfiltratorOS\BOOT\shimx64.efi.signed)
-)";
-        check(boot_registered(signed_shim_firmware, true),
-              "installed Shim .efi.signed filename accepted");
-        // Hardware-installation regression: BOOT reports Boot0006 first, and
-        // the firmware describes the canonical InfiltratorOS/BOOT EFI path.
-        // This must not be rejected by the OS post-install validation parser.
-        const std::string installed_firmware = R"(BootCurrent: 0006
-Timeout: 5 seconds
-BootOrder: 0006,0004,0000,0001,0002,0003
-Boot0000* UEFI NVMe HD(1,GPT,1234)/File(\EFI\Boot\BootX64.efi)
-Boot0004* Ubuntu HD(1,GPT,1234)/File(\EFI\ubuntu\shimx64.efi)
-Boot0006* BOOT Boot Manager HD(1,GPT,1234)/File(\EFI\InfiltratorOS\BOOT\BOOTX64.EFI)
-)";
-        check(boot_registered(installed_firmware),
-              "real BOOT 0.1.558 log proves a unique first-priority fixed EFI entry");
-        // The old verifier assumed /usr/sbin/efibootmgr and interpreted a
-        // missing binary as a missing BOOT entry. Exercise both modern
-        // /usr/bin placement and older /usr/sbin fallback without touching
-        // EFI/NVRAM or relying on host packaging.
-        TempDir efi_fixture(fs::temp_directory_path(), "native-efi-verifier-");
-        const auto missing_binary = efi_fixture.path / "usr-sbin-efibootmgr";
-        const auto packaged_binary = efi_fixture.path / "usr-bin-efibootmgr";
-        save(missing_binary, "#!/bin/sh\nexit 1\n");
-        save(packaged_binary, "#!/bin/sh\nexit 0\n");
-        check(chmod(packaged_binary.c_str(), 0755) == 0,
-              "mock modern EFI utility can be made executable");
-        check(efibootmgr_executable({missing_binary, packaged_binary}) == packaged_binary,
-              "EFI verifier finds /usr/bin when /usr/sbin is absent");
-        check(chmod(packaged_binary.c_str(), 0644) == 0,
-              "mock EFI utility permission can be removed");
-        check(efibootmgr_executable({missing_binary, packaged_binary}).empty(),
-              "EFI verifier refuses to treat non-executable files as firmware tools");
-        check(chmod(missing_binary.c_str(), 0755) == 0,
-              "mock legacy EFI utility can be made executable");
-        check(efibootmgr_executable({packaged_binary, missing_binary}) == missing_binary,
-              "EFI verifier accepts an older /usr/sbin binary when /usr/bin is absent");
-        check(!boot_registered(std::string(R"(BootOrder: 0005,0007
-)") + firmware.substr(firmware.find("Boot0007"))),
-              "BOOT cannot be a secondary boot entry");
-        check(!boot_registered(firmware + firmware.substr(firmware.find("Boot0007"))),
-              "duplicate BOOT firmware options are refused");
-        check(!boot_registered(R"(BootOrder: 0007
-Boot0007 BOOT Boot Manager HD(1,GPT,1234)/File(\EFI\InfiltratorOS\BOOT\BOOTX64.EFI)
-)"), "inactive BOOT firmware options are refused");
         auto temporal = catalogue("packaging/temporal-resources.json", 54);
         auto established = catalogue("packaging/filesystem-resources.json", 5);
         auto additional = catalogue("packaging/filesystem-additional.json", 18);
@@ -416,18 +303,25 @@ Boot0007 BOOT Boot Manager HD(1,GPT,1234)/File(\EFI\InfiltratorOS\BOOT\BOOTX64.E
                     throw std::runtime_error("Cannot make fixture RUN executable");
                 const auto folder = dir / "output";
                 fs::create_directory(folder);
-                jobs.push_back({app, asset, run, folder, {}});
+                jobs.push_back({app, {}, run, folder, {}, true});
             }
-            build_packages(jobs, logs, failures);
+            // Inject only the network lookup. Each actual scheduler admission
+            // must precede its own lookup, which then runs the local RUN.
+            build_packages(jobs, logs, failures, [&](const Entry &entry) {
+                const auto status = read_file(logs / (entry.slug() + "-install.status"));
+                check(status.find("stage=Resolving independent installer\n") != std::string::npos,
+                      "lookup runs inside the admitted job");
+                check(read_file(logs / "smart-build-timings.log").find("started " + entry.slug() + ";") != std::string::npos,
+                      "scheduler reserves resources before lookup");
+                return asset;
+            });
             check(failures.empty(), "all five application native build paths execute successfully");
             for (const auto &job : jobs) {
                 check(regular(job.package), "scheduler returns verified real Debian package");
-                rejects([&]() { verify_native_payload(job.package, job.entry, asset, job.folder); },
-                        "metadata-only application DEB missing required payload");
-                Asset stale = asset;
-                stale.version = "9.9.9";
-                rejects([&]() { (void)native_package_from(job.folder, job.entry, stale); },
-                        "stale application build package");
+                auto wrong = job.entry;
+                wrong.package = "not-the-component";
+                rejects([&]() { (void)native_package_from(job.folder, wrong); },
+                        "wrong component package identity");
             }
         }
         rejects([&]() { (void)build_only_arguments(application("boot"), "/tmp/output", "1"); },
@@ -457,45 +351,11 @@ Boot0007 BOOT Boot Manager HD(1,GPT,1234)/File(\EFI\InfiltratorOS\BOOT\BOOTX64.E
         rejects([&]() { (void)native_asset(boot,tag,page+page); }, "ambiguous digest");
         rejects([&]() { (void)native_asset(boot,"v0.1.457",page); }, "unrelated release asset");
         rejects([&]() { (void)native_asset(boot,tag,""); }, "missing native installer");
-        check(source_commit(std::string(40,'b')+"\trefs/tags/"+tag+"\n"+
-                            std::string(40,'c')+"\trefs/tags/"+tag+"^{}\n",tag)==std::string(40,'c'),
-              "annotated tag resolves to source commit");
-        rejects([&]() { (void)source_commit("",tag); }, "missing source tag");
         check(application("defragmenter").resource == "/Programs/defragmenter",
               "defragmenter destination");
-        // A missing optional Defragmenter field must never invalidate other apps.
-        Asset app_version;
-        app_version.version = "1.0.243";
-        check(application_package_matches(application("system-monitor"), app_version,
-            "install ok installed\t1.0.243"), "System Monitor Debian identity");
-        check(application_package_matches(application("system-monitor"), app_version,
-            "install ok installed\t1.0.243\t"), "trailing empty optional field");
-        check(!application_package_matches(application("system-monitor"), app_version,
-            "install ok installed\t1.0.242"), "reject stale application version");
-        check(!application_package_matches(application("system-monitor"), app_version,
-            "deinstall ok config-files\t1.0.243"), "reject uninstalled package");
-        app_version.version = "0.2.66";
-        check(application_package_matches(application("calculator"), app_version,
-            "install ok installed\t0.2.66"), "Calculator native package identity");
-        check(!application_package_matches(application("files"), app_version,
-            "install ok installed\t0.2.66"), "reject generic Files package");
-        check(application_package_matches(application("files"), app_version,
-            "install ok installed\t0.2.66+native1"), "Files trained native suffix");
-        check(application_package_matches(application("defragmenter"), app_version,
-            "install ok installed\t0.2.66+native1"), "Defragmenter trained native suffix");
-
-        {
-            const auto calendar = application("calendar");
-            check(calendar.repo == "Calendar" && calendar.package == "calendar" &&
-                  calendar.resource == "/usr/libexec/calendar-about", "Calendar applet identity");
-            Asset asset; asset.version="1.0.131";
-            check(application_package_matches(calendar, asset,
-                  "install ok installed\t1.0.131+nativepgo1"), "Calendar native Debian identity");
-            for (auto version : {"1.0.131", "1.0.130+nativepgo1", "1.0.131+nativepgo1bad"})
-                check(!application_package_matches(calendar, asset,
-                      std::string("install ok installed\t") + version),
-                      "Reject generic, stale and malformed Calendar versions");
-        }
+        const auto calendar = application("calendar");
+        check(calendar.repo == "Calendar" && calendar.package == "calendar" &&
+              calendar.resource == "/usr/libexec/calendar-about", "Calendar applet identity");
         rejects([&]() { (void)application("unrecognised"); }, "application");
 
         {

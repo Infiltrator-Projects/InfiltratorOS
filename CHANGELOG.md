@@ -1,3 +1,9 @@
+## 1.0.139 — Schedule complete independent build lifecycles
+
+- Remove sequential remote installer preparation. Each resource-admitted job resolves, downloads and compiles its own latest RUN before freeing its slot for the next component.
+- Keep missing dependency transactions exclusive with respect to active compilation; retain serial Debian package installation.
+- Make libcurl safe for concurrent lookups and update the scheduler fixture to check that admission precedes lookup. Remove obsolete tests of retired duplicated version and BOOT verification functions.
+
 ## 1.0.138 — Correct child diagnostic writes
 
 - Handle interrupted, partial and failed diagnostic writes in the fork child while preserving strict fortified compiler checks.

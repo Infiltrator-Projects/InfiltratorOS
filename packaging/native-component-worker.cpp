@@ -30,6 +30,8 @@
 #include <linux/mount.h>
 #include <map>
 #include <memory>
+#include <mutex>
+#include <shared_mutex>
 #include <openssl/evp.h>
 #include <optional>
 #include <regex>
@@ -375,6 +377,7 @@ static void transfer(const std::string &url, Transfer &result,
         CURL *curl = curl_easy_init();
         if (!curl) throw std::runtime_error("Cannot initialise libcurl");
         curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+        curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
         curl_easy_setopt(curl, CURLOPT_USERAGENT, "InfiltratorOS-CXX/1");
         curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
         curl_easy_setopt(curl, CURLOPT_MAXREDIRS, 5L);
@@ -468,6 +471,7 @@ static std::string live_latest_tag(const std::string &repository) {
         if (!curl) throw std::runtime_error("Cannot initialise GitHub latest-release check");
         curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
         curl_easy_setopt(curl, CURLOPT_NOBODY, 1L);
+        curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
         curl_easy_setopt(curl, CURLOPT_USERAGENT, "InfiltratorOS-native/1");
         curl_easy_setopt(curl, CURLOPT_TIMEOUT, 30L);
         curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 15L);
@@ -849,6 +853,7 @@ struct Job {
     Entry entry;
     Asset asset;
     fs::path run, folder, package;
+    bool resolve_remote = false;
 };
 
 Strings build_only_arguments(const Entry &entry, const fs::path &folder,
@@ -876,6 +881,8 @@ static void build(Job &job, const fs::path &logs, const std::vector<int> &cpus) 
         Status(logs, job.entry.slug()).write("running", 20, "Downloading native RUN", "SHA-256 release verification");
         download(job.asset, job.run);
     }
+    Status(logs, job.entry.slug()).write("running", 35, "Compiling native component",
+        std::to_string(std::max<std::size_t>(1, cpus.size())) + " CPU slots reserved");
     const auto slots = std::to_string(std::max<std::size_t>(1, cpus.size()));
     Strings arguments;
     if (!cpus.empty()) {
@@ -947,8 +954,37 @@ static void build(Job &job, const fs::path &logs, const std::vector<int> &cpus) 
         fs::remove(job.run);
     }
 }
+static bool can_build(const Entry &e);
+void prepare_build_dependencies(const Entry &entry, Status &status);
+
+// Each resource reservation covers the whole independent job, starting with
+// release discovery. Only a missing prerequisite may need exclusive host
+// package access; already prepared builds can run together. Prevent APT from
+// changing headers or libraries underneath any active compilation.
+static void admitted_build(Job &job, const fs::path &statuses,
+                           const std::vector<int> &cpus, std::shared_mutex &host,
+                           const std::function<Asset(const Entry &)> &resolve) {
+    if (job.resolve_remote) {
+        Status status(statuses, job.entry.slug());
+        status.write("running", 2, "Resolving independent installer", job.entry.repo);
+        job.asset = resolve(job.entry);
+    }
+    std::shared_lock<std::shared_mutex> read(host);
+    if (!job.asset.url.empty() && !can_build(job.entry)) {
+        read.unlock();
+        {
+            std::unique_lock<std::shared_mutex> write(host);
+            Status status(statuses, job.entry.slug());
+            prepare_build_dependencies(job.entry, status);
+        }
+        read.lock();
+    }
+    build(job, statuses, cpus);
+}
+
 void build_packages(std::vector<Job> &jobs, const fs::path &statuses,
-                           std::map<std::string, std::string> &failures) {
+                           std::map<std::string, std::string> &failures,
+                           const std::function<Asset(const Entry &)> &resolve = release) {
     using namespace infiltrator_native;
     std::ofstream timings(statuses / "smart-build-timings.log");
     if (!timings) throw std::runtime_error("Cannot open native build timing log");
@@ -963,6 +999,7 @@ void build_packages(std::vector<Job> &jobs, const fs::path &statuses,
         BuildReservation resources;
         std::future<void> result;
     };
+    std::shared_mutex host;
     std::vector<Active> active;
     std::size_t next = 0;
     std::optional<std::chrono::steady_clock::time_point> blocked;
@@ -1015,7 +1052,7 @@ void build_packages(std::vector<Job> &jobs, const fs::path &statuses,
                 const auto job = next++;
                 const auto count = std::to_string(active.size() + 1);
                 const auto slots = std::max<std::size_t>(1, reservation->cpus.size());
-                Status(statuses, entry.slug()).write("running", 35, "Compiling native component",
+                Status(statuses, entry.slug()).write("running", 2, "Starting independent native job",
                     count + " builds active, " + std::to_string(slots) + " CPU slots for this build");
                 timings << elapsed() << "ms started " << entry.slug() << "; active=" << count
                         << "; cpu_slots=" << slots << '/' << resources.cpu_budget
@@ -1023,7 +1060,7 @@ void build_packages(std::vector<Job> &jobs, const fs::path &statuses,
                         << "; memory_budget_mib=" << resources.memory_mib
                          << "; disk_budget_mib=" << resources.disk_mib << std::endl;
                 auto result = std::async(std::launch::async, [&, job, cpus = reservation->cpus] {
-                    build(jobs[job], statuses, cpus);
+                    admitted_build(jobs[job], statuses, cpus, host, resolve);
                 });
                 active.push_back({job, std::move(*reservation), std::move(result)});
                 continue;
@@ -1127,13 +1164,13 @@ static bool can_build(const Entry &e) {
     }
     return true;
 }
-// Dependency transactions run before any admitted build can start.
+// Dependency transactions are exclusive; no active compilation can observe a partial APT change.
 void prepare_build_dependencies(const Entry &entry, Status &status) {
     if (can_build(entry)) return;
     const auto missing = missing_packages(build_dependency_packages(entry));
     if (!missing.empty()) {
         status.write("running", 8, "Preparing build prerequisites",
-                     "Serial APT transaction before parallel compilation");
+                     "Serial APT transaction for this component");
         Strings command{"/usr/bin/apt-get", "-o", "DPkg::Lock::Timeout=-1",
             "install", "-y", "--no-remove", "--no-install-recommends"};
         command.insert(command.end(), missing.begin(), missing.end());
@@ -1164,11 +1201,10 @@ static int run_selected_builds(const std::vector<Entry> &chosen, const fs::path 
         for (const auto &e : chosen) {
             Status status(statuses, e.slug());
             try {
-                status.write("running", 2, "Resolving independent installer", e.repo);
-                Asset asset = release(e);
-                prepare_build_dependencies(e, status);
-                Job job{e, asset, scratch.path / (e.slug() + ".run"), scratch.path / e.slug(), {}};
-                status.write("queued", 15, "Native build prepared", "Awaiting resource admission");
+                // Queue local identities only. Network discovery and build
+                // prerequisites belong to the admitted job, not a global barrier.
+                Job job{e, {}, scratch.path / (e.slug() + ".run"), scratch.path / e.slug(), {}, true};
+                status.write("queued", 0, "Native job queued", "Awaiting resource admission");
                 fs::create_directory(job.folder);
                 jobs.push_back(job);
             } catch (const std::exception &error) {

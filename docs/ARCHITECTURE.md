@@ -21,7 +21,7 @@ The work inventory is sourced from the checked catalogues:
 - Five established filesystem workers defined by `packaging/filesystem-resources.json`.
 - Up to 18 additional filesystem workers defined by `packaging/filesystem-additional.json`, admitted only after discovery and published-release qualification.
 
-Each worker resolves the native RUN directly from its own GitHub repository's latest stable release. The official asset digest is verified before execution; source tags are resolved to their commits for provider build verification. The local inventory lists components, not release versions. No external catalogue or common release preflight exists.
+Each worker resolves the native RUN directly from its own GitHub repository's latest stable release. The official asset digest is verified before execution; source tags are resolved to their commits for provider build verification. The local inventory lists components, not release versions. No external catalogue or common release preflight exists. Release discovery begins only when the scheduler admits that individual job; lookup, download and compilation occupy the same reservation. Missing dependency transactions are exclusive to protect active builds.
 
 The default run has 65 established jobs, with up to 83 when all additional providers qualify (five applications, BOOT, 54 temporal and 23 filesystem providers). The GTK window starts after verification and registration of the packaged resources and extraction of the sealed runtime, before Plymouth and release discovery. The window and final monitor share the same manifest and status parsers. Jobs keep separate statuses and logs in the run stage. Headless installations still run the same workers.
 
