@@ -1069,8 +1069,7 @@ static void build(Job &job, const fs::path &logs, const std::vector<int> &cpus) 
     // Released Calendar and Defragmenter scripts query getconf for job counts.
     // Scope the reported count to this build's allocation, not the host.
     // The private directory is root-owned and removed with the run.
-    if (job.entry.kind == "application" &&
-        (job.entry.id == "calendar" || job.entry.id == "defragmenter")) {
+    {
         const auto bin = job.folder / "scheduler-bin";
         fs::create_directory(bin);
         const auto shim = bin / "getconf";
@@ -1106,6 +1105,9 @@ static void build_packages(std::vector<Job> &jobs, const fs::path &statuses,
     };
     std::vector<Active> active;
     std::size_t next = 0;
+    std::optional<std::chrono::steady_clock::time_point> blocked;
+    std::uint64_t disk_budget = 0;
+    bool have_disk_budget = false;
     while (next < jobs.size() || !active.empty()) {
         for (auto it = active.begin(); it != active.end();) {
             if (it->result.wait_for(std::chrono::milliseconds(0)) != std::future_status::ready) {
@@ -1124,7 +1126,13 @@ static void build_packages(std::vector<Job> &jobs, const fs::path &statuses,
             it = active.erase(it);
         }
         if (next < jobs.size()) {
-            const auto resources = build_resources(allowed_build_cpus());
+            auto resources = build_resources(allowed_build_cpus());
+            sample_build_activity(resources, statuses);
+            if (!have_disk_budget || active.empty()) {
+                disk_budget = resources.disk_mib;
+                have_disk_budget = true;
+            }
+            resources.disk_capacity_mib = disk_budget;
             std::vector<BuildReservation> reservations;
             for (const auto &job : active) reservations.push_back(job.resources);
             const auto &entry = jobs[next].entry;
@@ -1132,6 +1140,7 @@ static void build_packages(std::vector<Job> &jobs, const fs::path &statuses,
                 entry.id == "exfat" ? BuildKind::exfat : BuildKind::module;
             auto reservation = reserve_build(resources, reservations, kind, jobs.size() - next);
             if (reservation) {
+                blocked.reset();
                 const auto job = next++;
                 const auto count = std::to_string(active.size() + 1);
                 const auto slots = std::max<std::size_t>(1, reservation->cpus.size());
@@ -1140,7 +1149,8 @@ static void build_packages(std::vector<Job> &jobs, const fs::path &statuses,
                 timings << elapsed() << "ms started " << entry.slug() << "; active=" << count
                         << "; cpu_slots=" << slots << '/' << resources.cpu_budget
                         << "; reserved_mib=" << reservation->memory_mib
-                        << "; memory_budget_mib=" << resources.memory_mib << std::endl;
+                        << "; memory_budget_mib=" << resources.memory_mib
+                         << "; disk_budget_mib=" << resources.disk_mib << std::endl;
                 auto result = std::async(std::launch::async, [&, job, cpus = reservation->cpus] {
                     build(jobs[job], statuses, cpus);
                 });
@@ -1148,7 +1158,23 @@ static void build_packages(std::vector<Job> &jobs, const fs::path &statuses,
                 continue;
             }
         }
-        if (!active.empty()) std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        if (active.empty() && next < jobs.size()) {
+            const auto now = std::chrono::steady_clock::now();
+            if (!blocked) blocked = now;
+            Status(statuses, jobs[next].entry.slug()).write("queued", 10,
+                "Waiting for build resources", "CPU, memory or temporary storage unavailable");
+            if (now - *blocked >= std::chrono::seconds(60)) {
+                const auto slug = jobs[next++].entry.slug();
+                failures[slug] = "Insufficient build resources after bounded wait";
+                Status(statuses, slug).write("failed", 100, "Native build not admitted", failures[slug]);
+                blocked.reset();
+                continue;
+            }
+            std::this_thread::sleep_for(std::chrono::seconds(1));
+        } else {
+            blocked.reset();
+            if (!active.empty()) std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        }
     }
 }
 static Strings application_build_dependencies(const Entry &e) {
@@ -1243,7 +1269,7 @@ static int smart_queue(const std::vector<Entry> &entries) {
             if (it == entries.end()) throw std::runtime_error("Unknown smart queue candidate");
             chosen.push_back(*it);
         }
-    if (chosen.size() < 2) throw std::runtime_error("Insufficient smart build candidates");
+    if (chosen.empty()) throw std::runtime_error("No selected smart build candidates");
     std::vector<std::unique_ptr<Lock>> locks;
     for (const auto &e : chosen)
         locks.emplace_back(std::make_unique<Lock>(ROOT / (e.slug() + ".lock")));
@@ -1252,7 +1278,6 @@ static int smart_queue(const std::vector<Entry> &entries) {
     setenv("TMPDIR", statuses.c_str(), 1);
     TempDir scratch(statuses, "smart-build-");
     std::vector<Job> jobs;
-    std::vector<Entry> serial;
     std::set<std::string> completed;
     std::map<std::string, std::string> failures;
     try {
@@ -1278,15 +1303,11 @@ static int smart_queue(const std::vector<Entry> &entries) {
                             "install", "-y", "--no-remove", "--no-install-recommends"};
                         command.insert(command.end(), missing.begin(), missing.end());
                         // Preserve the independent serial recovery path if preflight fails.
-                        (void)execute(command, nullptr, statuses / (e.slug() + "-dependencies.log"));
+                        required(command, statuses / (e.slug() + "-dependencies.log"));
                     }
                 }
-                if (!can_build(e)) {
-                    serial.push_back(e);
-                    status.write("queued", 10, "Serial fallback queued",
-                                 "Native prerequisites unavailable for parallel compilation");
-                    continue;
-                }
+                if (!can_build(e))
+                    throw std::runtime_error("Native prerequisites unavailable; refusing unscheduled build");
                 Job job{e, asset, scratch.path / (e.slug() + ".run"), scratch.path / e.slug(), {}};
                 status.write("running", 15, "Downloading native RUN", "SHA-256 release verification");
                 download(asset, job.run);
@@ -1313,20 +1334,6 @@ static int smart_queue(const std::vector<Entry> &entries) {
             } catch (const std::exception &error) {
                 failures[job.entry.slug()] = error.what();
                 status.write("failed", 100, "Native package installation failed", error.what());
-            }
-        }
-        for (const auto &e : serial) {
-            Status status(statuses, e.slug());
-            try {
-                const bool app = e.kind == "application";
-                const bool temporal = e.kind == "calendar" || e.kind == "clock";
-                bool already = install(e, status, app, temporal, !app && !temporal);
-                status.write("complete", 100, "Serial fallback complete",
-                             already ? "Already installed" : "Component-owned RUN installed");
-                completed.insert(e.slug());
-            } catch (const std::exception &error) {
-                failures[e.slug()] = error.what();
-                status.write("failed", 100, "Serial installation failed", error.what());
             }
         }
         if (!failures.empty()) {

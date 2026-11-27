@@ -1,3 +1,10 @@
+## 1.0.113 — Resource admission hardening
+
+- Measure interval CPU utilisation and allocate spare cores to remaining builds.
+- Separate live available memory from estimated aggregate peak reservations; check temporary storage capacity and I/O pressure.
+- Remove resource-starved and serial prerequisite fallback paths; all selected non-BOOT jobs use the scheduler.
+- Add CPU load, storage exhaustion and strict memory admission tests.
+
 ## 1.0.112 — Resource-determined build concurrency
 
 - Remove the fixed 16-build ceiling; admission is bounded by pending jobs, CPU affinity and quotas, memory reservations and storage I/O pressure.

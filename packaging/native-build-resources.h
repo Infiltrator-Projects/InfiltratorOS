@@ -5,6 +5,10 @@
 #include <algorithm>
 #include <cerrno>
 #include <climits>
+#include <chrono>
+#include <limits>
+#include <map>
+#include <thread>
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
@@ -23,6 +27,10 @@ struct BuildResources {
     std::size_t cpu_budget;
     std::uint64_t memory_mib;
     bool io_congested = false;
+    std::uint64_t capacity_mib = std::numeric_limits<std::uint64_t>::max();
+    std::uint64_t disk_mib = std::numeric_limits<std::uint64_t>::max();
+    std::uint64_t disk_capacity_mib = std::numeric_limits<std::uint64_t>::max();
+    std::optional<std::vector<int>> idle_cpus = std::nullopt;
 };
 
 inline std::vector<int> allowed_build_cpus() {
@@ -65,6 +73,55 @@ inline bool io_pressure_high(const std::filesystem::path &path) {
         return bool(value >> percent) && percent >= 20.0;
     }
     return false;
+}
+// Sample interval CPU activity rather than treating affinity as idleness.
+using CpuTicks = std::map<int, std::pair<std::uint64_t, std::uint64_t>>;
+inline CpuTicks cpu_ticks(const std::filesystem::path &path) {
+    CpuTicks result;
+    std::ifstream input(path);
+    for (std::string line; std::getline(input, line);) {
+        if (line.rfind("cpu", 0) != 0) break;
+        std::istringstream fields(line);
+        std::string name;
+        std::uint64_t user, nice, system, idle, wait, irq, soft, steal;
+        if (!(fields >> name >> user >> nice >> system >> idle >> wait >> irq >> soft >> steal) ||
+            name.size() <= 3 || name.find_first_not_of("0123456789", 3) != std::string::npos) continue;
+        try {
+            result.emplace(std::stoi(name.substr(3)), std::make_pair(
+                user + nice + system + idle + wait + irq + soft + steal, idle));
+        } catch (const std::exception &) { continue; }
+    }
+    return result;
+}
+inline std::optional<std::vector<int>> idle_build_cpus(const std::vector<int> &allowed,
+        const CpuTicks &before, const CpuTicks &after) {
+    std::vector<int> idle;
+    bool measured = false;
+    for (int cpu : allowed) {
+        const auto a = before.find(cpu), b = after.find(cpu);
+        if (a == before.end() || b == after.end() || b->second.first <= a->second.first ||
+            b->second.second < a->second.second) continue;
+        measured = true;
+        const auto total = b->second.first - a->second.first;
+        if (b->second.second - a->second.second >= total / 4 + (total % 4 != 0))
+            idle.push_back(cpu);
+    }
+    if (!measured) return std::nullopt;
+    return idle;
+}
+inline std::uint64_t disk_headroom(const std::filesystem::path &p) {
+    std::error_code ec;
+    const auto space = std::filesystem::space(p, ec);
+    const auto available = ec ? 0 : space.available / (1024 * 1024);
+    return available > 512 ? available - 512 : 0;
+}
+inline void sample_build_activity(BuildResources &resources,
+        const std::filesystem::path &scratch, const std::filesystem::path &stat = "/proc/stat") {
+    auto before = cpu_ticks(stat);
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    resources.idle_cpus = idle_build_cpus(resources.cpus, before, cpu_ticks(stat));
+    // Some released installers use /tmp even when TMPDIR is set.
+    resources.disk_mib = std::min(disk_headroom(scratch), disk_headroom("/tmp"));
 }
 inline BuildResources build_resources(
     std::vector<int> cpus, const std::filesystem::path &meminfo = "/proc/meminfo",
@@ -114,7 +171,7 @@ inline BuildResources build_resources(
     // Leave headroom for the desktop, the installer and transient allocations.
     const auto headroom = std::clamp<std::uint64_t>(capacity / 8, 256, 2048);
     return {std::move(cpus), cpu_budget, available > headroom ? available - headroom : 0,
-            io_pressure_high(io_pressure)};
+            io_pressure_high(io_pressure), capacity > headroom ? capacity - headroom : 0};
 }
 
 enum class BuildKind { module, exfat, files };
@@ -122,44 +179,48 @@ enum class BuildKind { module, exfat, files };
 struct BuildReservation {
     std::vector<int> cpus;
     std::uint64_t memory_mib;
+    std::uint64_t disk_mib = 0;
 };
 
 inline std::optional<BuildReservation> reserve_build(
     const BuildResources &resources, const std::vector<BuildReservation> &active,
     BuildKind kind, std::size_t pending) {
-    if (resources.io_congested && !active.empty()) return std::nullopt;
+    if (!pending || resources.io_congested) return std::nullopt;
     auto free_cpus = resources.cpus;
-    auto free_memory = resources.memory_mib;
+    auto remaining_peak = resources.capacity_mib;
+    auto remaining_disk = resources.disk_capacity_mib;
     std::size_t occupied = 0;
     for (const auto &build : active) {
-        occupied += std::max<std::size_t>(1, build.cpus.size());
+        occupied += build.cpus.size();
         for (int cpu : build.cpus)
             free_cpus.erase(std::remove(free_cpus.begin(), free_cpus.end(), cpu), free_cpus.end());
-        // Live available RAM may already reflect some usage. Keep the full
-        // estimate reserved because a compile can peak later during linking.
-        free_memory -= std::min(free_memory, build.memory_mib);
+        remaining_peak -= std::min(remaining_peak, build.memory_mib);
+        remaining_disk -= std::min(remaining_disk, build.disk_mib);
     }
-    if (occupied >= resources.cpu_budget || (free_cpus.empty() && !active.empty()))
-        return std::nullopt;
-
-    // Modules get a core each. Files can use more, and its Ninja build can
-    // start extra compiler processes even within its assigned CPU affinity.
-    const auto slots = std::min(resources.cpu_budget - occupied,
-                                std::max<std::size_t>(1, free_cpus.size()));
-    const auto spare_slots = slots > pending ? slots - pending + 1 : 1;
-    std::size_t cores = kind == BuildKind::files
-        ? std::min(spare_slots, std::max<std::size_t>(1, resources.cpu_budget / 4)) : 1;
-    auto memory_estimate = [kind](std::size_t slots) -> std::uint64_t {
-        if (kind == BuildKind::files) return 1536 + 512 * slots;
-        return kind == BuildKind::exfat ? 1536 : 768;
+    if (resources.idle_cpus)
+        free_cpus.erase(std::remove_if(free_cpus.begin(), free_cpus.end(), [&](int cpu) {
+            return std::find(resources.idle_cpus->begin(), resources.idle_cpus->end(), cpu) ==
+                resources.idle_cpus->end();
+        }), free_cpus.end());
+    if (occupied >= resources.cpu_budget || free_cpus.empty()) return std::nullopt;
+    // Live availability already accounts for resident memory. Independently
+    // limit aggregate estimated peaks rather than subtracting them twice.
+    const auto free_memory = std::min(resources.memory_mib, remaining_peak);
+    const auto free_disk = std::min(resources.disk_mib, remaining_disk);
+    const auto slots = std::min(resources.cpu_budget - occupied, free_cpus.size());
+    std::size_t cores = slots > pending ? slots - pending + 1 : 1;
+    auto memory_estimate = [kind](std::size_t n) -> std::uint64_t {
+        if (kind == BuildKind::files) return 1536 + 512 * n;
+        if (kind == BuildKind::exfat) return 1024 + 512 * n;
+        return 512 + 256 * n;
     };
+    const std::uint64_t disk_estimate = kind == BuildKind::files ? 2048 :
+                                      kind == BuildKind::exfat ? 1024 : 512;
     while (cores > 1 && memory_estimate(cores) > free_memory) --cores;
     const auto estimate = memory_estimate(cores);
-    if (estimate > free_memory && !active.empty()) return std::nullopt;
-    // If resource data is missing or the machine is tight, still attempt one
-    // build alone. Never start a second until the budget can accommodate it.
-    free_cpus.resize(std::min(cores, free_cpus.size()));
-    return BuildReservation{std::move(free_cpus), estimate};
+    if (estimate > free_memory || disk_estimate > free_disk) return std::nullopt;
+    free_cpus.resize(cores);
+    return BuildReservation{std::move(free_cpus), estimate, disk_estimate};
 }
 
 } // namespace infiltrator_native

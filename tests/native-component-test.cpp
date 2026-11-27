@@ -54,7 +54,7 @@ static void check_build_resources() {
     // Admission is limited by resources and pending work, not by the old
     // 16-job pilot. Include high-capacity machines and sparse CPU masks.
     for (int cpu = 0; cpu < 64; ++cpu) cpus.push_back(cpu * 2);
-    const BuildResources roomy{cpus, cpus.size(), 128 * 1024};
+    const BuildResources roomy{cpus, cpus.size(), 128 * 1024, false, 128 * 1024};
     std::vector<BuildReservation> active;
     std::set<int> assigned;
     for (std::size_t i = 0; i < cpus.size(); ++i) {
@@ -71,7 +71,7 @@ static void check_build_resources() {
     active.pop_back();
     check(reserve_build(roomy, active, BuildKind::module, 1).has_value(),
           "a finished build frees its CPU and memory reservation");
-    const BuildResources ram_limited{cpus, cpus.size(), 24 * 768};
+    const BuildResources ram_limited{cpus, cpus.size(), 24 * 768, false, 24 * 768};
     active.clear();
     for (int i = 0; i < 24; ++i) {
         auto job = reserve_build(ram_limited, active, BuildKind::module, 64 - i);
@@ -96,20 +96,32 @@ static void check_build_resources() {
     save(proc / "io", "some avg10=30.00 avg60=10.00 avg300=5.00 total=1\n");
     check(io_pressure_high(proc / "io"), "I/O pressure threshold is detected");
     auto congested = build_resources(cpus, proc / "meminfo", proc / "membership", groups, proc / "io");
-    auto first = reserve_build(congested, {}, BuildKind::module, 2);
-    check(first.has_value() && !reserve_build(congested, {*first}, BuildKind::module, 1),
-          "I/O pressure serialises admissions while allowing one build to progress");
+    check(!reserve_build(congested, {}, BuildKind::module, 2),
+          "I/O pressure pauses admission even with no active build");
     check(sampled.cpu_budget == 4 && sampled.memory_mib == 2560,
           "parent cgroup quota and memory headroom limit host resources");
     auto files = reserve_build(sampled, {}, BuildKind::files, 1);
-    check(files.has_value() && !reserve_build(sampled, {*files}, BuildKind::module, 1),
+    check(files.has_value() && !reserve_build(BuildResources{cpus, 4, 0}, {*files}, BuildKind::module, 1),
           "the heavier Files build consumes more of the available RAM");
 
     save(groups / "parent" / "memory.current", "3758096384\n");
     sampled = build_resources(cpus, proc / "meminfo", proc / "membership", groups, proc / "absent-io");
-    auto alone = reserve_build(sampled, {}, BuildKind::module, 2);
-    check(alone.has_value() && !reserve_build(sampled, {*alone}, BuildKind::module, 1),
-          "live memory pressure prevents another start but allows serial progress");
+    check(!reserve_build(sampled, {}, BuildKind::module, 2),
+          "live memory starvation cannot be bypassed by a serial start");
+    auto busy = roomy;
+    busy.idle_cpus = std::vector<int>{2, 6};
+    auto job = reserve_build(busy, {}, BuildKind::module, 1);
+    check(job && job->cpus == std::vector<int>({2, 6}), "last build can use spare idle CPUs");
+    busy.disk_mib = 0;
+    check(!reserve_build(busy, {}, BuildKind::module, 1), "disk exhaustion blocks admission");
+    busy.disk_mib = 1024;
+    busy.disk_capacity_mib = 512;
+    busy.idle_cpus.reset();
+    check(job && !reserve_build(busy, {*job}, BuildKind::module, 1), "disk reservations enforced");
+    const CpuTicks before{{0, {100, 10}}, {2, {100, 50}}};
+    const CpuTicks after{{0, {200, 15}}, {2, {200, 100}}};
+    auto idle = idle_build_cpus({0, 2}, before, after);
+    check(idle && *idle == std::vector<int>{2}, "interval CPU load filters busy CPUs");
 }
 int main() {
     try {

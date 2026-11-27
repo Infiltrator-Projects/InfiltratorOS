@@ -336,9 +336,7 @@ static void dispatch(const fs::path &stage) {
     Strings queue;
     for (const auto &slug : selected)
         if (infiltrator_native::queue_candidate(slug)) queue.push_back(slug);
-    const bool smart_enabled = getenv_or("INFILTRATOROS_SMART_BUILD_PILOT",
-                                   getenv_or("INFILTRATOROS_PARALLEL_FAT_PILOT", "1")) != "0";
-    const bool smart = smart_enabled && queue.size() >= 2;
+    const bool smart = !queue.empty();
     auto queued = [smart](const std::string &slug) {
         return smart && infiltrator_native::queue_candidate(slug);
     };
