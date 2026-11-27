@@ -1,3 +1,7 @@
+## 1.0.131 — Reuse unchanged compilation units
+
+- Compile common installer objects once per package instead of once per product. Cache unchanged C/C++ compilation units across GitHub builds with standard ccache; link and assemble the versioned package normally. No installer or runtime changes.
+
 ## 1.0.130 — Direct automatic package publication
 
 - Build the Debian package once and automatically publish it from main. Remove separate regression, GUI, simulated-upgrade and duplicate-build jobs from the release path. Existing test sources remain available for explicit execution.

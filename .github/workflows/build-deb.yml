@@ -23,12 +23,22 @@ jobs:
           test -s /etc/apt/sources.list.d/ubuntu.sources
           printf '%s\n' 'Dir::Etc::sourcelist "/etc/apt/sources.list.d/ubuntu.sources";' 'Dir::Etc::sourceparts "-";' | sudo tee /etc/apt/apt.conf.d/99-infiltrator-ci-sources >/dev/null
           sudo apt-get -o Acquire::Retries=3 update
-          sudo apt-get -o Acquire::Retries=3 install -y dpkg-repack pkg-config libgtk-3-dev libcurl4-openssl-dev libjson-c-dev libssl-dev wget fontconfig zip
+          sudo apt-get -o Acquire::Retries=3 install -y dpkg-repack pkg-config libgtk-3-dev libcurl4-openssl-dev libjson-c-dev libssl-dev wget fontconfig zip ccache
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/ccache
+          key: os-ccache-${{ runner.os }}-${{ runner.arch }}-${{ github.sha }}
+          restore-keys: |
+            os-ccache-${{ runner.os }}-${{ runner.arch }}-
       - name: Build package once
+        env:
+          CCACHE_DIR: /home/runner/.cache/ccache
+          CCACHE_BASEDIR: ${{ github.workspace }}
         shell: bash
         run: |
           set -euo pipefail
           sh scripts/build-deb.sh
+          ccache --show-stats
           version=$(tr -d '\r\n' < VERSION)
           test "$(dpkg-deb -f dist/*.deb Version)" = "$version"
           # Source archive includes the exact pinned Common sources.

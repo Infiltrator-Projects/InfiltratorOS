@@ -16,6 +16,15 @@ SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH:-$(git -C "$ROOT" log -1 --format=%ct 2>/
 case "$SOURCE_DATE_EPOCH" in ""|*[!0-9]*) echo "Invalid SOURCE_DATE_EPOCH" >&2; exit 1 ;; esac
 export SOURCE_DATE_EPOCH
 
+# Cache individual compilation units when ccache is available. Linking and
+# package assembly always use the current source and version.
+compile_c() {
+    if command -v ccache >/dev/null 2>&1; then ccache cc "$@"; else cc "$@"; fi
+}
+compile_cxx() {
+    if command -v ccache >/dev/null 2>&1; then ccache c++ "$@"; else c++ "$@"; fi
+}
+
 DIST="$ROOT/dist"
 WORK="$ROOT/.build/infiltratoros_${VERSION}"
 PKGROOT="$WORK/root"
@@ -138,9 +147,10 @@ test "$(find "$FONT_DIR" -maxdepth 1 -type f -name '*.ttf' | wc -l)" -eq 23
 install -m 0644 "$ROOT/packaging/infiltrator-native-path.sh" \
     "$PKGROOT/etc/profile.d/90-infiltratoros-native-path.sh"
 # Compile the per-user Cinnamon integration with GSettings directly in C.
-cc -std=c11 -O2 -Wall -Wextra -Werror -Wpedantic \
+compile_c -std=c11 -O2 -Wall -Wextra -Werror -Wpedantic \
     $(pkg-config --cflags gio-2.0 json-c) \
-    "$ROOT/packaging/activate-calendar.c" \
+    -c "$ROOT/packaging/activate-calendar.c" -o "$WORK/activate-calendar.o"
+cc "$WORK/activate-calendar.o" \
     -o "$PKGROOT/System/Commands/InfiltratorOS/activate-calendar" \
     $(pkg-config --libs gio-2.0 json-c)
 install -m 0644 "$ROOT/packaging/infiltrator-calendar.desktop" \
@@ -150,31 +160,43 @@ install -m 0755 "$ROOT/packaging/activate-program-icons.sh" \
 install -m 0644 "$ROOT/packaging/infiltrator-program-icons.desktop" \
     "$PKGROOT/etc/xdg/autostart/infiltrator-program-icons.desktop"
 
-cc -std=c11 -O2 -Wall -Wextra -Werror \
-    "$ROOT/packaging/stage-theme.c" -o "$WORK/stage-theme"
+compile_c -std=c11 -O2 -Wall -Wextra -Werror \
+    -c "$ROOT/packaging/stage-theme.c" -o "$WORK/stage-theme.o"
+cc "$WORK/stage-theme.o" -o "$WORK/stage-theme"
 "$WORK/stage-theme" "$ROOT/plymouth/infiltratoros.plymouth" \
     "$ROOT/plymouth/infiltratoros.script" "$ARTWORK" "$THEME_DIR"
-cc -std=c11 -O2 -Wall -Wextra -Werror "$ROOT/packaging/select-theme.c" \
-    -o "$PKGROOT/System/Commands/InfiltratorOS/select-theme"
+compile_c -std=c11 -O2 -Wall -Wextra -Werror -c "$ROOT/packaging/select-theme.c" \
+    -o "$WORK/select-theme.o"
+cc "$WORK/select-theme.o" -o "$PKGROOT/System/Commands/InfiltratorOS/select-theme"
 
 # Keep the udev integration in the conversion package. The executable and
 # the actual versioned module loader live in the native System hierarchy.
-cc -std=c11 -O2 -Wall -Wextra -Werror -Wpedantic \
-    "$ROOT/packaging/load-native-driver.c" \
-    -o "$PKGROOT/System/Commands/InfiltratorOS/load-native-driver"
+compile_c -std=c11 -O2 -Wall -Wextra -Werror -Wpedantic \
+    -c "$ROOT/packaging/load-native-driver.c" -o "$WORK/load-native-driver.o"
+cc "$WORK/load-native-driver.o" -o "$PKGROOT/System/Commands/InfiltratorOS/load-native-driver"
 install -D -m 0644 "$ROOT/packaging/81-infiltratoros-drivers.rules" \
     "$PKGROOT/etc/udev/rules.d/81-infiltratoros-drivers.rules"
 
 # Store the three static signed provider catalogues in the temporary seal,
 # not in the installed OS filesystem. All invocation paths use one C++ worker.
-c++ -std=c++17 -O2 -Wall -Wextra -Werror -Wpedantic -pthread \
+compile_cxx -std=c++17 -O2 -Wall -Wextra -Werror -Wpedantic -pthread \
     $(pkg-config --cflags libcurl json-c openssl) -I"$ROOT/src/infiltratr-common/include" \
-    "$ROOT/packaging/native-component-worker.cpp" \
-    -o "$WORK/native-component-worker" \
+    -c "$ROOT/packaging/native-component-worker.cpp" -o "$WORK/native-component-worker.o"
+c++ -pthread "$WORK/native-component-worker.o" -o "$WORK/native-component-worker" \
     $(pkg-config --libs libcurl json-c openssl) -ldl
 for inventory in temporal-resources.json filesystem-resources.json filesystem-additional.json; do
     install -m 0644 "$ROOT/packaging/$inventory" "$RUNTIME_BUILD/$inventory"
 done
+
+# These shared objects have no product profile or version dependency.
+for unit in installer-process installer-status native-progress-count; do
+    compile_c -std=c11 -O2 -Wall -Wextra -Werror -Wpedantic \
+        -c "$ROOT/packaging/$unit.c" -o "$WORK/$unit.o"
+done
+compile_c -std=c11 -O2 -Wall -Wextra -Werror -Wpedantic \
+    $(pkg-config --cflags gtk+-3.0 pangoft2 fontconfig) \
+    -I"$ROOT/src/infiltratr-common/include" \
+    -c "$ROOT/src/infiltratr-common/src/design.c" -o "$WORK/design.o"
 
 for product in system-monitor calculator calendar files defragmenter boot temporal-resources filesystem-resources; do
     case "$product" in
@@ -189,30 +211,30 @@ for product in system-monitor calculator calendar files defragmenter boot tempor
     esac
     # The one compiled native worker handles each signed catalogue identity.
     install -m 0755 "$WORK/native-component-worker" "$RUNTIME_BUILD/install-$product"
-    cc -std=c11 -O2 -Wall -Wextra -Werror -Wpedantic "-D$profile" \
-        "$ROOT/packaging/start-native-install.c" "$ROOT/packaging/installer-process.c" \
+    compile_c -std=c11 -O2 -Wall -Wextra -Werror -Wpedantic "-D$profile" \
+        -c "$ROOT/packaging/start-native-install.c" -o "$WORK/start-$product.o"
+    cc "$WORK/start-$product.o" "$WORK/installer-process.o" \
         -o "$RUNTIME_BUILD/start-$product-install"
-    # pkg-config emits compiler arguments, intentionally split by the shell.
-    # shellcheck disable=SC2086
-    cc -std=c11 -O2 -Wall -Wextra -Werror -Wpedantic "-D$profile" \
+    compile_c -std=c11 -O2 -Wall -Wextra -Werror -Wpedantic "-D$profile" \
         "-DINFILTRATOROS_VERSION=\"$VERSION\"" \
         $(pkg-config --cflags gtk+-3.0 pangoft2 fontconfig) \
         -I"$ROOT/src/infiltratr-common/include" \
-        "$ROOT/packaging/native-install-progress.c" "$ROOT/packaging/native-progress-count.c" \
-        "$ROOT/packaging/installer-status.c" "$ROOT/src/infiltratr-common/src/design.c" \
+        -c "$ROOT/packaging/native-install-progress.c" -o "$WORK/progress-$product.o"
+    cc "$WORK/progress-$product.o" "$WORK/native-progress-count.o" \
+        "$WORK/installer-status.o" "$WORK/design.o" \
         -o "$RUNTIME_BUILD/$product-progress" $(pkg-config --libs gtk+-3.0 pangoft2 fontconfig)
 done
 
 # The controlling dispatcher and release verification are native C++.
 # The embedded OS dispatcher and worker implementations are native C/C++.
-c++ -std=c++17 -O2 -Wall -Wextra -Werror -Wpedantic \
+compile_cxx -std=c++17 -O2 -Wall -Wextra -Werror -Wpedantic \
     $(pkg-config --cflags libcurl json-c) \
-    "$ROOT/packaging/native-release-snapshot.cpp" \
-    -o "$RUNTIME_BUILD/prepare-native-releases" \
+    -c "$ROOT/packaging/native-release-snapshot.cpp" -o "$WORK/native-release-snapshot.o"
+c++ "$WORK/native-release-snapshot.o" -o "$RUNTIME_BUILD/prepare-native-releases" \
     $(pkg-config --libs libcurl json-c)
-cc -std=c11 -O2 -Wall -Wextra -Werror -Wpedantic -c "$ROOT/packaging/installer-status.c" -o "$WORK/orchestrator-status.o"
-c++ -std=c++17 -O2 -Wall -Wextra -Werror -Wpedantic \
-    "$ROOT/packaging/native-orchestrator.cpp" "$WORK/orchestrator-status.o" \
+compile_cxx -std=c++17 -O2 -Wall -Wextra -Werror -Wpedantic \
+    -c "$ROOT/packaging/native-orchestrator.cpp" -o "$WORK/native-orchestrator.o"
+c++ "$WORK/native-orchestrator.o" "$WORK/installer-status.o" \
     -o "$RUNTIME_BUILD/orchestrate-native-install"
 test "$(file -b --mime-type "$THEME_DIR/infiltratoros.png")" = image/png
 test ! -e "$PKGROOT/usr/lib/infiltratoros"
