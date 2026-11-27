@@ -24,6 +24,7 @@
 #include <filesystem>
 #include <fstream>
 #include <future>
+#include <functional>
 #include <iomanip>
 #include <iostream>
 #include <iterator>
@@ -1116,6 +1117,80 @@ static void verify_native_payload(const fs::path &package, const Entry &entry, c
     if (entry.slug().rfind("filesystem-", 0) == 0 && !validate_common_descriptor(resource, entry.id))
         throw std::runtime_error("Staged provider failed the canonical Common V2 descriptor contract");
 }
+// Debian package replacement recovery. Repack the currently installed
+// package before touching it, so existing locally compiled versions do not
+// depend on generic downloads. This is package-file recovery, not a rollback
+// of arbitrary maintainer-script effects or the whole operating system.
+struct PreviousPackage {
+    fs::path folder, package;
+    std::string version, architecture, sha;
+};
+static std::optional<PreviousPackage> capture_previous_package(const Entry &entry,
+                                                               const fs::path &recovery) {
+    const std::string format = std::string("$") + "{Status}\t$" + "{Version}\t$" + "{Architecture}";
+    const auto identity = tabs(pkg_query(entry.package, format));
+    if (identity.empty() || identity[0].rfind("deinstall ", 0) == 0 ||
+        identity[0].rfind("purge ", 0) == 0) return std::nullopt;
+    if (identity.size() != 3 || identity[0] != "install ok installed")
+        throw std::runtime_error("Existing package is not in a recoverable installed state: " + entry.package);
+    TempDir snapshot(recovery, "rollback-" + entry.slug() + "-");
+    required({"/bin/sh", "-c", "cd -- \"$1\" && exec /usr/bin/dpkg-repack \"$2\"",
+              "native-rollback", snapshot.path.string(), entry.package},
+             recovery / (entry.slug() + "-rollback-capture.log"));
+    std::vector<fs::path> packages;
+    for (const auto &item : fs::directory_iterator(snapshot.path))
+        if (item.path().extension() == ".deb" && regular(item.path())) packages.push_back(item.path());
+    if (packages.size() != 1 ||
+        output({"/usr/bin/dpkg-deb", "-f", packages.front().string(), "Package"}) != entry.package ||
+        output({"/usr/bin/dpkg-deb", "-f", packages.front().string(), "Version"}) != identity[1] ||
+        output({"/usr/bin/dpkg-deb", "-f", packages.front().string(), "Architecture"}) != identity[2] ||
+        tabs(pkg_query(entry.package, format)) != identity)
+        throw std::runtime_error("Cannot verify previous package recovery archive");
+    PreviousPackage previous{snapshot.path, packages.front(), identity[1], identity[2], digest(packages.front())};
+    save(snapshot.path / "SHA256", previous.sha + "  " + previous.package.filename().string() + "\n");
+    snapshot.path.clear(); // Keep the archive until install or recovery is verified.
+    return previous;
+}
+static void replace_deb_with_recovery(const Entry &entry, const fs::path &package,
+                                      const fs::path &recovery,
+                                      const std::function<void()> &verify) {
+    auto previous = capture_previous_package(entry, recovery);
+    auto discard = [&] {
+        if (previous) {
+            std::error_code ec;
+            fs::remove_all(previous->folder, ec);
+        }
+    };
+    try {
+        required(package_install_command(package, entry.id == "calendar"),
+                 recovery / (entry.slug() + "-package.log"));
+        verify();
+    } catch (const std::exception &error) {
+        const std::string cause = error.what();
+        if (!previous)
+            throw std::runtime_error(cause + "; no previous installed package to restore");
+        try {
+            if (digest(previous->package) != previous->sha)
+                throw std::runtime_error("Previous package archive digest changed");
+            required(package_install_command(previous->package, true),
+                     recovery / (entry.slug() + "-rollback-restore.log"));
+            const auto installed = tabs(pkg_query(entry.package, std::string("$") +
+                "{Status}\t$" + "{Version}\t$" + "{Architecture}"));
+            if (installed != Strings{"install ok installed", previous->version, previous->architecture})
+                throw std::runtime_error("Restored package identity/version differs");
+            std::string verification;
+            if (execute({"/usr/bin/dpkg", "--verify", entry.package}, &verification) != 0 ||
+                !trim(verification).empty())
+                throw std::runtime_error("Restored package failed dpkg file verification");
+        } catch (const std::exception &restore_error) {
+            throw std::runtime_error(cause + "; previous package recovery FAILED: " + restore_error.what() +
+                                     "; recovery DEB retained at " + previous->package.string());
+        }
+        discard();
+        throw std::runtime_error(cause + "; previous package restored and verified");
+    }
+    discard();
+}
 static bool install(const Entry &entry, Status &status, bool application_mode,
                     bool temporal, bool filesystem) {
     Document meta = release(entry);
@@ -1156,11 +1231,12 @@ static bool install(const Entry &entry, Status &status, bool application_mode,
         const auto package = native_package_from(folder, entry, asset);
         verify_native_payload(package, entry, asset, folder);
         status.write("running", 85, "Installing native package", "Waiting for Debian package manager");
-        required(package_install_command(package), status.root / (entry.slug() + "-package.log"));
+        replace_deb_with_recovery(entry, package, status.root,
+                                  [&] { verify_install(entry, asset, application_mode); });
     } else {
         required(native_installer_command(entry, temporal, filesystem, run));
+        verify_install(entry, asset, application_mode);
     }
-    verify_install(entry, asset, application_mode);
     return false;
 }
 static int individual(const Entry &entry, bool app, bool temporal, bool filesystem) {
@@ -1291,12 +1367,18 @@ static void build(Job &job, const fs::path &logs, const std::vector<int> &cpus) 
     }
     const auto private_home = job.folder / "home";
     const auto private_tmp = job.folder / "tmp";
+    const auto private_runtime = job.folder / "runtime";
     fs::create_directory(private_home);
     fs::create_directory(private_tmp);
-    arguments.insert(arguments.end(), {"/usr/bin/env", "MAKEFLAGS=-j" + slots,
+    fs::create_directory(private_runtime);
+    if (chmod(private_runtime.c_str(), 0700) != 0)
+        throw std::runtime_error("Cannot protect private XDG runtime");
+    arguments.insert(arguments.end(), {"/usr/bin/env", "-u", "DISPLAY", "-u", "WAYLAND_DISPLAY",
+                      "-u", "DBUS_SESSION_BUS_ADDRESS", "-u", "XAUTHORITY", "MAKEFLAGS=-j" + slots,
                       "CMAKE_BUILD_PARALLEL_LEVEL=" + slots,
                       "DEB_BUILD_OPTIONS=parallel=" + slots,
                       "HOME=" + private_home.string(), "TMPDIR=" + private_tmp.string(),
+                      "XDG_RUNTIME_DIR=" + private_runtime.string(),
                       "XDG_CACHE_HOME=" + (private_home / ".cache").string(),
                       "XDG_CONFIG_HOME=" + (private_home / ".config").string(),
                       "XDG_DATA_HOME=" + (private_home / ".local/share").string()});
@@ -1592,9 +1674,8 @@ static int smart_queue(const std::vector<Entry> &entries) {
                 status.write("running", 85, "Installing native package", "Serial package transaction");
                 const bool app = job.entry.kind == "application";
                 // Use the same lock-aware transaction for every queued DEB.
-                required(package_install_command(job.package, app && job.entry.id == "calendar"),
-                         statuses / (job.entry.slug() + "-package.log"));
-                verify_install(job.entry, job.asset, app);
+                replace_deb_with_recovery(job.entry, job.package, statuses,
+                    [&] { verify_install(job.entry, job.asset, app); });
                 status.write("complete", 100, "Native installation complete", "Verified installed package");
                 completed.insert(job.entry.slug());
             } catch (const std::exception &error) {

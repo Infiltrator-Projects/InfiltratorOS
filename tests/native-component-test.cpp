@@ -123,7 +123,54 @@ static void check_build_resources() {
     auto idle = idle_build_cpus({0, 2}, before, after);
     check(idle && *idle == std::vector<int>{2}, "interval CPU load filters busy CPUs");
 }
+static int rollback_fixture(const fs::path &base) {
+    // Only run against an intentionally disposable CI host, with a unique
+    // synthetic package that cannot conflict with an Infiltrator application.
+    const std::string name = "infiltratoros-ci-rollback-fixture";
+    const std::string path = "/usr/share/" + name + "/value";
+    if (geteuid() != 0 || !pkg_query(name, "${Status}").empty()) return 1;
+    TempDir fixture(base, "native-rollback-test-");
+    auto package = [&](const std::string &version, const std::string &content) {
+        const auto root = fixture.path / ("tree-" + version);
+        fs::create_directories(root / "DEBIAN");
+        const auto file = root / fs::path(path).relative_path();
+        fs::create_directories(file.parent_path());
+        save(file, content);
+        save(root / "DEBIAN/control", "Package: " + name + "\nVersion: " + version +
+            "\nArchitecture: amd64\nMaintainer: Test <test@example.invalid>\nDescription: rollback fixture\n");
+        const auto deb = fixture.path / (name + "_" + version + "_amd64.deb");
+        required({"/usr/bin/dpkg-deb", "--build", "--root-owner-group", root.string(), deb.string()});
+        return deb;
+    };
+    int result = 1;
+    try {
+        const auto old = package("1.0.1", "previous\n");
+        const auto next = package("1.0.2", "replacement\n");
+        required({"/usr/bin/dpkg", "-i", old.string()});
+        Entry entry{"fixture", "fixture", "InfiltratorOS-CI-Rollback-Fixture", name, path, "application"};
+        bool restored = false;
+        try {
+            replace_deb_with_recovery(entry, next, fixture.path, [&] {
+                check(read_file(path) == "replacement\n", "replacement installed before injected verification failure");
+                throw std::runtime_error("injected post-install verification failure");
+            });
+        } catch (const std::exception &error) {
+            restored = std::string(error.what()).find("previous package restored and verified") != std::string::npos;
+            if (!restored) std::cerr << error.what() << '\n';
+        }
+        check(restored && pkg_query(name, "${Version}") == "1.0.1" &&
+              read_file(path) == "previous\n", "failed replacement restores actual previous Debian package");
+        std::cout << "Native Debian package rollback fixture passed\n";
+        result = 0;
+    } catch (const std::exception &error) {
+        std::cerr << error.what() << '\n';
+    }
+    if (execute({"/usr/bin/dpkg", "--purge", name}) != 0) result = 1;
+    return result;
+}
 int main(int argc, char **argv) {
+    if (argc == 3 && std::string_view(argv[1]) == "--rollback-fixture")
+        return rollback_fixture(argv[2]);
     if (argc == 4 && std::string_view(argv[1]) == "--validate-common-v2")
         return native_component_worker_entrypoint(argc, argv);
     try {

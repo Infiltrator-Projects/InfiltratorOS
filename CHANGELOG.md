@@ -1,3 +1,9 @@
+## 1.0.119 — Recover failed Debian package replacements
+
+- Repack and verify the existing installed package before replacement; restore it on failed APT or installed-state verification, retaining recovery bytes on failed restoration.
+- Test real Debian installation, injected verification failure and restoration on a disposable CI host. No whole-system or BOOT rollback claim.
+- Keep XDG runtime and GUI-session environment private during builds.
+
 ## 1.0.118 — Protect host mounts during native builds
 
 - Execute actual build-only RUNs inside a private mount namespace with read-only host mounts and writable private scratch/temp paths. Drop mount capability before starting the RUN and refuse an unrestricted fallback.
