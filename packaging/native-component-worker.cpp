@@ -318,6 +318,7 @@ struct Entry {
 struct Asset {
     std::string version, url, sha;
     size_t size = 0;
+    bool current = false;
 };
 
 Document parse(const std::string &data) {
@@ -505,7 +506,7 @@ static std::string live_latest_tag(const std::string &repository) {
 
 // The repository's latest stable release is the only authority. Read the
 // digest published by GitHub for its exact native installer. No shared
-// release metadata, version thresholds, or installed-version lookup.
+// release metadata or central version catalogue.
 static Asset native_asset(const Entry &entry, const std::string &tag,
                           const std::string &page) {
     if (!std::regex_match(tag, std::regex("v[0-9]+\\.[0-9]+\\.[0-9]+(?:-[A-Za-z0-9.-]+)?")))
@@ -534,8 +535,59 @@ static Asset native_asset(const Entry &entry, const std::string &tag,
     if (sha.empty()) throw std::runtime_error("GitHub has not published the native installer digest");
     return {version,"https://github.com"+path,sha,0};
 }
+// Compare the release's own version with the actual installed package.
+// Native compilation suffixes identify build variants of that same release,
+// not separate upstream versions. Do not depend on a cached attestation.
+static bool installed_package_matches(const std::string &record, const std::string &version) {
+    const auto fields = tabs(record);
+    if (version.empty() || fields.size() != 2 || fields[0] != "install ok installed")
+        return false;
+    const auto &installed = fields[1];
+    if (installed == version || installed == version + "+native1") return true;
+    const auto prefix = version + "+nativepgo";
+    if (installed.rfind(prefix, 0) != 0) return false;
+    const auto revision = installed.substr(prefix.size());
+    return !revision.empty() && revision[0] != '0' &&
+           revision.find_first_not_of("0123456789") == std::string::npos;
+}
+
+// BOOT is not a Debian package. Its own native installer embeds the release
+// version in the signed EFI image's SBAT record. Read it without changing
+// firmware, mounting anything, or relying on an InfiltratorOS receipt.
+static bool boot_release_matches(const std::string &image, const std::string &version) {
+    if (version.empty()) return false;
+    const auto record = "boot,1,Infiltrator-Projects,boot," + version +
+        ",https://github.com/Infiltrator-Projects/Boot";
+    auto pos = image.find(record);
+    while (pos != std::string::npos) {
+        const auto end = pos + record.size();
+        if (pos > 0 && image[pos - 1] == '\n' &&
+            end < image.size() && (image[end] == '\n' || image[end] == '\r'))
+            return true;
+        pos = image.find(record, pos + 1);
+    }
+    return false;
+}
+static bool installed_boot_matches(const std::string &version) {
+    for (const char *mount : {"/boot/efi", "/efi", "/boot"}) {
+        if (output({"/usr/bin/findmnt", "-rnM", mount, "-t", "vfat", "-o", "FSTYPE"}) != "vfat")
+            continue;
+        const auto image = fs::path(mount) / "EFI/InfiltratorOS/BOOT/BOOTX64.EFI";
+        try {
+            if (boot_release_matches(read_file(image, MAX_ASSET), version)) return true;
+        } catch (const std::exception &) {
+            // An absent/unreadable image is not proof of a current installation.
+        }
+    }
+    return false;
+}
 static Asset release(const Entry &entry) {
     const auto tag=live_latest_tag(entry.repo);
+    const auto version=tag.substr(1);
+    const bool current = entry.kind == "application" && entry.id == "boot"
+        ? installed_boot_matches(version)
+        : installed_package_matches(pkg_query(entry.package, "${Status}\t${Version}"), version);
+    if (current) return {version, "", "", 0, true};
     const std::string base="https://github.com/Infiltrator-Projects/"+entry.repo;
     return native_asset(entry,tag,fetch(base+"/releases/expanded_assets/"+tag));
 }
@@ -965,6 +1017,7 @@ static void admitted_build(Job &job, const fs::path &statuses,
         status.write("running", 2, "Resolving independent installer", job.entry.repo);
         job.asset = resolve(job.entry);
     }
+    if (job.asset.current) return;
     if (!job.asset.url.empty()) {
         Status(statuses, job.entry.slug()).write("running", 20, "Downloading native RUN", "SHA-256 release verification");
         download(job.asset, job.run);
@@ -1039,12 +1092,17 @@ void build_packages(std::vector<Job> &jobs, const fs::path &statuses,
             const auto slug = jobs[it->job].entry.slug();
             try {
                 it->result.get();
-                // A compiled package is queued for the serial installation
-                // stage, not an active build or a finished installation.
-                Status(statuses, slug).write("queued", 80, "Awaiting package installation",
-                    "Native compilation completed");
-                timings << elapsed() << "ms finished " << slug << std::endl;
-                if (install) ready.push_back(it->job);
+                if (jobs[it->job].asset.current) {
+                    Status(statuses, slug).write("complete", 100, "Already current",
+                        "Installed release " + jobs[it->job].asset.version + "; no action required");
+                    timings << elapsed() << "ms skipped " << slug << std::endl;
+                } else {
+                    // A compiled package is queued for serial installation.
+                    Status(statuses, slug).write("queued", 80, "Awaiting package installation",
+                        "Native compilation completed");
+                    timings << elapsed() << "ms finished " << slug << std::endl;
+                    if (install) ready.push_back(it->job);
+                }
             } catch (const std::exception &error) {
                 failures[slug] = error.what();
                 Status(statuses, slug).write("failed", 100, "Native build failed", error.what());
@@ -1282,6 +1340,8 @@ static int run_selected_builds(const std::vector<Entry> &chosen, const fs::path 
             status.write("complete", 100, "Native installation complete", "Verified installed package");
             completed.insert(job.entry.slug());
         });
+        for (const auto &job : jobs)
+            if (job.asset.current) completed.insert(job.entry.slug());
         if (!failures.empty()) {
             std::ostringstream summary;
             summary << failures.size() << " independent native job(s) failed";
@@ -1328,6 +1388,11 @@ static int install_boot(const Entry &entry, const fs::path &statuses) {
     try {
         status.write("running", 5, "Checking native BOOT release", entry.repo);
         const auto asset = release(entry);
+        if (asset.current) {
+            status.write("complete", 100, "Already current",
+                "Installed BOOT release " + asset.version + "; no action required");
+            return 0;
+        }
         required({"/usr/bin/apt-get", "-o", "DPkg::Lock::Timeout=-1", "check"});
         TempDir directory(statuses, "native-boot-");
         const auto run = directory.path / "native-installer.run";

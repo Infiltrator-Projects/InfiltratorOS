@@ -1,3 +1,7 @@
+## 1.0.142 — Skip already-current components before download and compilation
+
+- Compare each repository's live release with its installed Debian version, including native and PGO build suffixes, or BOOT's own embedded SBAT release. A match completes the job immediately without fetching installer assets, downloading, compiling or installing. No central version catalogue, cached proof or additional qualification is required. Preserve the serial installation lane for changed components.
+
 ## 1.0.141 — Install completed components without a global build barrier
 
 - Feed completed builds directly into a single serial Debian installation lane. Release CPU reservations as builds finish, keep discovery and downloads concurrent, and mark components complete after installation. Coordinate host package transactions with active compilation using the existing shared host lock; prevent new builds from starving a waiting transaction. Remove the separate all-builds-first installation loop.

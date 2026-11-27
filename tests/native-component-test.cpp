@@ -196,6 +196,22 @@ int main(int argc, char **argv) {
             check(waitpid(-1, &status, WNOHANG) == -1 && errno == ECHILD,
                   "Oversized capture left an unreaped child");
         }
+        check(installed_package_matches("install ok installed\t1.2.3", "1.2.3"),
+              "Current generic release is skipped");
+        check(installed_package_matches("install ok installed\t1.2.3+native1", "1.2.3"),
+              "Current native release is skipped");
+        check(installed_package_matches("install ok installed\t1.2.3+nativepgo12", "1.2.3"),
+              "Current PGO release is skipped");
+        check(!installed_package_matches("install ok installed\t1.2.30+native1", "1.2.3") &&
+              !installed_package_matches("install ok installed\t1.2.2+native1", "1.2.3") &&
+              !installed_package_matches("install ok unpacked\t1.2.3", "1.2.3") &&
+              !installed_package_matches("", "1.2.3"),
+              "Different, incomplete and absent versions are not skipped");
+        const std::string sbat = "sbat,1,SBAT Version,sbat,1,https://github.com/rhboot/shim/blob/main/SBAT.md\n"
+            "boot,1,Infiltrator-Projects,boot,0.1.697,https://github.com/Infiltrator-Projects/Boot\n";
+        check(boot_release_matches(sbat, "0.1.697") &&
+              !boot_release_matches(sbat, "0.1.69") &&
+              !boot_release_matches(sbat, "0.1.698"), "BOOT's own SBAT release identity");
         auto temporal = catalogue("packaging/temporal-resources.json", 54);
         auto established = catalogue("packaging/filesystem-resources.json", 5);
         auto additional = catalogue("packaging/filesystem-additional.json", 18);
@@ -316,6 +332,18 @@ int main(int argc, char **argv) {
                 return asset;
             });
             check(failures.empty(), "all five application native build paths execute successfully");
+            // A current result must bypass both RUN execution and installation.
+            const auto skipdir = fixture.path / "already-current";
+            fs::create_directory(skipdir);
+            std::vector<Job> current_jobs{{application("calculator"), {}, skipdir / "missing.run", skipdir, {}, true}};
+            bool installation_called = false;
+            build_packages(current_jobs, logs, failures, [](const Entry &) {
+                return Asset{"1.2.3", "", "", 0, true};
+            }, [&](Job &) { installation_called = true; });
+            check(failures.empty() && !installation_called &&
+                  read_file(logs / "calculator-install.status").find("state=complete\n") != std::string::npos &&
+                  read_file(logs / "smart-build-timings.log").find("skipped calculator") != std::string::npos,
+                  "Current component completes without running a missing installer");
             for (const auto &job : jobs) {
                 check(regular(job.package), "scheduler returns verified real Debian package");
                 auto wrong = job.entry;
