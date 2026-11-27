@@ -1,3 +1,7 @@
+## 1.0.138 — Correct child diagnostic writes
+
+- Handle interrupted, partial and failed diagnostic writes in the fork child while preserving strict fortified compiler checks.
+
 ## 1.0.137 — Correct concurrent native installer execution
 
 - Prevent writable installer descriptors leaking into concurrent subprocesses, including atomic close-on-exec downloads and explicit child descriptor cleanup.

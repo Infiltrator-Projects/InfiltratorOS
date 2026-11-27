@@ -112,6 +112,17 @@ Strings tabs(const std::string &text) {
     while (std::getline(in, part, '\t')) values.push_back(part);
     return values;
 }
+// The fork child may only use async-signal-safe operations before exec.
+// Report failures without allocation, including interrupted or short writes.
+static void child_diagnostic(const char *message, size_t length) noexcept {
+    while (length != 0) {
+        const ssize_t count = write(STDERR_FILENO, message, length);
+        if (count < 0 && errno == EINTR) continue;
+        if (count <= 0) return;
+        message += count;
+        length -= static_cast<size_t>(count);
+    }
+}
 int execute(const Strings &args, std::string *capture = nullptr, const fs::path &log = {}) {
     if (args.empty()) throw std::runtime_error("Empty native command");
     // Prepare argv before forking. Build workers call this concurrently.
@@ -140,13 +151,13 @@ int execute(const Strings &args, std::string *capture = nullptr, const fs::path 
         // concurrent installer inherit another job's writable RUN.
         if (syscall(SYS_close_range, 3U, UINT_MAX, 0U) != 0) {
             constexpr char message[] = "Cannot close inherited native build descriptors\n";
-            (void)write(STDERR_FILENO, message, sizeof(message) - 1);
+            child_diagnostic(message, sizeof(message) - 1);
             _exit(126);
         }
         if (argv.front()[0] == '/') execv(argv.front(), argv.data());
         else execvp(argv.front(), argv.data());
         constexpr char message[] = "Cannot execute native command\n";
-        (void)write(STDERR_FILENO, message, sizeof(message) - 1);
+        child_diagnostic(message, sizeof(message) - 1);
         _exit(127);
     }
     const char *capture_error = nullptr;
