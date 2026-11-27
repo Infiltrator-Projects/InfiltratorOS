@@ -297,14 +297,15 @@ struct Entry {
     std::string id, name, repo, package, resource, kind;
     std::string slug() const { return lowercase(repo); }
 };
-static std::vector<Entry> catalogue(const fs::path &path, size_t expected) {
+static std::vector<Entry> catalogue(const fs::path &path, size_t expected = 0) {
     Document root = parse(read_file(path));
     if (json_object_get_type(root.ptr) != json_type_array ||
-        json_object_array_length(root.ptr) != expected)
+        json_object_array_length(root.ptr) == 0 ||
+        (expected && json_object_array_length(root.ptr) != expected))
         throw std::runtime_error("Native component catalogue has unexpected size");
     std::set<std::string> ids;
     std::vector<Entry> result;
-    for (size_t i = 0; i < expected; ++i) {
+    for (size_t i = 0; i < json_object_array_length(root.ptr); ++i) {
         auto *item = json_object_array_get_idx(root.ptr, i);
         Entry e{str(item, "id"), str(item, "name"), str(item, "repository"),
                 str(item, "package"), str(item, "resource"), ""};
@@ -1054,6 +1055,11 @@ static Strings build_only_arguments(const Entry &entry, const fs::path &folder,
     return args;
 }
 static void build(Job &job, const fs::path &logs, const std::vector<int> &cpus) {
+    // Fetch only admitted jobs, rather than retaining all RUNs before builds.
+    if (!job.asset.url.empty()) {
+        Status(logs, job.entry.slug()).write("running", 20, "Downloading native RUN", "SHA-256 release verification");
+        download(job.asset, job.run);
+    }
     const auto slots = std::to_string(std::max<std::size_t>(1, cpus.size()));
     Strings arguments;
     if (!cpus.empty()) {
@@ -1106,7 +1112,7 @@ static void build_packages(std::vector<Job> &jobs, const fs::path &statuses,
     std::vector<Active> active;
     std::size_t next = 0;
     std::optional<std::chrono::steady_clock::time_point> blocked;
-    std::uint64_t disk_budget = 0;
+    std::uint64_t disk_budget = 0, memory_budget = 0;
     bool have_disk_budget = false;
     while (next < jobs.size() || !active.empty()) {
         for (auto it = active.begin(); it != active.end();) {
@@ -1130,9 +1136,11 @@ static void build_packages(std::vector<Job> &jobs, const fs::path &statuses,
             sample_build_activity(resources, statuses);
             if (!have_disk_budget || active.empty()) {
                 disk_budget = resources.disk_mib;
+                memory_budget = resources.memory_mib;
                 have_disk_budget = true;
             }
             resources.disk_capacity_mib = disk_budget;
+            resources.capacity_mib = std::min(resources.capacity_mib, memory_budget);
             std::vector<BuildReservation> reservations;
             for (const auto &job : active) reservations.push_back(job.resources);
             const auto &entry = jobs[next].entry;
@@ -1302,15 +1310,13 @@ static int smart_queue(const std::vector<Entry> &entries) {
                         Strings command{"/usr/bin/apt-get", "-o", "DPkg::Lock::Timeout=-1",
                             "install", "-y", "--no-remove", "--no-install-recommends"};
                         command.insert(command.end(), missing.begin(), missing.end());
-                        // Preserve the independent serial recovery path if preflight fails.
                         required(command, statuses / (e.slug() + "-dependencies.log"));
                     }
                 }
                 if (!can_build(e))
                     throw std::runtime_error("Native prerequisites unavailable; refusing unscheduled build");
                 Job job{e, asset, scratch.path / (e.slug() + ".run"), scratch.path / e.slug(), {}};
-                status.write("running", 15, "Downloading native RUN", "SHA-256 release verification");
-                download(asset, job.run);
+                status.write("queued", 15, "Native build prepared", "Awaiting resource admission");
                 fs::create_directory(job.folder);
                 jobs.push_back(job);
             } catch (const std::exception &error) {
@@ -1359,7 +1365,12 @@ static void discover(const std::vector<Entry> &extra, const fs::path &snapshot) 
         throw std::runtime_error("Invalid additional filesystem snapshot directory");
     Document pending=parse(read_file(directory/"optional-pending.json"));
     Strings available,missing;
+    std::set<std::string> requested;
+    const auto manifest = directory.parent_path() / "selected.list";
+    if (fs::is_regular_file(manifest))
+        for (const auto &slug : lines(read_file(manifest))) requested.insert(slug);
     for(const auto &e:extra) {
+        if (!requested.empty() && !requested.count(e.slug())) continue;
         try {
             auto file=directory/(e.repo+".json");
             if(!fs::is_regular_file(file)) {
@@ -1391,9 +1402,9 @@ int main(int argc, char **argv) {
                     argc == 2 ? argv[1] : "";
             if (!infiltrator_native::queue_candidate(leader))
                 throw std::runtime_error("Invalid smart build launcher");
-            auto entries = catalogue(directory / "filesystem-resources.json", 5);
-            auto additional = catalogue(directory / "filesystem-additional.json", 18);
-            auto temporal = catalogue(directory / "temporal-resources.json", 54);
+            auto entries = catalogue(directory / "filesystem-resources.json");
+            auto additional = catalogue(directory / "filesystem-additional.json");
+            auto temporal = catalogue(directory / "temporal-resources.json");
             entries.insert(entries.end(), additional.begin(), additional.end());
             entries.insert(entries.end(), temporal.begin(), temporal.end());
             for (const auto app : infiltrator_native::queued_applications)
@@ -1401,9 +1412,9 @@ int main(int argc, char **argv) {
             return smart_queue(entries);
         }
         if (name == "install-temporal-resources") {
-            auto entries = catalogue(directory / "temporal-resources.json", 54);
+            auto entries = catalogue(directory / "temporal-resources.json");
             if (argc == 2 && std::string(argv[1]) == "--list") {
-                list(entries, 54, "INFILTRATOROS_SELECTED_TEMPORAL", false);
+                list(entries, entries.size(), "INFILTRATOROS_SELECTED_TEMPORAL", false);
                 return 0;
             }
             if (argc != 2) throw std::runtime_error("Usage: install-temporal-resources SLUG");
@@ -1413,12 +1424,12 @@ int main(int argc, char **argv) {
             return individual(*found, false, true, false);
         }
         if (name == "install-filesystem-resources") {
-            auto established = catalogue(directory / "filesystem-resources.json", 5);
-            auto extra = catalogue(directory / "filesystem-additional.json", 18);
+            auto established = catalogue(directory / "filesystem-resources.json");
+            auto extra = catalogue(directory / "filesystem-additional.json");
             auto all = established;
             all.insert(all.end(), extra.begin(), extra.end());
             if (argc == 2 && std::string(argv[1]) == "--list") {
-                list(all, 5, "INFILTRATOROS_SELECTED_FILESYSTEMS", true);
+                list(all, established.size(), "INFILTRATOROS_SELECTED_FILESYSTEMS", true);
                 return 0;
             }
             if (argc == 2 && std::string(argv[1]) == "--list-all") {

@@ -189,7 +189,7 @@ static std::set<std::string> expected_repos(const fs::path &providers,
                                             const fs::path &filesystems) {
     auto temporal = lines(read_text(providers));
     auto fsentries = lines(read_text(filesystems));
-    if (temporal.size() != 54 || fsentries.size() != 5)
+    if (temporal.empty() || fsentries.empty())
         throw std::runtime_error("Incomplete provider lists");
     std::set<std::string> items;
     for (const auto &slug : temporal) {
@@ -208,7 +208,8 @@ static std::set<std::string> expected_repos(const fs::path &providers,
     items.insert("defragmenter");
     items.insert("boot");
     items.insert("calendar");
-    if (items.size() != 65) throw std::runtime_error("Unexpected catalogue cardinality");
+    if (items.size() != temporal.size() + fsentries.size() + 6)
+        throw std::runtime_error("Unexpected catalogue cardinality");
     return items;
 }
 static void verify_release(const std::string &repo, json_object *release) {
@@ -264,7 +265,8 @@ static void verify_release(const std::string &repo, json_object *release) {
 // filesystem. Reject duplicate/unsafe identities even outside that subset.
 static std::unique_ptr<Json> selected_snapshot(json_object *source,
         const std::set<std::string> &required,
-        const std::set<std::string> &optional) {
+        const std::set<std::string> &optional,
+        const std::set<std::string> &ignored = {}) {
     auto *schema = field(source, "schema");
     if (json_object_get_type(schema) != json_type_int || json_object_get_int(schema) != 1)
         throw std::runtime_error("Unsupported release snapshot schema");
@@ -289,7 +291,7 @@ static std::unique_ptr<Json> selected_snapshot(json_object *source,
             selected_seen.insert(key);
             return true;
         }
-        if (!std::regex_match(key, std::regex("filesystem-[a-z0-9-]+")))
+        if (!ignored.count(key) && !std::regex_match(key, std::regex("filesystem-[a-z0-9-]+")))
             throw std::runtime_error("Unexpected non-filesystem repository: " + name);
         return false;
     };
@@ -301,9 +303,9 @@ static std::unique_ptr<Json> selected_snapshot(json_object *source,
     }
     {
         json_object_object_foreach(pending, repository, reason) {
-            if (json_object_get_type(reason) != json_type_string)
-                throw std::runtime_error("Invalid pending provider reason");
             if (selected(repository)) {
+                if (json_object_get_type(reason) != json_type_string)
+                    throw std::runtime_error("Invalid pending provider reason");
                 if (!optional.count(lowercase(repository)))
                     throw std::runtime_error("Required native release is pending: " + std::string(repository));
                 json_object_object_add(selected_pending, repository, json_object_get(reason));
@@ -316,7 +318,8 @@ static std::unique_ptr<Json> selected_snapshot(json_object *source,
 }
 static std::unique_ptr<Json> checked_catalogue(
         const std::set<std::string> &required,
-        const std::set<std::string> &optional) {
+        const std::set<std::string> &optional,
+        const std::set<std::string> &ignored = {}) {
     std::map<std::string,std::string> live_tags;
     std::string last_error;
     for (unsigned attempt=0; attempt<4; ++attempt) {
@@ -326,7 +329,7 @@ static std::unique_ptr<Json> checked_catalogue(
             const auto nonce=std::chrono::system_clock::now().time_since_epoch().count();
             const std::string content=https_get(std::string(SNAPSHOT_URL)+"?refresh="+std::to_string(nonce));
             Json raw(json_tokener_parse(content.c_str()));
-            auto root = selected_snapshot(raw.object, required, optional);
+            auto root = selected_snapshot(raw.object, required, optional, ignored);
             auto *releases = field(root->object, "releases");
             std::vector<std::string> stale;
             json_object_object_foreach(releases, repository, release) {
@@ -351,19 +354,36 @@ static std::unique_ptr<Json> checked_catalogue(
     throw std::runtime_error(last_error+"; no unverified or stale installer was selected");
 }
 static void prepare(const fs::path &destination, const fs::path &providers,
-                    const fs::path &filesystems,const fs::path &all_filesystems) {
+                    const fs::path &filesystems,const fs::path &all_filesystems,
+                    const fs::path &selected = {}) {
     if (geteuid() != 0) throw std::runtime_error("Snapshot preparation requires root");
-    const auto required=expected_repos(providers,filesystems);
+    auto required=expected_repos(providers,filesystems);
     std::set<std::string> optional, all;
     for(const auto &name:lines(read_text(all_filesystems))) {
         if(!std::regex_match(name,std::regex("filesystem-[a-z0-9-]+")) ||
            !all.insert(name).second)throw std::runtime_error("Invalid complete filesystem list");
         if(!required.count(name))optional.insert(name);
     }
-    if(all.size()!=23 || optional.size()!=18)
-        throw std::runtime_error("Incomplete optional filesystem list");
+    for (const auto &name : required)
+        if (name.rfind("filesystem-", 0) == 0 && !all.count(name))
+            throw std::runtime_error("Incomplete filesystem list");
+    std::set<std::string> ignored;
+    if (!selected.empty()) {
+        ignored = required;
+        ignored.insert(optional.begin(), optional.end());
+        std::set<std::string> requested;
+        for (const auto &slug : lines(read_text(selected))) {
+            if (!ignored.count(slug) || !requested.insert(slug).second)
+                throw std::runtime_error("Unknown or duplicate selected release: " + slug);
+        }
+        if (!requested.count("boot"))
+            throw std::runtime_error("Selected catalogue has no BOOT job");
+        for (const auto &slug : requested) ignored.erase(slug);
+        required = std::move(requested);
+        optional.clear();
+    }
     if(fs::exists(destination))throw std::runtime_error("Refusing snapshot overwrite");
-    auto root=checked_catalogue(required,optional);
+    auto root=checked_catalogue(required,optional,ignored);
     auto *releases=field(root->object,"releases");
     auto *pending=field(root->object,"pending");
     if (!fs::create_directory(destination))
@@ -403,9 +423,9 @@ int main(int argc, char **argv) {
             curl_global_cleanup();
             return 0;
         }
-        if (argc != 5)
-            throw std::runtime_error("Usage: prepare-native-releases OUTPUT PROVIDERS FILESYSTEMS ALL_FILESYSTEMS");
-        prepare(argv[1], argv[2], argv[3], argv[4]);
+        if (argc != 5 && argc != 6)
+            throw std::runtime_error("Usage: prepare-native-releases OUTPUT PROVIDERS FILESYSTEMS ALL_FILESYSTEMS [SELECTED]");
+        prepare(argv[1], argv[2], argv[3], argv[4], argc == 6 ? fs::path(argv[5]) : fs::path{});
         curl_global_cleanup();
         return 0;
     } catch (const std::exception &error) {

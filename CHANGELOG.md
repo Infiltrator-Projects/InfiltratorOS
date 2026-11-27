@@ -1,3 +1,10 @@
+## 1.0.115 — Selection-first release verification and bounded downloads
+
+- Resolve selection before release discovery, verifying only selected releases while retaining the sealed inventory authority.
+- Remove runtime catalogue cardinalities; keep packaged inventories authoritative.
+- Fetch native RUNs after resource admission; bound aggregate peak reservations by initial available memory.
+- Test reduced selection with unrelated unavailable releases.
+
 ## 1.0.114 — Dynamic progress and terminal-state integrity
 
 - Allocate progress inventory dynamically; reject empty manifests, malformed statuses and nonterminal completion percentages.

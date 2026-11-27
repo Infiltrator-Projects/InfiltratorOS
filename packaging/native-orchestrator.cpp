@@ -65,10 +65,6 @@ static std::string joined(const Strings &items) {
     for (const auto &s : items) result += s + "\n";
     return result;
 }
-static std::string getenv_or(const char *key, std::string fallback = "") {
-    const char *v = std::getenv(key);
-    return v ? std::string(v) : fallback;
-}
 static int run(const Strings &args, const fs::path &out = {},
                bool reset_selection = false, bool launcher = false,
                bool smart_queue = false) {
@@ -154,10 +150,9 @@ static std::string output_of(const Strings &args, bool reset_selection = false) 
         throw std::runtime_error("Provider enumeration failed: " + args.front());
     return result;
 }
-static Strings catalogue(const fs::path &stage, const char *worker, const char *manifest,
-                         size_t expected) {
+static Strings catalogue(const fs::path &stage, const char *worker, const char *manifest) {
     auto entries = lines(output_of({(stage / worker).string(), "--list"}, true));
-    if (entries.size() != expected || std::set<std::string>(entries.begin(), entries.end()).size() != expected)
+    if (entries.empty() || std::set<std::string>(entries.begin(), entries.end()).size() != entries.size())
         throw std::runtime_error(std::string(worker) + ": catalogue incomplete");
     write_text(stage / manifest, joined(entries));
     return entries;
@@ -246,19 +241,35 @@ static void dispatch(const fs::path &stage) {
         !fs::is_directory(canonical / "status"))
         throw std::runtime_error("Invalid native installation stage");
 
-    Strings temporal = catalogue(canonical, "install-temporal-resources", "providers.list", 54);
-    Strings established = catalogue(canonical, "install-filesystem-resources", "filesystems.list", 5);
+    Strings temporal = catalogue(canonical, "install-temporal-resources", "providers.list");
+    Strings established = catalogue(canonical, "install-filesystem-resources", "filesystems.list");
 
     auto full_fs = lines(output_of({(canonical / "install-filesystem-resources").string(), "--list-all"}, true));
-    if (full_fs.size()!=23 || std::set<std::string>(full_fs.begin(),full_fs.end()).size()!=23)
+    if (full_fs.empty() || std::set<std::string>(full_fs.begin(),full_fs.end()).size()!=full_fs.size() ||
+        !std::all_of(established.begin(), established.end(), [&](const auto &slug) {
+            return std::find(full_fs.begin(), full_fs.end(), slug) != full_fs.end();
+        }))
         throw std::runtime_error("Incomplete full filesystem catalogue");
     write_text(canonical/"filesystems-all.list",joined(full_fs));
+    // Select from the sealed package inventory before checking publication.
+    Strings apps = selection("INFILTRATOROS_SELECTED_APPLICATIONS",
+                             {"system-monitor", "calculator", "calendar", "files", "defragmenter"});
+    temporal = selection("INFILTRATOROS_SELECTED_TEMPORAL", temporal);
+    Strings chosen = selection("INFILTRATOROS_SELECTED_FILESYSTEMS", full_fs, true);
+    Strings selected = apps;
+    selected.emplace_back("boot");
+    selected.insert(selected.end(), temporal.begin(), temporal.end());
+    selected.insert(selected.end(), chosen.begin(), chosen.end());
+    const fs::path manifest = canonical / ".selected.list.tmp";
+    write_text(manifest, joined(selected));
+    fs::rename(manifest, canonical / "selected.list");
     const fs::path log = canonical / "native-release-preparation.log";
     int code = run({(canonical / "prepare-native-releases").string(),
                     (canonical / "release-json").string(),
                     (canonical / "providers.list").string(),
                     (canonical / "filesystems.list").string(),
-                    (canonical / "filesystems-all.list").string()}, log);
+                    (canonical / "filesystems-all.list").string(),
+                    (canonical / "selected.list").string()}, log);
     if (code != 0) {
         std::cerr << read_text(log);
         throw std::runtime_error("Native release preparation failed");
@@ -276,7 +287,8 @@ static void dispatch(const fs::path &stage) {
         auto all = lines(output_of({(canonical / "install-filesystem-resources").string(), "--list-all"}, true));
         Strings missing;
         for (const auto &s : all)
-            if (std::find(established.begin(), established.end(), s) == established.end())
+            if (std::find(established.begin(), established.end(), s) == established.end() &&
+                std::find(chosen.begin(), chosen.end(), s) != chosen.end())
                 missing.push_back(s);
         write_text(pending_path, joined(missing));
     }
@@ -284,7 +296,7 @@ static void dispatch(const fs::path &stage) {
         throw std::runtime_error("Missing filesystem discovery manifests");
     Strings optional = lines(read_text(optional_path));
     std::set<std::string> names(optional.begin(), optional.end());
-    if (optional.size() > 18 || names.size() != optional.size())
+    if (optional.size() > full_fs.size() || names.size() != optional.size())
         throw std::runtime_error("Invalid optional filesystem catalogue");
     for (const auto &item : optional) {
         if (item.rfind("filesystem-", 0) != 0 ||
@@ -295,27 +307,8 @@ static void dispatch(const fs::path &stage) {
         std::cout << "Some independent filesystem modules await published releases.\n";
         write_text(STATUS_ROOT / "filesystems-pending.list", read_text(pending_path));
     }
-    Strings apps = selection("INFILTRATOROS_SELECTED_APPLICATIONS",
-                            {"system-monitor", "calculator", "calendar", "files", "defragmenter"});
-    temporal = selection("INFILTRATOROS_SELECTED_TEMPORAL", temporal);
-    // Selection uses the complete signed catalogue, not a subset that
-    // happened to respond over HTTPS. The default run requires all 23.
-    Strings all_fs = lines(output_of({(canonical / "install-filesystem-resources").string(), "--list-all"}, true));
-    const std::set<std::string> all_names(all_fs.begin(), all_fs.end());
-    if (all_fs.size() != 23 || all_names.size() != 23 ||
-        !std::all_of(established.begin(), established.end(), [&](const auto &slug) { return all_names.count(slug); }) ||
-        !std::all_of(optional.begin(), optional.end(), [&](const auto &slug) { return all_names.count(slug); }))
-        throw std::runtime_error("Complete filesystem catalogue is invalid");
-    Strings chosen = selection("INFILTRATOROS_SELECTED_FILESYSTEMS", all_fs, true);
     Strings available = established;
     available.insert(available.end(), optional.begin(), optional.end());
-    Strings selected = apps;
-    selected.emplace_back("boot");
-    selected.insert(selected.end(), temporal.begin(), temporal.end());
-    selected.insert(selected.end(), chosen.begin(), chosen.end());
-    const fs::path manifest = canonical / ".selected.list.tmp";
-    write_text(manifest, joined(selected));
-    fs::rename(manifest, canonical / "selected.list");
     // Fail before native builds if any requested release is unavailable.
     Strings missing;
     for (const auto &slug : chosen)

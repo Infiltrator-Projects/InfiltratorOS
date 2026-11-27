@@ -35,6 +35,12 @@ int main() {
     const std::set<std::string> required{"boot"}, optional{"filesystem-fat12"};
     auto raw = fixture();
     auto selected = selected_snapshot(raw->object, required, optional);
+    auto reduced = fixture();
+    json_object_object_add(field(reduced->object, "releases"), "Calculator", json_object_new_object());
+    json_object_object_add(field(reduced->object, "pending"), "Clock-Binary", json_object_new_string("not published"));
+    auto subset = selected_snapshot(reduced->object, {"boot"}, {}, {"calculator", "clock-binary"});
+    check(json_object_object_length(field(subset->object, "releases")) == 1);
+    check(json_object_object_length(field(subset->object, "pending")) == 0);
     check(json_object_object_length(field(selected->object, "releases")) == 1);
     check(json_object_object_length(field(selected->object, "pending")) == 1);
     check(field(field(selected->object, "releases"), "Boot") != nullptr);
