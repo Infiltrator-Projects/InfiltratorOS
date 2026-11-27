@@ -53,6 +53,21 @@ int main() {
         check(job_state(stage, "filesystem-fat12") == "failed" &&
               job_state(stage, "filesystem-ntfs") == "failed",
               "A smart queue crash must terminate every unresolved member");
+        const Strings app_batch{"system-monitor", "calculator", "calendar", "files",
+                                "defragmenter", "filesystem-fat12", "clock-binary"};
+        const auto app_worker = stage / "install-system-monitor";
+        write_text(app_worker, "#!/bin/sh\nset -eu\n"
+            "[ \"$INFILTRATOROS_SMART_BUILD_QUEUE\" = 1 ]\n"
+            "for slug in system-monitor calculator calendar files defragmenter filesystem-fat12 clock-binary; do\n"
+            " printf 'state=complete\\nprogress=100\\nstage=Ready\\ndetail=\\n' > \"$(dirname \"$0\")/status/$slug-install.status\"\n"
+            "done\n");
+        if (chmod(app_worker.c_str(), 0700) != 0)
+            throw std::runtime_error("Cannot make application queue leader executable");
+        launch(stage, "system-monitor", "", true, app_batch);
+        for (const auto &slug : app_batch)
+            check(job_state(stage, slug) == "complete", "application-led queue member supervised");
+        check(failed_filesystem_prerequisite(stage, {"filesystem-fat12"}).empty(),
+              "application-led queue preserves BOOT prerequisite gate");
         fs::remove_all(stage);
         std::cout << "Native worker supervision contracts passed\n";
         return 0;

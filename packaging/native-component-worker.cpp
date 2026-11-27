@@ -1178,12 +1178,30 @@ static Strings missing_packages(const Strings &packages) {
             missing.push_back(pkg);
     return missing;
 }
-static bool can_build(const Entry &e) {
+static Strings build_dependency_packages(const Entry &e) {
+    if (e.kind == "application") return application_build_dependencies(e);
     Strings packages{"build-essential", "binutils", "dpkg-dev"};
-    // Preflight each application before starting concurrent builds.
+    if (e.kind == "calendar" || e.kind == "clock")
+        packages.insert(packages.end(), {"pkg-config", "jq", "ghostscript", "gettext", "git",
+                                         "libglib2.0-dev", "libicu-dev"});
+    if (e.slug().rfind("filesystem-", 0) == 0)
+        packages.insert(packages.end(), {"cmake", "git", "pkg-config", "libssl-dev", "libsqlite3-dev"});
+    if (e.id == "exfat")
+        packages.insert(packages.end(), {"exfatprogs", "dosfstools"});
+    if (e.id == "btrfs") packages.push_back("btrfs-progs");
+    if (e.id == "xfs") packages.push_back("xfsprogs");
+    if (e.id == "ext2" || e.id == "ext3" || e.id == "ext4")
+        packages.push_back("e2fsprogs");
+    if (e.id == "fat12" || e.id == "fat16" || e.id == "fat32")
+        packages.push_back("dosfstools");
+    if (e.id == "minix") packages.push_back("util-linux");
+    if (e.id == "ntfs")
+        packages.insert(packages.end(), {"autoconf", "automake", "libtool", "libgcrypt20-dev"});
+    return packages;
+}
+static bool can_build(const Entry &e) {
+    if (!missing_packages(build_dependency_packages(e)).empty()) return false;
     if (e.kind == "application") {
-        packages = application_build_dependencies(e);
-        if (!missing_packages(packages).empty()) return false;
         if (e.id == "files")
             return execute({"pkg-config", "--exists", "gtk4 >= 4.10", "libarchive"}) == 0;
         if (e.id == "system-monitor")
@@ -1194,39 +1212,19 @@ static bool can_build(const Entry &e) {
             return execute({"/usr/bin/dpkg-checkbuilddeps", "-d",
                 "debhelper-compat (= 13), desktop-file-utils, gettext, gir1.2-glib-2.0-dev, gjs, libglib2.0-dev, libgtk-3-dev, libicu-dev, nodejs, pkg-config, xz-utils", "-c", "", "/dev/null"}) == 0;
         return true;
-    } else if (e.kind == "calendar" || e.kind == "clock") {
-        packages.insert(packages.end(), {"pkg-config", "jq", "ghostscript", "gettext", "git"});
-        packages.insert(packages.end(), {"libglib2.0-dev", "libicu-dev"});
-        if (execute({"pkg-config", "--exists", "glib-2.0", "icu-i18n"}) != 0)
-            return false;
     }
-    if (e.slug().rfind("filesystem-", 0) == 0)
-        packages.insert(packages.end(), {"cmake", "git", "pkg-config", "libssl-dev", "libsqlite3-dev"});
-    if (e.id == "exfat")
-        packages.insert(packages.end(), {"cmake", "git", "pkg-config", "libssl-dev",
-                                         "libsqlite3-dev", "exfatprogs", "dosfstools"});
-    if (e.id == "btrfs") packages.push_back("btrfs-progs");
-    if (e.id == "xfs") packages.push_back("xfsprogs");
-    if (e.id == "ext2" || e.id == "ext3" || e.id == "ext4")
-        packages.push_back("e2fsprogs");
-    if (e.id == "fat12" || e.id == "fat16" || e.id == "fat32")
-        packages.push_back("dosfstools");
-    if (e.id == "minix") packages.push_back("util-linux");
+    if ((e.kind == "calendar" || e.kind == "clock") &&
+        execute({"pkg-config", "--exists", "glib-2.0", "icu-i18n"}) != 0)
+        return false;
     if (e.slug().rfind("filesystem-", 0) == 0 &&
         execute({"/usr/bin/pkg-config", "--exists", "openssl", "sqlite3"}) != 0)
         return false;
     if (e.id == "ntfs") {
-        packages.insert(packages.end(), {"cmake", "git", "pkg-config", "libssl-dev",
-                                         "libsqlite3-dev", "autoconf", "automake", "libtool",
-                                         "libgcrypt20-dev"});
         const std::string status = std::string("$") + "{Status}";
         if (pkg_query("libntfs-3g89t64", status) != "install ok installed" &&
             pkg_query("libntfs-3g89", status) != "install ok installed")
             return false;
     }
-    for (auto &pkg : packages)
-        if (pkg_query(pkg, std::string("$") + "{Status}") != "install ok installed")
-            return false;
     return true;
 }
 static int smart_queue(const std::vector<Entry> &entries) {
@@ -1271,8 +1269,8 @@ static int smart_queue(const std::vector<Entry> &entries) {
                     completed.insert(e.slug());
                     continue;
                 }
-                if (app && !can_build(e)) {
-                    auto missing = missing_packages(application_build_dependencies(e));
+                if (!can_build(e)) {
+                    auto missing = missing_packages(build_dependency_packages(e));
                     if (!missing.empty()) {
                         status.write("running", 8, "Preparing build prerequisites",
                                      "Serial APT transaction before parallel compilation");

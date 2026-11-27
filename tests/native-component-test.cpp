@@ -285,6 +285,56 @@ Boot0007 BOOT Boot Manager HD(1,GPT,1234)/File(\EFI\InfiltratorOS\BOOT\BOOTX64.E
                 check(args == Strings({"--system-package-mode", "--build-only", "--output", "/tmp/output"}),
                       "application-owned build-only contract");
         }
+        {
+            // Execute the actual scheduler and subprocess path with five
+            // disposable packages; no host package installation is performed.
+            TempDir fixture(fs::temp_directory_path(), "native-all-apps-");
+            std::vector<Job> jobs;
+            std::map<std::string, std::string> failures;
+            const auto logs = fixture.path / "logs";
+            fs::create_directory(logs);
+            Asset asset;
+            asset.version = "1.2.3";
+            for (const auto slug : infiltrator_native::queued_applications) {
+                const auto app = application(std::string(slug));
+                const auto dir = fixture.path / app.slug();
+                const auto package_tree = dir / "tree";
+                fs::create_directories(package_tree / "DEBIAN");
+                const auto version = app.id == "calendar" ? "1.2.3+nativepgo1" :
+                    app.id == "files" || app.id == "defragmenter" ? "1.2.3+native1" : "1.2.3";
+                save(package_tree / "DEBIAN/control", "Package: " + app.package +
+                     "\nVersion: " + version + "\nArchitecture: amd64\n"
+                     "Maintainer: Test <test@example.invalid>\nDescription: disposable scheduler fixture\n");
+                required({"/usr/bin/dpkg-deb", "--build", "--root-owner-group",
+                          package_tree.string(), (dir / "input.deb").string()});
+                auto run = dir / "native.run";
+                // The private output folder is the final option in each
+                // supported contract. Check the actual CPU count as seen by
+                // the released getconf-based Calendar/Defragmenter scripts.
+                save(run, "#!/bin/sh\nset -eu\nout=''\n"
+                     "while [ \"$#\" -gt 0 ]; do\n"
+                     " case \"$1\" in --output|--output-dir) shift; out=$1;; esac\n shift\n done\n"
+                     "[ -n \"$out\" ]\n"
+                     "if [ -x \"$out/scheduler-bin/getconf\" ]; then\n"
+                     " [ \"$(getconf _NPROCESSORS_ONLN)\" = \"$(printf '%s' \"$MAKEFLAGS\" | cut -c3-)\" ]\n"
+                     "fi\n"
+                     "cp \"$(dirname \"$0\")/input.deb\" \"$out/result.deb\"\n");
+                if (chmod(run.c_str(), 0700) != 0)
+                    throw std::runtime_error("Cannot make fixture RUN executable");
+                const auto folder = dir / "output";
+                fs::create_directory(folder);
+                jobs.push_back({app, asset, run, folder, {}});
+            }
+            build_packages(jobs, logs, failures);
+            check(failures.empty(), "all five application native build paths execute successfully");
+            for (const auto &job : jobs) {
+                check(regular(job.package), "scheduler returns verified real Debian package");
+                Asset stale = asset;
+                stale.version = "9.9.9";
+                rejects([&]() { (void)native_package_from(job.folder, job.entry, stale); },
+                        "stale application build package");
+            }
+        }
         rejects([&]() { (void)build_only_arguments(application("boot"), "/tmp/output", "1"); },
                 "BOOT parallel build-only invocation");
         auto calendar_install = package_install_command("/tmp/native.deb", true);

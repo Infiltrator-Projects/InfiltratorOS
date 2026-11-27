@@ -1,3 +1,8 @@
+## 1.0.111 — Unified queue execution qualification
+
+- Prepare declared build dependencies for selected applications and independent modules before parallel compilation, instead of unnecessarily deferring missing provider prerequisites to serial builds.
+- Exercise all five actual scheduler subprocess paths with real disposable DEB metadata, reject stale package versions, and qualify an application-led mixed queue through the production supervisor.
+
 ## 1.0.110 — Forward-compatible release catalogue and application preflight
 
 - Validate the OS-owned provider subset of an expanded central catalogue, without admitting or staging unselected filesystem releases.
