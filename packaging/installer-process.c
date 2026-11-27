@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-#define _DEFAULT_SOURCE
-#define _POSIX_C_SOURCE 200809L
+#define _GNU_SOURCE
 #include "installer-process.h"
 
 #include <errno.h>
@@ -25,12 +24,15 @@ static void child_failure(int descriptor, int error)
     _exit(127);
 }
 
-static void close_extra_descriptors(int retained)
+/* Close the entire Linux descriptor table except the exec notification pipe.
+ * Unlike an RLIMIT_NOFILE scan, close_range also closes descriptors opened
+ * before the limit was reduced, and avoids one syscall per unused slot. */
+static int close_extra_descriptors(int retained)
 {
-    long limit = sysconf(_SC_OPEN_MAX);
-    if (limit < 0L) limit = 65536L;
-    for (long descriptor = 3; descriptor < limit && descriptor <= INT_MAX; ++descriptor)
-        if (descriptor != retained) (void)close((int)descriptor);
+    if (retained > STDERR_FILENO + 1 &&
+        close_range(STDERR_FILENO + 1U, (unsigned int)retained - 1U, 0) != 0)
+        return -1;
+    return close_range((unsigned int)retained + 1U, UINT_MAX, 0);
 }
 
 int installer_redirect_io(const char *log_path)
@@ -67,12 +69,12 @@ int installer_spawn_detached(const char *executable, char *const arguments[],
         return -1;
     }
     int notification[2];
-    if (pipe(notification) != 0) return -1;
+    // Set close-on-exec atomically, including when another thread forks.
+    if (pipe2(notification, O_CLOEXEC) != 0) return -1;
     for (size_t index = 0U; index < 2U; ++index) {
         int descriptor = notification[index];
-        int result = descriptor <= STDERR_FILENO
-            ? fcntl(descriptor, F_DUPFD_CLOEXEC, STDERR_FILENO + 1)
-            : fcntl(descriptor, F_SETFD, FD_CLOEXEC);
+        if (descriptor > STDERR_FILENO) continue;
+        int result = fcntl(descriptor, F_DUPFD_CLOEXEC, STDERR_FILENO + 1);
         if (result < 0) {
             int error = errno;
             close(notification[0]);
@@ -80,10 +82,8 @@ int installer_spawn_detached(const char *executable, char *const arguments[],
             errno = error;
             return -1;
         }
-        if (descriptor <= STDERR_FILENO) {
-            close(descriptor);
-            notification[index] = result;
-        }
+        close(descriptor);
+        notification[index] = result;
     }
     pid_t first = fork();
     if (first < 0) {
@@ -102,7 +102,8 @@ int installer_spawn_detached(const char *executable, char *const arguments[],
         if (chdir("/") != 0) child_failure(notification[1], errno);
         if (setup && setup(context) != 0)
             child_failure(notification[1], errno ? errno : EIO);
-        close_extra_descriptors(notification[1]);
+        if (close_extra_descriptors(notification[1]) != 0)
+            child_failure(notification[1], errno);
         execv(executable, arguments);
         child_failure(notification[1], errno);
     }

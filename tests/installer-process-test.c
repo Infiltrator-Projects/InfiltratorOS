@@ -63,7 +63,14 @@ int main(int argc, char **argv)
     char descriptor_text[32];
     snprintf(descriptor_text, sizeof(descriptor_text), "%d", descriptor);
     char *const marker_arguments[] = { executable, "--marker", marker, descriptor_text, NULL };
-    CHECK(installer_spawn_detached(executable, marker_arguments, NULL, NULL) == 0);
+    /* Existing descriptors survive a reduction of RLIMIT_NOFILE. The detached
+     * process must still close them, not just those below the current limit. */
+    struct rlimit reduced = limits;
+    if (descriptor > 32) reduced.rlim_cur = 32;
+    CHECK(setrlimit(RLIMIT_NOFILE, &reduced) == 0);
+    int spawned = installer_spawn_detached(executable, marker_arguments, NULL, NULL);
+    CHECK(setrlimit(RLIMIT_NOFILE, &limits) == 0);
+    CHECK(spawned == 0);
     struct timespec pause = { .tv_nsec = 10000000L };
     for (int attempt = 0; attempt < 300 && access(marker, F_OK) != 0; ++attempt)
         (void)nanosleep(&pause, NULL);
