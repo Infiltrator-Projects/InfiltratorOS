@@ -123,7 +123,9 @@ static void check_build_resources() {
     auto idle = idle_build_cpus({0, 2}, before, after);
     check(idle && *idle == std::vector<int>{2}, "interval CPU load filters busy CPUs");
 }
-int main() {
+int main(int argc, char **argv) {
+    if (argc == 4 && std::string_view(argv[1]) == "--validate-common-v2")
+        return native_component_worker_entrypoint(argc, argv);
     try {
         check_build_resources();
         {
@@ -276,6 +278,17 @@ Boot0007 BOOT Boot Manager HD(1,GPT,1234)/File(\EFI\InfiltratorOS\BOOT\BOOTX64.E
         };
         compile_provider("void infiltrator_filesystem_api_v2(void) {}\n");
         check(exports_common_filesystem_api(module), "Common V2 function export");
+        check(!validate_common_descriptor(module, "fat12"), "symbol without a valid descriptor refused");
+        const auto valid_module = module_fixture.path / "valid.so";
+        const auto invalid_module = module_fixture.path / "invalid.so";
+        const std::string fixture_source = "src/infiltratr-common/tests/filesystem_module_v2_native_fixture.c";
+        required({"/usr/bin/cc", "-shared", "-fPIC", "-Isrc/infiltratr-common/include",
+                  "-o", valid_module.string(), fixture_source});
+        required({"/usr/bin/cc", "-shared", "-fPIC", "-Isrc/infiltratr-common/include",
+                  "-DIFS_FIXTURE_INVALID_V2", "-o", invalid_module.string(), fixture_source});
+        check(validate_common_descriptor(valid_module, "fat12"), "canonical Common V2 descriptor validated");
+        check(!validate_common_descriptor(valid_module, "ntfs"), "wrong native format identity rejected");
+        check(!validate_common_descriptor(invalid_module, "fat12"), "invalid claimed callback group rejected");
         compile_provider("void infiltrator_filesystem_api_v1(void) {}\n");
         check(!exports_common_filesystem_api(module), "obsolete filesystem export refused");
         compile_provider("void infiltrator_filesystem_api_v2(void) {}\n"

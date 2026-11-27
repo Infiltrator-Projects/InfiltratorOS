@@ -45,9 +45,9 @@ run_fault_test() {
     fi
 }
 c++ -std=c++17 -O2 -Wall -Wextra -Werror -Wpedantic -pthread \
-    $(pkg-config --cflags libcurl json-c openssl) \
+    $(pkg-config --cflags libcurl json-c openssl) -Isrc/infiltratr-common/include \
     tests/native-component-test.cpp -o "$WORK/native-component-test" \
-    $(pkg-config --libs libcurl json-c openssl)
+    $(pkg-config --libs libcurl json-c openssl) -ldl
 "$WORK/native-component-test"
 c++ -std=c++17 -O2 -Wall -Wextra -Werror -Wpedantic \
     $(pkg-config --cflags libcurl json-c) \

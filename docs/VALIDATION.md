@@ -20,7 +20,7 @@ Publication consumes the qualified archive/DEB/commit identity and verifies remo
 ## Provider qualification exercised in CI
 
 - **Temporal:** `tests/native-component-test.cpp` checks the release asset and immutable source identity contract for the 54 providers. The full native installation requires local or separate integration qualification.
-- **Established filesystems:** `tests/native-component-test.cpp` checks the five fixed identities, release integrity and Common V2 symbol export rules.
+- **Established filesystems:** `tests/native-component-test.cpp` checks the five fixed identities, release integrity and Common V2 symbol export, identity and callback-table validation against the released Common ABI, in a bounded privilege-dropped process.
 - **Additional filesystems:** the native component and progress tests cover catalogue and discovery contracts for the additional 18 providers. The full 23-provider deployment must be qualified on the target.
 - **Aggregate progress:** `tests/native-progress-count-test.c` verifies the 83-job manifest-derived total, including Calendar and BOOT, and rejection of missing or malformed manifests.
 

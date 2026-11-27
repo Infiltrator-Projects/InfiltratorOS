@@ -1,3 +1,10 @@
+## 1.0.117 — Canonical Common V2 descriptor validation
+
+- Pin released Libraries 1.19.89; the shared design implementation is unchanged.
+- Validate actual module ABI, format identity, advertised groups and callback tables using the canonical Common V2 validator.
+- Load a sealed module copy only in a re-executed, privilege-dropped and resource-bounded child; reject crashes, timeouts and malformed descriptors before APT.
+- Test valid, wrong-format, incomplete-group and symbol-only fixtures.
+
 ## 1.0.116 — Verify staged packages and BOOT partition identity
 
 - Verify staged provider SHA-256, source/PGO metadata, Common V2 exports, PDF and application payloads before APT.
