@@ -1,3 +1,9 @@
+## 1.0.110 — Forward-compatible release catalogue and application preflight
+
+- Validate the OS-owned provider subset of an expanded central catalogue, without admitting or staging unselected filesystem releases.
+- Reject missing required entries, duplicate identities and unsafe extra repository names; retain live latest-release validation for every authorized published entry.
+- Correct Calendar dependency probing outside a source checkout and preserve the C++ dispatcher boundary while allowing component-owned build dependencies.
+
 ## 1.0.109 — Complete application admission to the native parallel queue
 
 - Admit all five applications and independent modules; preserve BOOT's final no-argument handoff.

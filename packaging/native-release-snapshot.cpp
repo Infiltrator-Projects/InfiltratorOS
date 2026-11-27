@@ -259,6 +259,61 @@ static void verify_release(const std::string &repo, json_object *release) {
     if (installers != 1)
         throw std::runtime_error(repo + ": expected exactly one native RUN installer");
 }
+// The publisher is shared by multiple product versions. An OS release
+// authorizes only its own packaged catalogue, not every newly published
+// filesystem. Reject duplicate/unsafe identities even outside that subset.
+static std::unique_ptr<Json> selected_snapshot(json_object *source,
+        const std::set<std::string> &required,
+        const std::set<std::string> &optional) {
+    auto *schema = field(source, "schema");
+    if (json_object_get_type(schema) != json_type_int || json_object_get_int(schema) != 1)
+        throw std::runtime_error("Unsupported release snapshot schema");
+    auto *releases = field(source, "releases");
+    auto *pending = field(source, "pending");
+    if (json_object_get_type(releases) != json_type_object ||
+        json_object_get_type(pending) != json_type_object)
+        throw std::runtime_error("Invalid release catalogue structure");
+    auto result = std::make_unique<Json>(json_object_new_object());
+    auto *selected_releases = json_object_new_object();
+    auto *selected_pending = json_object_new_object();
+    json_object_object_add(result->object, "schema", json_object_new_int(1));
+    json_object_object_add(result->object, "releases", selected_releases);
+    json_object_object_add(result->object, "pending", selected_pending);
+    std::set<std::string> all_seen, selected_seen;
+    auto selected = [&](const std::string &name) {
+        const auto key = lowercase(name);
+        if (!std::regex_match(name, std::regex("[A-Za-z][A-Za-z0-9-]+")) ||
+            !all_seen.insert(key).second)
+            throw std::runtime_error("Unsafe or duplicate repository in release snapshot: " + name);
+        if (required.count(key) || optional.count(key)) {
+            selected_seen.insert(key);
+            return true;
+        }
+        if (!std::regex_match(key, std::regex("filesystem-[a-z0-9-]+")))
+            throw std::runtime_error("Unexpected non-filesystem repository: " + name);
+        return false;
+    };
+    json_object_object_foreach(releases, repository, release) {
+        if (selected(repository)) {
+            verify_release(repository, release);
+            json_object_object_add(selected_releases, repository, json_object_get(release));
+        }
+    }
+    {
+        json_object_object_foreach(pending, repository, reason) {
+            if (json_object_get_type(reason) != json_type_string)
+                throw std::runtime_error("Invalid pending provider reason");
+            if (selected(repository)) {
+                if (!optional.count(lowercase(repository)))
+                    throw std::runtime_error("Required native release is pending: " + std::string(repository));
+                json_object_object_add(selected_pending, repository, json_object_get(reason));
+            }
+        }
+    }
+    if (selected_seen.size() != required.size() + optional.size())
+        throw std::runtime_error("Incomplete native OS catalogue");
+    return result;
+}
 static std::unique_ptr<Json> checked_catalogue(
         const std::set<std::string> &required,
         const std::set<std::string> &optional) {
@@ -270,22 +325,12 @@ static std::unique_ptr<Json> checked_catalogue(
             // after the independently scheduled publisher has committed.
             const auto nonce=std::chrono::system_clock::now().time_since_epoch().count();
             const std::string content=https_get(std::string(SNAPSHOT_URL)+"?refresh="+std::to_string(nonce));
-            auto root=std::make_unique<Json>(json_tokener_parse(content.c_str()));
-            auto *schema=field(root->object,"schema");
-            if (json_object_get_type(schema)!=json_type_int || json_object_get_int(schema)!=1)
-                throw std::runtime_error("Unsupported release snapshot schema");
-            auto *releases=field(root->object,"releases");
-            auto *pending=field(root->object,"pending");
-            if (json_object_get_type(releases)!=json_type_object ||
-                json_object_get_type(pending)!=json_type_object)
-                throw std::runtime_error("Invalid release catalogue structure");
-            std::set<std::string> seen;
+            Json raw(json_tokener_parse(content.c_str()));
+            auto root = selected_snapshot(raw.object, required, optional);
+            auto *releases = field(root->object, "releases");
             std::vector<std::string> stale;
             json_object_object_foreach(releases, repository, release) {
-                const std::string name(repository), key=lowercase(name);
-                if ((!required.count(key) && !optional.count(key)) || !seen.insert(key).second)
-                    throw std::runtime_error("Unexpected or duplicate repository in release snapshot");
-                verify_release(name,release);
+                const std::string name(repository);
                 // Resolve each live tag only once per attempt series. The
                 // next catalogue can catch up without another REST lookup.
                 auto found=live_tags.find(name);
@@ -294,16 +339,6 @@ static std::unique_ptr<Json> checked_catalogue(
                 const auto cached=string_field(release,"tag_name");
                 if (cached!=found->second) stale.push_back(name+" ("+cached+" vs "+found->second+")");
             }
-            {
-                json_object_object_foreach(pending, repository, reason) {
-                    const std::string key=lowercase(repository);
-                    if (!optional.count(key) || !seen.insert(key).second ||
-                        json_object_get_type(reason)!=json_type_string)
-                        throw std::runtime_error("Invalid pending optional provider");
-                }
-            }
-            if (seen.size()!=required.size()+optional.size())
-                throw std::runtime_error("Incomplete native OS catalogue");
             if (stale.empty()) return root;
             last_error="Authenticated publisher has not caught up: "+stale.front()+
                 " ("+std::to_string(stale.size())+" changed releases)";

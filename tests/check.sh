@@ -5,7 +5,10 @@
 set -eu
 ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
 cd "$ROOT"
-! grep -Fq '"python3"' packaging/native-component-worker.cpp
+# Component-owned build prerequisites may include Python (e.g. PDF generation).
+# The OS dispatcher itself must not invoke Python.
+! grep -Fq '"/usr/bin/python3"' packaging/native-component-worker.cpp
+! grep -Fq 'execute({"python3"' packaging/native-component-worker.cpp
 sh -n packaging/ensure-native-icons.sh packaging/ensure-native-fonts.sh debian/postinst
 grep -Fq 'fc-cache -f "$FONT_DIR"' packaging/ensure-native-fonts.sh
 ! grep -Fq 'fc-cache -f "$FONT_DIR" >/dev/null 2>&1 || true' packaging/ensure-native-fonts.sh
@@ -46,6 +49,11 @@ c++ -std=c++17 -O2 -Wall -Wextra -Werror -Wpedantic -pthread \
     tests/native-component-test.cpp -o "$WORK/native-component-test" \
     $(pkg-config --libs libcurl json-c openssl)
 "$WORK/native-component-test"
+c++ -std=c++17 -O2 -Wall -Wextra -Werror -Wpedantic \
+    $(pkg-config --cflags libcurl json-c) \
+    tests/native-snapshot-test.cpp -o "$WORK/native-snapshot-test" \
+    $(pkg-config --libs libcurl json-c)
+"$WORK/native-snapshot-test"
 c++ -std=c++17 -O2 -Wall -Wextra -Werror -Wpedantic \
     tests/native-orchestrator-test.cpp -o "$WORK/native-orchestrator-test"
 run_fault_test 'Native worker supervision and failure recovery' "$WORK/native-orchestrator-test"

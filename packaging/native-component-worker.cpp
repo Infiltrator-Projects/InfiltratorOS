@@ -1189,11 +1189,10 @@ static bool can_build(const Entry &e) {
         if (e.id == "system-monitor")
             return execute({"pkg-config", "--exists", "gtk+-3.0 >= 3.22"}) == 0;
         if (e.id == "calculator")
-            return execute({"pkg-config", "--exists", "gtk4"}) == 0 &&
-                   execute({"/usr/bin/python3", "-c", "import reportlab"}) == 0;
+            return execute({"pkg-config", "--exists", "gtk4"}) == 0;
         if (e.id == "calendar")
             return execute({"/usr/bin/dpkg-checkbuilddeps", "-d",
-                "debhelper-compat (= 13), desktop-file-utils, gettext, gir1.2-glib-2.0-dev, gjs, libglib2.0-dev, libgtk-3-dev, libicu-dev, nodejs, pkg-config, xz-utils"}) == 0;
+                "debhelper-compat (= 13), desktop-file-utils, gettext, gir1.2-glib-2.0-dev, gjs, libglib2.0-dev, libgtk-3-dev, libicu-dev, nodejs, pkg-config, xz-utils", "-c", "", "/dev/null"}) == 0;
         return true;
     } else if (e.kind == "calendar" || e.kind == "clock") {
         packages.insert(packages.end(), {"pkg-config", "jq", "ghostscript", "gettext", "git"});
