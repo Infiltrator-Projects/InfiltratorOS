@@ -235,9 +235,8 @@
     "name": "F2FS",
     "repository": "Filesystem-F2FS",
     "package": "infiltrator-filesystem-f2fs",
-    "resource": "/System/Resources/Documentation/Filesystem-F2FS.pdf",
-    "kind": "documentation",
-    "qualification": "documentation only; no runtime provider installed"
+    "resource": "/System/Filesystems/F2FS.so",
+    "qualification": "read-only; clean baseline checkpoint, native NAT/SIT and direct file mapping; independent populated media passed"
   },
   {
     "id": "gfs2",
@@ -252,9 +251,8 @@
     "name": "JFS",
     "repository": "Filesystem-JFS",
     "package": "infiltrator-filesystem-jfs",
-    "resource": "/System/Resources/Documentation/Filesystem-JFS.pdf",
-    "kind": "documentation",
-    "qualification": "documentation only; no runtime provider installed"
+    "resource": "/System/Filesystems/JFS.so",
+    "qualification": "read-only; clean Linux JFS, inline directory leaf profile; independent populated media outstanding"
   },
   {
     "id": "nilfs2",

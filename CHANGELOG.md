@@ -1,3 +1,9 @@
+## 1.0.148 — Integrate published JFS and F2FS runtimes
+
+- Register the published v0.1.0 read-only JFS and F2FS native packages; qualification limits remain those of their independent providers.
+- 44 filesystem projects: 39 runtime providers and 5 documentation-only packages; 104 total components. InfiltratorFS remains excluded.
+- No scheduler, BOOT or Common changes.
+
 ## 1.0.147 — Integrate published CPM and GFS2 runtimes
 
 - Promote independently published CPM and GFS2 v0.1.0 from PDF-only components to native shared-object providers, retaining their documentation and limited read-only capability boundaries.

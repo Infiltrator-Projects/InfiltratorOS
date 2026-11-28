@@ -218,7 +218,7 @@ int main(int argc, char **argv) {
         check(temporal.size() == 54, "temporal cardinality");
         check(established.size() == 5, "established cardinality");
         check(additional.size() == 39, "additional cardinality");
-        const std::set<std::string> documentation_ids{"bcachefs", "f2fs", "jfs", "nilfs2", "ocfs2", "vmfs", "vmfs6"};
+        const std::set<std::string> documentation_ids{"bcachefs", "nilfs2", "ocfs2", "vmfs", "vmfs6"};
         std::set<std::string> observed_documentation;
         for (const auto &entry : additional) {
             if (entry.kind != "documentation") continue;
@@ -246,11 +246,11 @@ int main(int argc, char **argv) {
                   infiltrator_native::queue_candidate(slug),
                   "new filesystem uses the ordinary independent native queue");
         }
-        for (const auto *id : {"cpm", "gfs2"}) {
+        for (const auto *id : {"cpm", "gfs2", "jfs", "f2fs"}) {
             const auto entry = std::find_if(additional.begin(), additional.end(),
                 [&](const Entry &e) { return e.id == id; });
             check(entry != additional.end() && entry->kind != "documentation", "published runtime promoted");
-            const std::string name = id == std::string_view("cpm") ? "CPM" : "GFS2";
+            const std::string name = id == std::string_view("cpm") ? "CPM" : id == std::string_view("gfs2") ? "GFS2" : id == std::string_view("jfs") ? "JFS" : "F2FS";
             check(entry->resource == "/System/Filesystems/" + name + ".so", "native runtime resource");
             const auto deps = build_dependency_packages(*entry);
             check(std::find(deps.begin(), deps.end(), "build-essential") != deps.end(), "native compilation dependencies");
