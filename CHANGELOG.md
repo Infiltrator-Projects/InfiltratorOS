@@ -1,3 +1,9 @@
+## 1.0.146 — Integrate qualified QNX4 release
+
+- Register the independently published QNX4 v0.1.12 native provider, with successful exact-source native, production-consumer and release qualification.
+- All 44 filesystem projects now appear in the catalogue: 35 runtime providers and 9 PDF-only packages. Total selection: 104 components. InfiltratorFS remains excluded.
+- No scheduler, BOOT or Common changes.
+
 ## 1.0.145 — Integrate published filesystem runtimes and documentation packages
 
 - Register ADFS, BeFS, Fosfat, HPFS, OMFS, QNX6, ReiserFS, SysV, UDF as independent runtime providers and Bcachefs, CPM, F2FS, GFS2, JFS, NILFS2, OCFS2, VMFS, VMFS6 as PDF-only components, using their verified published native RUNs.

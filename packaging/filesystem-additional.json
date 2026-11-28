@@ -293,5 +293,13 @@
     "resource": "/System/Resources/Documentation/Filesystem-VMFS6.pdf",
     "kind": "documentation",
     "qualification": "documentation only; no runtime provider installed"
+  },
+  {
+    "id": "qnx4",
+    "name": "QNX4",
+    "repository": "Filesystem-QNX4",
+    "package": "infiltrator-filesystem-qnx4",
+    "resource": "/System/Filesystems/QNX4.so",
+    "qualification": "native mutation and relocation limited to provider-formatted media; physical BOOT unqualified"
   }
 ]

@@ -214,10 +214,10 @@ int main(int argc, char **argv) {
               !boot_release_matches(sbat, "0.1.698"), "BOOT's own SBAT release identity");
         auto temporal = catalogue("packaging/temporal-resources.json", 54);
         auto established = catalogue("packaging/filesystem-resources.json", 5);
-        auto additional = catalogue("packaging/filesystem-additional.json", 38);
+        auto additional = catalogue("packaging/filesystem-additional.json", 39);
         check(temporal.size() == 54, "temporal cardinality");
         check(established.size() == 5, "established cardinality");
-        check(additional.size() == 38, "additional cardinality");
+        check(additional.size() == 39, "additional cardinality");
         const std::set<std::string> documentation_ids{"bcachefs", "cpm", "f2fs", "gfs2", "jfs", "nilfs2", "ocfs2", "vmfs", "vmfs6"};
         std::set<std::string> observed_documentation;
         for (const auto &entry : additional) {
