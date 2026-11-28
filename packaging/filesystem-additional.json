@@ -227,9 +227,8 @@
     "name": "CPM",
     "repository": "Filesystem-CPM",
     "package": "infiltrator-filesystem-cpm",
-    "resource": "/System/Resources/Documentation/Filesystem-CPM.pdf",
-    "kind": "documentation",
-    "qualification": "documentation only; no runtime provider installed"
+    "resource": "/System/Filesystems/CPM.so",
+    "qualification": "read-only; explicitly marked PCW180 geometry; native payload tests passed"
   },
   {
     "id": "f2fs",
@@ -245,9 +244,8 @@
     "name": "GFS2",
     "repository": "Filesystem-GFS2",
     "package": "infiltrator-filesystem-gfs2",
-    "resource": "/System/Resources/Documentation/Filesystem-GFS2.pdf",
-    "kind": "documentation",
-    "qualification": "documentation only; no runtime provider installed"
+    "resource": "/System/Filesystems/GFS2.so",
+    "qualification": "read-only; clean single-journal lock_nolock profile, bounded namespace; no mutation"
   },
   {
     "id": "jfs",

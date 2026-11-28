@@ -1,3 +1,9 @@
+## 1.0.147 — Integrate published CPM and GFS2 runtimes
+
+- Promote independently published CPM and GFS2 v0.1.0 from PDF-only components to native shared-object providers, retaining their documentation and limited read-only capability boundaries.
+- 44 filesystem projects: 37 runtime providers and 7 PDF-only packages; 104 total components. Other developing providers remain documentation-only until qualified runtime publication.
+- No scheduler, BOOT or Common changes.
+
 ## 1.0.146 — Integrate qualified QNX4 release
 
 - Register the independently published QNX4 v0.1.12 native provider, with successful exact-source native, production-consumer and release qualification.
