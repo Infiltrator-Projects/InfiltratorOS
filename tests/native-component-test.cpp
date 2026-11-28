@@ -218,7 +218,7 @@ int main(int argc, char **argv) {
         check(temporal.size() == 54, "temporal cardinality");
         check(established.size() == 5, "established cardinality");
         check(additional.size() == 39, "additional cardinality");
-        const std::set<std::string> documentation_ids{"bcachefs", "nilfs2", "ocfs2", "vmfs", "vmfs6"};
+        const std::set<std::string> documentation_ids{"bcachefs", "nilfs2", "vmfs6"};
         std::set<std::string> observed_documentation;
         for (const auto &entry : additional) {
             if (entry.kind != "documentation") continue;
@@ -254,6 +254,15 @@ int main(int argc, char **argv) {
             check(entry->resource == "/System/Filesystems/" + name + ".so", "native runtime resource");
             const auto deps = build_dependency_packages(*entry);
             check(std::find(deps.begin(), deps.end(), "build-essential") != deps.end(), "native compilation dependencies");
+        }
+        for (const auto *id : {"ocfs2", "vmfs"}) {
+            const auto entry = std::find_if(additional.begin(), additional.end(),
+                [&](const Entry &e) { return e.id == id; });
+            check(entry != additional.end() && entry->kind != "documentation", "qualified runtime entry");
+            const std::string name = id == std::string_view("ocfs2") ? "OCFS2" : "VMFS";
+            check(entry->resource == "/System/Filesystems/" + name + ".so", "native shared-object path");
+            const auto deps = build_dependency_packages(*entry);
+            check(std::find(deps.begin(), deps.end(), "build-essential") != deps.end(), "runtime build prerequisites");
         }
         TempDir module_fixture(fs::temp_directory_path(), "native-module-");
         const auto source = module_fixture.path / "provider.c";

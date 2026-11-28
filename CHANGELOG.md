@@ -1,3 +1,9 @@
+## 1.0.149 — Integrate published OCFS2 and VMFS runtimes
+
+- Register independent OCFS2 and VMFS v0.1.0 runtime releases with their existing bounded read-only qualifications. VMFS5 is recognition-only and VMFS6 is not promoted.
+- 44 filesystem projects: 41 runtime providers and 3 documentation-only packages; 104 total components. InfiltratorFS remains excluded.
+- No changes to the scheduler, BOOT or Common ABI.
+
 ## 1.0.148 — Integrate published JFS and F2FS runtimes
 
 - Register the published v0.1.0 read-only JFS and F2FS native packages; qualification limits remain those of their independent providers.

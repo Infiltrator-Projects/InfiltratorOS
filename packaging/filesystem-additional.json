@@ -268,18 +268,16 @@
     "name": "OCFS2",
     "repository": "Filesystem-OCFS2",
     "package": "infiltrator-filesystem-ocfs2",
-    "resource": "/System/Resources/Documentation/Filesystem-OCFS2.pdf",
-    "kind": "documentation",
-    "qualification": "documentation only; no runtime provider installed"
+    "resource": "/System/Filesystems/OCFS2.so",
+    "qualification": "read-only; local single-slot 4 KiB profile; independently formatted baseline, structural payload; populated independent media outstanding"
   },
   {
     "id": "vmfs",
     "name": "VMFS",
     "repository": "Filesystem-VMFS",
     "package": "infiltrator-filesystem-vmfs",
-    "resource": "/System/Resources/Documentation/Filesystem-VMFS.pdf",
-    "kind": "documentation",
-    "qualification": "documentation only; no runtime provider installed"
+    "resource": "/System/Filesystems/VMFS.so",
+    "qualification": "read-only VMFS3; captured native namespace and structural payload tests; VMFS5 recognition only, no VMFS6 mount"
   },
   {
     "id": "vmfs6",
