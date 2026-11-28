@@ -1,3 +1,9 @@
+## 1.0.145 — Integrate published filesystem runtimes and documentation packages
+
+- Register ADFS, BeFS, Fosfat, HPFS, OMFS, QNX6, ReiserFS, SysV, UDF as independent runtime providers and Bcachefs, CPM, F2FS, GFS2, JFS, NILFS2, OCFS2, VMFS, VMFS6 as PDF-only components, using their verified published native RUNs.
+- 43 filesystem-project components (34 runtime, 9 documentation-only); 103 total jobs. QNX4 remains outside the selection until its native runtime release is published. InfiltratorFS is excluded.
+- Documentation packaging requires no compiler; UDF independent-media testing uses genisoimage only as a build-time oracle. No change to scheduling or BOOT.
+
 ## 1.0.144 — Add independently released BFS and EFS providers
 
 - Register BFS and EFS in the existing additional filesystem inventory. Both use the ordinary native build-only RUN and Common V2 package layout; no filesystem-specific orchestration is added.

@@ -949,7 +949,8 @@ Strings build_only_arguments(const Entry &entry, const fs::path &folder,
     return args;
 }
 static void build(Job &job, const fs::path &logs, const std::vector<int> &cpus) {
-    Status(logs, job.entry.slug()).write("running", 35, "Compiling native component",
+    Status(logs, job.entry.slug()).write("running", 35,
+        job.entry.kind == "documentation" ? "Packaging reference documentation" : "Compiling native component",
         std::to_string(std::max<std::size_t>(1, cpus.size())) + " CPU slots reserved");
     const auto slots = std::to_string(std::max<std::size_t>(1, cpus.size()));
     Strings arguments;
@@ -1270,6 +1271,8 @@ static Strings missing_packages(const Strings &packages) {
     return missing;
 }
 static Strings build_dependency_packages(const Entry &e) {
+    // Documentation-only RUNs reconstruct a PDF package, not a compiler toolchain.
+    if (e.kind == "documentation") return {"ca-certificates", "curl", "tar", "dpkg"};
     if (e.kind == "application") return application_build_dependencies(e);
     Strings packages{"build-essential", "binutils", "dpkg-dev"};
     if (e.kind == "calendar" || e.kind == "clock")
@@ -1279,6 +1282,9 @@ static Strings build_dependency_packages(const Entry &e) {
         packages.insert(packages.end(), {"cmake", "git", "pkg-config", "libssl-dev", "libsqlite3-dev"});
     if (e.id == "exfat")
         packages.insert(packages.end(), {"exfatprogs", "dosfstools"});
+    // UDF uses genisoimage as an independent media test oracle during its native build.
+    // Runtime filesystem operations remain exclusively inside the Common V2 provider.
+    if (e.id == "udf") packages.push_back("genisoimage");
     if (e.id == "btrfs") packages.push_back("btrfs-progs");
     if (e.id == "xfs") packages.push_back("xfsprogs");
     if (e.id == "ext2" || e.id == "ext3" || e.id == "ext4")
@@ -1292,6 +1298,7 @@ static Strings build_dependency_packages(const Entry &e) {
 }
 static bool can_build(const Entry &e) {
     if (!missing_packages(build_dependency_packages(e)).empty()) return false;
+    if (e.kind == "documentation") return true;
     if (e.kind == "application") {
         if (e.id == "files")
             return execute({"pkg-config", "--exists", "gtk4 >= 4.10", "libarchive"}) == 0;

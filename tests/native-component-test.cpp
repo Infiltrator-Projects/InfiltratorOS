@@ -214,10 +214,24 @@ int main(int argc, char **argv) {
               !boot_release_matches(sbat, "0.1.698"), "BOOT's own SBAT release identity");
         auto temporal = catalogue("packaging/temporal-resources.json", 54);
         auto established = catalogue("packaging/filesystem-resources.json", 5);
-        auto additional = catalogue("packaging/filesystem-additional.json", 20);
+        auto additional = catalogue("packaging/filesystem-additional.json", 38);
         check(temporal.size() == 54, "temporal cardinality");
         check(established.size() == 5, "established cardinality");
-        check(additional.size() == 20, "additional cardinality");
+        check(additional.size() == 38, "additional cardinality");
+        const std::set<std::string> documentation_ids{"bcachefs", "cpm", "f2fs", "gfs2", "jfs", "nilfs2", "ocfs2", "vmfs", "vmfs6"};
+        std::set<std::string> observed_documentation;
+        for (const auto &entry : additional) {
+            if (entry.kind != "documentation") continue;
+            check(entry.resource == "/System/Resources/Documentation/" + entry.repo + ".pdf",
+                  "documentation-only provider has a PDF, not a shared-object resource");
+            check(infiltrator_native::queue_candidate(entry.slug()),
+                  "documentation-only component uses normal resource admission");
+            const auto deps = build_dependency_packages(entry);
+            check(std::find(deps.begin(), deps.end(), "build-essential") == deps.end(),
+                  "documentation packaging does not require a compiler");
+            observed_documentation.insert(entry.id);
+        }
+        check(observed_documentation == documentation_ids, "exact documentation-only inventory");
         // The two new released providers follow the same generic queue and
         // package/resource identity as all other independent filesystems.
         for (const auto *id : {"bfs", "efs"}) {

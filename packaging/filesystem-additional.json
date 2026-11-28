@@ -140,5 +140,158 @@
     "repository": "Filesystem-EFS",
     "package": "infiltrator-filesystem-efs",
     "resource": "/System/Filesystems/EFS.so"
+  },
+  {
+    "id": "adfs",
+    "name": "ADFS",
+    "repository": "Filesystem-ADFS",
+    "package": "infiltrator-filesystem-adfs",
+    "resource": "/System/Filesystems/ADFS.so",
+    "qualification": "read-only; only advertised Common V2 capabilities supported"
+  },
+  {
+    "id": "befs",
+    "name": "BeFS",
+    "repository": "Filesystem-BeFS",
+    "package": "infiltrator-filesystem-befs",
+    "resource": "/System/Filesystems/BEFS.so",
+    "qualification": "read-only; only advertised Common V2 capabilities supported"
+  },
+  {
+    "id": "fosfat",
+    "name": "Fosfat",
+    "repository": "Filesystem-Fosfat",
+    "package": "infiltrator-filesystem-fosfat",
+    "resource": "/System/Filesystems/FOSFAT.so",
+    "qualification": "read-only; only advertised Common V2 capabilities supported"
+  },
+  {
+    "id": "hpfs",
+    "name": "HPFS",
+    "repository": "Filesystem-HPFS",
+    "package": "infiltrator-filesystem-hpfs",
+    "resource": "/System/Filesystems/HPFS.so",
+    "qualification": "read-only; only advertised Common V2 capabilities supported"
+  },
+  {
+    "id": "omfs",
+    "name": "OMFS",
+    "repository": "Filesystem-OMFS",
+    "package": "infiltrator-filesystem-omfs",
+    "resource": "/System/Filesystems/OMFS.so",
+    "qualification": "read-only; only advertised Common V2 capabilities supported"
+  },
+  {
+    "id": "qnx6",
+    "name": "QNX6",
+    "repository": "Filesystem-QNX6",
+    "package": "infiltrator-filesystem-qnx6",
+    "resource": "/System/Filesystems/QNX6.so",
+    "qualification": "read-only; only advertised Common V2 capabilities supported"
+  },
+  {
+    "id": "reiserfs",
+    "name": "ReiserFS",
+    "repository": "Filesystem-ReiserFS",
+    "package": "infiltrator-filesystem-reiserfs",
+    "resource": "/System/Filesystems/REISERFS.so",
+    "qualification": "read-only; only advertised Common V2 capabilities supported"
+  },
+  {
+    "id": "sysv",
+    "name": "SysV",
+    "repository": "Filesystem-SysV",
+    "package": "infiltrator-filesystem-sysv",
+    "resource": "/System/Filesystems/SYSV.so",
+    "qualification": "read-only; only advertised Common V2 capabilities supported"
+  },
+  {
+    "id": "udf",
+    "name": "UDF",
+    "repository": "Filesystem-UDF",
+    "package": "infiltrator-filesystem-udf",
+    "resource": "/System/Filesystems/UDF.so",
+    "qualification": "read-only; only advertised Common V2 capabilities supported"
+  },
+  {
+    "id": "bcachefs",
+    "name": "Bcachefs",
+    "repository": "Filesystem-Bcachefs",
+    "package": "infiltrator-filesystem-bcachefs",
+    "resource": "/System/Resources/Documentation/Filesystem-Bcachefs.pdf",
+    "kind": "documentation",
+    "qualification": "documentation only; no runtime provider installed"
+  },
+  {
+    "id": "cpm",
+    "name": "CPM",
+    "repository": "Filesystem-CPM",
+    "package": "infiltrator-filesystem-cpm",
+    "resource": "/System/Resources/Documentation/Filesystem-CPM.pdf",
+    "kind": "documentation",
+    "qualification": "documentation only; no runtime provider installed"
+  },
+  {
+    "id": "f2fs",
+    "name": "F2FS",
+    "repository": "Filesystem-F2FS",
+    "package": "infiltrator-filesystem-f2fs",
+    "resource": "/System/Resources/Documentation/Filesystem-F2FS.pdf",
+    "kind": "documentation",
+    "qualification": "documentation only; no runtime provider installed"
+  },
+  {
+    "id": "gfs2",
+    "name": "GFS2",
+    "repository": "Filesystem-GFS2",
+    "package": "infiltrator-filesystem-gfs2",
+    "resource": "/System/Resources/Documentation/Filesystem-GFS2.pdf",
+    "kind": "documentation",
+    "qualification": "documentation only; no runtime provider installed"
+  },
+  {
+    "id": "jfs",
+    "name": "JFS",
+    "repository": "Filesystem-JFS",
+    "package": "infiltrator-filesystem-jfs",
+    "resource": "/System/Resources/Documentation/Filesystem-JFS.pdf",
+    "kind": "documentation",
+    "qualification": "documentation only; no runtime provider installed"
+  },
+  {
+    "id": "nilfs2",
+    "name": "NILFS2",
+    "repository": "Filesystem-NILFS2",
+    "package": "infiltrator-filesystem-nilfs2",
+    "resource": "/System/Resources/Documentation/Filesystem-NILFS2.pdf",
+    "kind": "documentation",
+    "qualification": "documentation only; no runtime provider installed"
+  },
+  {
+    "id": "ocfs2",
+    "name": "OCFS2",
+    "repository": "Filesystem-OCFS2",
+    "package": "infiltrator-filesystem-ocfs2",
+    "resource": "/System/Resources/Documentation/Filesystem-OCFS2.pdf",
+    "kind": "documentation",
+    "qualification": "documentation only; no runtime provider installed"
+  },
+  {
+    "id": "vmfs",
+    "name": "VMFS",
+    "repository": "Filesystem-VMFS",
+    "package": "infiltrator-filesystem-vmfs",
+    "resource": "/System/Resources/Documentation/Filesystem-VMFS.pdf",
+    "kind": "documentation",
+    "qualification": "documentation only; no runtime provider installed"
+  },
+  {
+    "id": "vmfs6",
+    "name": "VMFS6",
+    "repository": "Filesystem-VMFS6",
+    "package": "infiltrator-filesystem-vmfs6",
+    "resource": "/System/Resources/Documentation/Filesystem-VMFS6.pdf",
+    "kind": "documentation",
+    "qualification": "documentation only; no runtime provider installed"
   }
 ]
