@@ -218,7 +218,7 @@ int main(int argc, char **argv) {
         check(temporal.size() == 54, "temporal cardinality");
         check(established.size() == 5, "established cardinality");
         check(additional.size() == 39, "additional cardinality");
-        const std::set<std::string> documentation_ids{"bcachefs", "nilfs2", "vmfs6"};
+        const std::set<std::string> documentation_ids{"bcachefs", "vmfs6"};
         std::set<std::string> observed_documentation;
         for (const auto &entry : additional) {
             if (entry.kind != "documentation") continue;
@@ -264,6 +264,10 @@ int main(int argc, char **argv) {
             const auto deps = build_dependency_packages(*entry);
             check(std::find(deps.begin(), deps.end(), "build-essential") != deps.end(), "runtime build prerequisites");
         }
+        const auto nilfs = std::find_if(additional.begin(), additional.end(), [](const Entry &e) { return e.id == "nilfs2"; });
+        check(nilfs != additional.end() && nilfs->kind != "documentation" && nilfs->resource == "/System/Filesystems/NILFS2.so", "published NILFS2 native runtime");
+        const auto nilfs_deps = build_dependency_packages(*nilfs);
+        check(std::find(nilfs_deps.begin(), nilfs_deps.end(), "build-essential") != nilfs_deps.end(), "NILFS2 native compilation dependencies");
         TempDir module_fixture(fs::temp_directory_path(), "native-module-");
         const auto source = module_fixture.path / "provider.c";
         const auto module = module_fixture.path / "provider.so";

@@ -1,3 +1,9 @@
+## 1.0.150 — Integrate published NILFS2 runtime
+
+- Promote independently qualified NILFS2 v0.1.0 to a native provider, retaining its PDF manual and bounded clean-checkpoint read-only capabilities.
+- 44 filesystem projects: 42 runtime providers and 2 PDF-only packages; 104 total components. Bcachefs and VMFS6 remain unqualified for runtime publication. InfiltratorFS remains excluded.
+- No scheduler, BOOT or Common changes.
+
 ## 1.0.149 — Integrate published OCFS2 and VMFS runtimes
 
 - Register independent OCFS2 and VMFS v0.1.0 runtime releases with their existing bounded read-only qualifications. VMFS5 is recognition-only and VMFS6 is not promoted.

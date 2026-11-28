@@ -259,9 +259,8 @@
     "name": "NILFS2",
     "repository": "Filesystem-NILFS2",
     "package": "infiltrator-filesystem-nilfs2",
-    "resource": "/System/Resources/Documentation/Filesystem-NILFS2.pdf",
-    "kind": "documentation",
-    "qualification": "documentation only; no runtime provider installed"
+    "resource": "/System/Filesystems/NILFS2.so",
+    "qualification": "read-only; clean committed 4 KiB checkpoint profile; independent populated-media tests passed"
   },
   {
     "id": "ocfs2",
