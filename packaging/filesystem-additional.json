@@ -126,5 +126,19 @@
     "package": "infiltrator-filesystem-ufs1",
     "resource": "/System/Filesystems/UFS1.so",
     "qualification": "experimental; independent real-media mutation and recovery not qualified"
+  },
+  {
+    "id": "bfs",
+    "name": "BFS",
+    "repository": "Filesystem-BFS",
+    "package": "infiltrator-filesystem-bfs",
+    "resource": "/System/Filesystems/BFS.so"
+  },
+  {
+    "id": "efs",
+    "name": "EFS",
+    "repository": "Filesystem-EFS",
+    "package": "infiltrator-filesystem-efs",
+    "resource": "/System/Filesystems/EFS.so"
   }
 ]

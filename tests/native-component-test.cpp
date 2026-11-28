@@ -214,10 +214,24 @@ int main(int argc, char **argv) {
               !boot_release_matches(sbat, "0.1.698"), "BOOT's own SBAT release identity");
         auto temporal = catalogue("packaging/temporal-resources.json", 54);
         auto established = catalogue("packaging/filesystem-resources.json", 5);
-        auto additional = catalogue("packaging/filesystem-additional.json", 18);
+        auto additional = catalogue("packaging/filesystem-additional.json", 20);
         check(temporal.size() == 54, "temporal cardinality");
         check(established.size() == 5, "established cardinality");
-        check(additional.size() == 18, "additional cardinality");
+        check(additional.size() == 20, "additional cardinality");
+        // The two new released providers follow the same generic queue and
+        // package/resource identity as all other independent filesystems.
+        for (const auto *id : {"bfs", "efs"}) {
+            const auto entry = std::find_if(additional.begin(), additional.end(),
+                [&](const Entry &e) { return e.id == id; });
+            const std::string slug = std::string("filesystem-") + id;
+            const std::string name = id == std::string_view("bfs") ? "BFS" : "EFS";
+            check(entry != additional.end() && entry->slug() == slug &&
+                  entry->repo == "Filesystem-" + name &&
+                  entry->package == "infiltrator-" + slug &&
+                  entry->resource == "/System/Filesystems/" + name + ".so" &&
+                  infiltrator_native::queue_candidate(slug),
+                  "new filesystem uses the ordinary independent native queue");
+        }
         TempDir module_fixture(fs::temp_directory_path(), "native-module-");
         const auto source = module_fixture.path / "provider.c";
         const auto module = module_fixture.path / "provider.so";

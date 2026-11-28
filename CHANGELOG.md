@@ -1,3 +1,8 @@
+## 1.0.144 — Add independently released BFS and EFS providers
+
+- Register BFS and EFS in the existing additional filesystem inventory. Both use the ordinary native build-only RUN and Common V2 package layout; no filesystem-specific orchestration is added.
+- Update inventory and selected-progress fixtures for 25 filesystems and 85 total components. Unpublished providers and InfiltratorFS remain outside the installer.
+
 ## 1.0.143 — Install independent completed components during compilation
 
 - The serial installation lane no longer waits for every active compiler when APT will change only the completed component. Use APT's transaction plan to distinguish component-only installs from exceptional shared-dependency changes. Preserve exclusive prerequisite transactions and the already-current shortcut.
